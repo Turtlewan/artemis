@@ -76,7 +76,7 @@ Per ADR-002 the Mini runs two macOS users: the **owner-runtime user** (runs all 
   **Verify:** `uv --version` exits 0.
 
 ### 2c. Clone the repo and apply build-agent isolation
-- [ ] `git clone git@github.com:<owner>/artemis.git /Users/artemis-build/artemis` — from the **private GitHub remote** (decision 2026-06-09). Requires an SSH deploy key (or the owner's key) on the Mini's `artemis-build` user; add the Mini's public key to the GitHub repo as a read/write deploy key first. (Steady-state origin may later migrate to self-hosted git over Tailscale — see `homelab-control-plane.md` ACI.)
+- [ ] `git clone git@github.com:Turtlewan/artemis.git /Users/artemis-build/artemis` — from the **private GitHub remote** `Turtlewan/artemis` (created 2026-06-09). Add the Mini's `artemis-build` SSH public key to the repo as a read/write **deploy key** first (the planning machine pushes over HTTPS via Git Credential Manager; the Mini should use a per-host deploy key). (Steady-state origin may later migrate to self-hosted git over Tailscale — see `homelab-control-plane.md` ACI.)
 - [ ] As admin: `sudo bash /Users/artemis-build/artemis/scripts/setup_build_user.sh` — creates `artemis-build` (idempotent) + deny ACLs on `/opt/artemis` and owner Keychain (M0-e Task 1).
 - [ ] Apply the Claude Code OS-sandbox config for the build agent (M0-e Task 2). **PARK:** exact sandbox config schema/filename confirmed on-hardware — see Parked §P2.
 

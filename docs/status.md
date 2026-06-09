@@ -58,6 +58,7 @@ complete. Listed by milestone in dependency/build order. Batch handoff to DeepSe
 - `docs/technical/modules/calendar.md` — full/final Calendar surface (CAL-* source).
 - `docs/technical/modules/gmail.md` — Gmail read-only mirror (M8-b source).
 - `docs/technical/modules/productivity.md` — Tasks+Projects+Areas + time-blocking (M8-d source). All decisions LOCKED 2026-06-09.
+- `docs/technical/modules/finance.md` — Finance spoke (DESIGNED 2026-06-09; **FIN-* specs PENDING core**). Owns ledger; email-extraction + manual, no bank link; awareness-first → full-brain end-state; 4 hooks; read-only/no GATE. A *later* spoke (needs M8-b/M3/M4/M6/M7/CLIENT).
 
 ## Idea capture
 **`BACKLOG.md`** (project root) is the raw feature inbox — throw ideas in anytime ("backlog: <idea>").
@@ -109,10 +110,11 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 - **⚠️ NEW gap — launchd→Keychain `.env`-injection script unspecced** (SECRETS-INVENTORY §P5 / RUNBOOK §P8).
   Referenced by M8-a/M0-b/DR-b/DR-c (Keychain → slot `.env` at service start) but the injection script itself
   is never specced. Load-bearing for the secrets-loading step. → small M0-b follow-up spec needed.
-- **✅ repo-transfer — RESOLVED 2026-06-09.** Private GitHub remote, clone over SSH onto the Mini's
-  `artemis-build` user (deploy key). RUNBOOK §P1 closed. **Pre-Mac action still owed:** `git init` the local
-  `C:\users\user\artemis` (not yet a repo) → create the private GitHub repo → push (secrets stay uncommitted;
-  confirm `.gitignore` covers `.env`/`*.db`/keys). Migrate origin to self-hosted Tailscale git later (ACI).
+- **✅ repo-transfer — DONE 2026-06-09.** Local repo initialized + pushed to private GitHub
+  **`Turtlewan/artemis`** (`main`, initial commit `8caa9b1`, 118 files = planning corpus only). `.gitignore`
+  guards secrets/`.env`/`*.db`/keys + `.research/` + `.claude/settings.local.json`; `.gitattributes` = LF.
+  On the Mini: clone via SSH **deploy key** (RUNBOOK Step 2c). Migrate origin to self-hosted Tailscale git
+  later (ACI). Planning machine pushes over HTTPS (Git Credential Manager).
 - **Capability self-training (ADR-001 §Refinement) — direction SET.** Make-it-smarter = reasoning-distillation
   from Claude (+DeepSeek judge) into a ~14B student; RAG+test-time-compute first (Tier 1). Pipeline = the CAP
   `distill-datagen-pipeline` spec; runs as the cross-phase ACI capability lane (`homelab-control-plane.md`).

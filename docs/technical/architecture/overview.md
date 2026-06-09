@@ -210,7 +210,7 @@ proactive_hooks · ui), owns or mirrors its operational data (ADR-011), pushes k
 [`../modules/calendar.md`](../modules/calendar.md)) → **Gmail** connector (read-only/awareness, every message
 through `artemis.untrusted`) → **Productivity** (Tasks/Projects/Habits/Goals).
 
-**Later spokes (vision, not yet spec'd):** Finance (+ subscription tracker) · Notes/Journal · Document input ·
+**Later spokes:** **Finance (+ subscription tracker) — DESIGNED ([`../modules/finance.md`](../modules/finance.md); FIN-* specs pending core)** · Notes/Journal · Document input ·
 News / web watcher · Comms · Cooking · Shopping/Pantry · Smart home · Health & Fitness · Doctor/Vet · Travel ·
 Dev workstation. Grouped boundaries retained from the phase-3 map; build just-in-time behind the manifest contract.
 
