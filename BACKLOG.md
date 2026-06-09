@@ -38,6 +38,18 @@ trail isn't lost.
 - Exact-match identifiers (IDs/dates/invoice numbers) fail in pure vector search — make sure **M3-b** keyword path explicitly handles structured tokens  [rag]  (2026-06-08)
 - RAGAS/DeepEval RAG eval dimensions (faithfulness, answer-relevancy, context-recall) + red-teaming as the knowledge-core eval rubric → complements the withpi eval item above  [eval]  (2026-06-08)
 
+<!-- From the 2026-06-09 cross-module-links 4-agent dive (detail: docs/research/cross-module-links.md) — prior-art links Artemis wouldn't have designed itself -->
+- **Gift-budget pipeline** — birthday (Calendar) → gift idea (Person/Memory) → budget line (Finance) → shopping item; a 4-hop cross-domain chain  [integration][finance][calendar]  (2026-06-09)
+- **Person↔debt edge** — "I owe X $50 / X owes me" as a bidirectional Person↔Finance link (Monica pattern)  [finance][memory]  (2026-06-09)
+- **Unlinked-mention detection** — a contact/project name in an email/note/task without an explicit link → suggested connection (Obsidian/Logseq); applies across Email+Notes+Tasks+Journal  [memory][second-brain]  (2026-06-09)
+- **Relationship time-decay / reconnection prompts** — surface "haven't talked to X in a while" from comms-frequency patterns, not fixed reminders (Mesh)  [memory][comms]  (2026-06-09)
+- **Task-deadline-vs-meeting conflict check** — when scheduling, flag if an attendee (or you) has a hard task deadline that day (task↔calendar↔person); no surveyed tool does this — a differentiator  [calendar][productivity]  (2026-06-09)
+- **News-on-contact → pre-meeting brief** — public update/job-change about an attendee surfaced before a meeting (Person→News→Calendar, Mesh)  [comms][calendar][news]  (2026-06-09)
+- **Goal entity + goal-cascade** — yearly Goal → project → weekly task → daily habit; Artemis has no Goal node (Habits/Goals deferred) — the missing rollup (Tana)  [productivity]  (2026-06-09)
+- **Health↔productivity correlation** — "low-energy/poor-sleep days correlate with missed tasks" cross-link  [health][productivity]  (2026-06-09)
+- **Camera receipt-OCR** — photo receipt → transaction extraction; closes the cash-transaction gap email/manual can't (folds into the camera-module discussion)  [vision][finance]  (2026-06-09)
+- **Place/Location entity** — unhomed shared entity (Calendar location · Travel · Maps connector); needed as later spokes add location links  [architecture]  (2026-06-09)
+
 <!-- From the 2026-06-09 WWDC + homelab discussion -->
 - **Camera module** — a camera/vision spoke for Artemis: indoor/doorbell/driveway cameras → presence/occupancy, event descriptions, natural-language footage search, vision AI (face/object detection). Open questions to discuss: source-of-truth model (own vs mirror, à la ADR-011); where vision inference runs (Apple Home Secure Video as a feed source · on-device Apple FM multimodal · MLX vision model on the Mini · or the future ACI Phase-3/4 NVIDIA/Jetson box per homelab-control-plane.md); privacy/quarantine posture for camera frames (untrusted-at-rest + DR-a QuarantinedReader, like the M8 read-spokes); MCP-at-edges seam to Home Assistant. Ties to: homelab ACI Phase 4 (edge vision), WWDC Home Secure Video + FM multimodal image input.  [integration][vision][homelab]  (2026-06-09)  — **flagged for dedicated discussion**
 

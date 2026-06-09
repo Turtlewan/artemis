@@ -107,12 +107,15 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   `docs/research/wwdc-2026-stack-implications.md`.
 - **✅ Arrival-readiness artifacts — DONE 2026-06-09.** `PRE-ARRIVAL-PREP.md` + `docs/bring-up/BRING-UP-RUNBOOK.md`
   + `docs/bring-up/SECRETS-INVENTORY.md` all written. The runbook/inventory Parked tables list build-time seams.
-- **⚠️ NEW — cross-module-linking contract needs a dedicated dive (across ALL functional modules).** Surfaced
-  designing Finance (bills→tasks, subscriptions→calendar). Principle so far (from M8-d-b Task↔Event): logical
-  references `{module, entity_id}` via exposed tools through the ToolRegistry · promotion-not-duplication ·
-  lifecycle sync · hub-level query-time synthesis (no cross-scope DB joins). Currently applied **ad hoc** per
-  module (Productivity↔Calendar built; Finance designed against it). Needs a proper pass + likely an **ADR**
-  defining the contract uniformly before the later spokes multiply the links. → candidate `apex-deep-dive`.
+- **✅ cross-module-linking — RESEARCHED 2026-06-09 → `docs/research/cross-module-links.md`** (4-agent dive:
+  current+future links, external prior-art, entity backbone). **Conclusions:** 3 universal hubs
+  (Calendar/Memory/Tasks) + Finance-as-receiver; **keystone = extend M4 as the entity backbone (NOT a new
+  Contacts module)**, with the **M4 `fact_key` as the canonical cross-module person pointer** — decide before
+  Finance/Health/Comms/Travel are specced (ad-hoc strings break at ~10–15 spokes). **NEXT: write the
+  cross-module-links ADR** locking the 6 decisions in §Part 7 (fact_key pointer · `{module,entity_id}` logical-
+  ref contract · lifecycle sync · hub query-time synthesis · bidirectional+auto-suggested · extend M4 +
+  home a Place entity + add a Goal node). Cross-cutting refactors flagged: shared `artemis.untrusted` boundary
+  helper · unhomed Place/Location · no Goal entity.
 - **⚠️ NEW gap — launchd→Keychain `.env`-injection script unspecced** (SECRETS-INVENTORY §P5 / RUNBOOK §P8).
   Referenced by M8-a/M0-b/DR-b/DR-c (Keychain → slot `.env` at service start) but the injection script itself
   is never specced. Load-bearing for the secrets-loading step. → small M0-b follow-up spec needed.
