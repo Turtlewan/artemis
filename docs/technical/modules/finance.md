@@ -52,6 +52,40 @@ the recipe loop** (the "I guide it, the automation gets written" bridge — same
 capture / ADR-012). **Subscription/bill detection:** recurring-pattern analysis over the ledger (same merchant
 + ~amount + regular cadence → `subscription`; due-date language → `bill`).
 
+## Deduplication & reconciliation
+A single purchase can produce a card-alert email, a merchant receipt, **and** a statement line — plus
+email/manual/CSV overlap. Layered defense:
+- **L0 — ingest idempotency:** each `TransactionExtract` is keyed on `raw_ref` (source message-id + a
+  line-index for multi-item emails); idempotent — re-processing the same email never double-inserts (reuses M3-a).
+- **L1 — economic-event dedup (cross-source):** fuzzy key = **amount + currency + date-window (±1–2d) +
+  normalized merchant**. A new extract matching an existing txn from a *different source* merges into one
+  event, keeping the highest-confidence source (receipt > terse alert).
+- **L2 — pending↔posted reconciliation:** CSV/statement import is ground-truth (what cleared); reconcile
+  email-extracted (pending) against CSV (posted) — match + mark cleared.
+- **L3 — ambiguous → owner, not silent:** auto-merge only high-confidence exact matches; everything else
+  surfaces as a **"possible duplicate?" suggestion** (inert, owner confirms) — suggestion-inbox pattern.
+- **L4 — recipe-learned:** repeated merge/keep decisions graduate into a learned rule via the recipe loop.
+- **NB:** a subscription's monthly charge is **not** a duplicate — dedup keys on `raw_ref`/economic-event, so
+  identical amounts in *different months* stay separate; the recurring-detector reads them as a series.
+
+## Cross-module links
+Finance relates to **Productivity (Tasks)** and **Calendar** — handled via the **M8-d-b precedent**
+(`task.schedule` → `calendar.schedule_task` Task↔Event link), **never** direct store access:
+- **No module reaches into another's store.** Cross-module relationships are **logical references**
+  (`{module, entity_id}`) created by invoking the other module's exposed tool through the **ToolRegistry**
+  (the way Productivity calls `calendar.schedule_task`).
+- **Promotion, not duplication.** Owner/recipe promotes `bill → task` ("Pay electricity by the 28th") or
+  `subscription-renewal → calendar marker`; the task/event carries `source = finance:bill:<id>`, the bill
+  carries a `linked_task`/`linked_event` ref. **Truth isn't copied.**
+- **Lifecycle sync** (the auto-cancel-old-block lesson): bill paid / due-date changed → the linked task
+  auto-closes/updates; no orphaned cross-module rows.
+- **Unified views are hub-level**, not module-level: "what's due this week?" = the **brain** pulls Finance
+  bills + Productivity tasks + Calendar events and synthesizes at query time. No cross-scope DB join — each
+  module's encrypted store stays isolated; the join is logical, in the hub.
+- **⚠️ Cross-cutting follow-up:** the cross-module-linking *contract* (reference shape · promotion · lifecycle
+  · hub query-time synthesis) needs a **dedicated dive across ALL functional modules** — likely a future ADR.
+  finance.md applies the M8-d-b pattern ad hoc pending that. See status.md Open Questions.
+
 ## Tools (manifest — awareness phase)
 query spending by category/period · list & manage subscriptions · add/edit/recategorize a transaction ·
 list upcoming bills · monthly/period summary. *(End-state adds: net-worth, budget-envelope, investment tools.)*
