@@ -1,0 +1,188 @@
+---
+spec: m8-b1-gmail-connector
+status: ready
+token_profile: balanced
+autonomy_level: L2
+---
+
+# Spec: M8-b1 — Gmail connector (read-only mirror): Gmail API client + History-API incremental sync + bounded backfill + owner-private SQLCipher read-cache (metadata-all) + split-depth ingest (bodies + attachments → M3-a IngestPipeline) + memory extraction (DR-a quarantine → M4-b) + 5 read tools + ModuleManifest
+
+**Identity:** The read-only Gmail spoke `gmail` module on the shared M8-a Google-auth foundation: a `GmailApiPort` + `GmailClient` wrapping the Gmail v1 API, a `GmailReadCache` (owner-private SQLCipher) holding metadata for ALL mail + the sync cursor, a `GmailSync` doing a bounded backfill then History-API incremental deltas, split-depth ingest (signal-mail bodies + parsed attachments → the M3-a `IngestPipeline`; Promotions/Social/Spam/Trash = metadata-only), memory extraction of signal mail via the DR-a `QuarantinedReader` → M4-b write path, five `read` brain tools, and the `ModuleManifest` (`data_scope = OWNER_PRIVATE`). NO send/modify/label. The proactive urgency hook is the separate M8-b2.
+→ why: see docs/technical/modules/gmail.md (the module design + decisions) · docs/technical/adr/ADR-011-spoke-source-of-truth.md (Email = read-only mirror; sending deferred) · docs/technical/adr/ADR-009-untrusted-content-and-deep-research.md (external mail = untrusted; spotlighting/quarantine before the LLM).
+
+<!-- A spec is an EXECUTION SCRIPT, not a design doc. DeepSeek executes literally. -->
+
+<!-- Split rule: ONE logical phase — "the Gmail read/ingest connector." It exceeds 3 files because the connector is an inseparable unit sharing one vocabulary (a Gmail message id flows client→cache→ingest→memory→tools): the API client, the read-cache, the sync engine, the split-depth ingestor, the memory extractor, the read tools, and the manifest. Sub-splitting would leave a sync with nothing to write, or tools with no data. Justified atomic exception, consistent with M8-a (9 files) / M3-a (8 files). The end-state 3-stage urgency hook is the separate M8-b2 (the user-approved 2-way split). Real Gmail round-trips + real SQLCipher + served-model memory + Docling attachments are GATED on-hardware (Task 9), mirroring M8-a/M3-a. -->
+
+## Assumptions
+- **M8-a** complete: `artemis.integrations.google` exports `register_google_scopes(connector, scopes)`, `required_scopes()`, `GoogleCredentialsFactory(token_store, oauth_config).authorized_credentials() -> Credentials`, `ReauthRequiredError`. M8-b1 registers `gmail.readonly` and consumes the factory — it adds NO auth/token code. → impact: Stop (signatures must match M8-a exactly).
+- **M3-a** complete: `artemis.ingest.connectors` exports `Source` (frozen `{kind, uri, scope}`), `Connector` Protocol (`fetch(Source) -> Iterable[RawItem]`), `RawItem` (`{raw_bytes, text, mime, source_id, origin_uri, fetched_at}`); `artemis.ingest.pipeline` exports `IngestPipeline.ingest(Source) -> IngestResult` (constructed with `connector_for, parser, embedder, store_for, is_unlocked`). `Source.kind` is currently `Literal["file","web"]`. → impact: Stop. M8-b1 **widens** `Source.kind` to `Literal["file","web","email","email_attachment"]` (one-line edit) and feeds Gmail content through `IngestPipeline.ingest`; the pipeline is INJECTED (M8-b1 does not build the concrete embedder/store — composition-root concern). Flag if M3-a finalized different symbol names.
+- **M4-b** complete: `artemis.memory` exports `build_write_path(store, model) -> MemoryWritePath` and `MemoryWriteQueue(write_path).enqueue(text, turn_id, role=None)`. M8-b1 enqueues the **sanitized** memory text (the DR-a `Extract`, NOT raw mail) off the critical path. → impact: Stop (memory writes go through the M4-b queue; the queue is injected).
+- **DR-a** complete: `artemis.untrusted` exports `spotlight(content) -> (nonce, marked)`, `SPOTLIGHT_INSTRUCTION`, and `QuarantinedReader(model, role).read(*, raw_content, source_url, source_domain, query, max_tokens) -> Extract` (async; toolless; schema-bounded; `Extract{source_url, source_domain, summary, claims, flagged_injection, parse_failed}`). → impact: Stop (every byte of mail that reaches an LLM generatively goes through this; the `QuarantinedReader` is injected with a local role).
+- **M1-a** complete: `artemis.manifest` exports `ModuleManifest`, `ToolSpec`, `ActionRisk` (`READ`/`WRITE`/…), `DataScope.OWNER_PRIVATE`, `Permissions`. M8-b1's manifest ships `tools` only (NO `proactive_hooks` — those are M8-b2) with `data_scope = OWNER_PRIVATE`. → impact: Stop.
+- **M2-b/M2-c** complete: `KeyProvider.dek_for_scope(OWNER_PRIVATE)` + `ScopeLockedError` + `OWNER_PRIVATE` from `artemis.identity.scope`; `sqlcipher_open(path, key_hex)`. The read-cache is owner-private SQLCipher opened with the broker DEK (same pattern as the M8-a token store). → impact: Stop.
+- **The two untrusted boundaries are DIFFERENT by design** (the load-bearing security decision): (1) **knowledge ingest stores RAW verbatim mail/attachment text** via `IngestPipeline` — untrusted-AT-REST, gated at RETRIEVAL by the existing M3-b/brain-boundary spotlighting (NOT rebuilt here; consistent with M3-a "M3-a stores it; spotlighting of retrieved chunks is the retrieval consumer's concern"); (2) **any path that feeds mail to an LLM generatively** (memory extraction here; urgency scoring in M8-b2) goes through the DR-a `QuarantinedReader` FIRST and the privileged side sees only the sanitized `Extract`. → impact: Stop (this is exactly what the security review checks; documented so the boundary is explicit, not silent).
+- **Read tools that return a message BODY return it SPOTLIGHTED** (`spotlight()`-marked: NFKC-normalized, nonce-delimited, forged-marker-stripped) so the brain treats mail content as untrusted data, never instructions. Metadata-only tool results (sender/subject/snippet/date/category) are returned plain. → impact: Caution (the brain's untrusted-marked-content handling is the consumer's concern; this spec guarantees body content is marked at the tool boundary).
+- Real Gmail network round-trips, real SQLCipher keyed persistence, served-model memory extraction, and Docling attachment parsing require real creds + the broker + Apple Silicon → **GATED on-hardware** (Task 9). Off-hardware everything runs behind fakes (`FakeGmailApi`, `FakeKeyProvider`, `FakeEmbedder`, `FakeParser`, `FakeModelPort`, in-memory M4-b queue). → impact: Stop (keeps M8-b1 CI-buildable off the Mini).
+- The read-cache DB path under the broker-mounted owner-private `vault/` (`/opt/artemis/<slot>/<scope>/vault/…`) is reconciled at on-hardware integration (Task 9), identical to the M8-a token-store + M3-a LanceDB path deferrals. Off-hardware it derives from `paths.scope_dir(settings, OWNER_PRIVATE)`. → impact: Low (one-line path adapter on the Mini).
+
+Simplicity check: considered ingesting ALL mail at full depth (rejected — owner chose split-by-depth: metadata-all + full-body/attachments/memory for Primary/Updates/Forums only, to minimise injection surface + cost + memory pollution; gmail.md §A). Considered storing the read-cache in the M4 memory DB (rejected — mail metadata is not a memory fact; a dedicated owner-private SQLCipher cache reusing only `sqlcipher_open` is the minimum). Considered passing raw mail straight to M4-b extraction (rejected — feeds untrusted content to an LLM unquarantined; the `QuarantinedReader` interposition is the secure path even though it costs a second local call, which is GATED + async/batched). Considered polling `messages.list` every cycle (rejected — the History API is the incremental delta primitive, the email analogue of Calendar's syncToken). This is the minimum faithful read-only Gmail mirror.
+
+## Prerequisites
+- Specs complete first: **M8-a** (Google auth), **M3-a** (`Source`/`Connector`/`IngestPipeline`), **M4-b** (`build_write_path`/`MemoryWriteQueue`), **DR-a** (`QuarantinedReader`/`spotlight`), **M1-a** (`ModuleManifest`/`ToolSpec`), **M0-a** (config/paths), **M2-b/M2-c** (`KeyProvider`/`sqlcipher_open`/`OWNER_PRIVATE`).
+- Environment: new runtime dep handled by M8-a's `google-api-python-client` (no new deps; Gmail uses the same `googleapiclient.discovery.build`). Off-hardware fully testable with fakes; real consent already covered by M8-a's gated task. Gmail scope is granted by re-running the M8-a `artemis-google-auth login` once `gmail` has registered its scope.
+
+## Files to Change
+| File | Operation | Notes |
+|------|-----------|-------|
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py | create | package marker + re-exports (`GMAIL_READONLY_SCOPE`, `GmailClient`, `GmailApiPort`, `GmailReadCache`, `GmailSync`, `build_gmail_manifest`, `MailCategory`) |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/client.py | create | `GmailApiPort` Protocol + `GmailClient` (lazy `googleapiclient`, creds from `GoogleCredentialsFactory`) + `FakeGmailApi` (test) + `MailCategory` enum + `categorize()`/`is_signal()` + MIME body/attachment extraction helpers |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/cache.py | create | `GmailReadCache` — owner-private SQLCipher store: per-message metadata for ALL mail + the singleton sync-cursor row |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/ingest.py | create | `GmailBodyConnector` + `GmailAttachmentConnector` (M3-a `Connector`s) + `GmailIngestor` (split-depth: signal body + sized/parseable attachments → `IngestPipeline.ingest`) + `GmailMemoryExtractor` (signal body → `QuarantinedReader` → M4-b `MemoryWriteQueue`) |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/sync.py | create | `GmailSync.backfill(months)` (paged `messages.list` window → cache-all + ingest-signal) + `GmailSync.incremental()` (History-API delta → apply) |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/tools.py | create | 5 read `ToolSpec`s + Pydantic arg/return schemas + callables (`search`, `get_message`, `list_threads`, `get_thread`, `list_unread`); body-returning tools spotlight the body |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/module.py | create | `build_gmail_manifest(...) -> ModuleManifest` + `register_gmail_scope()` (`register_google_scopes("gmail", {GMAIL_READONLY_SCOPE})`) |
+| /Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py | modify | (Task 6) add `build_gmail_manifest`, `register_gmail_scope` to `__all__` re-exports |
+| /Users/artemis-build/artemis/src/artemis/ingest/connectors.py | modify | widen `Source.kind` `Literal["file","web"]` → `Literal["file","web","email","email_attachment"]` (one line); no other change |
+| /Users/artemis-build/artemis/src/artemis/config.py | modify | add `gmail_backfill_months: int = 12` (env `ARTEMIS_GMAIL_BACKFILL_MONTHS`) + `gmail_attachment_max_mb: int = 10` (env `ARTEMIS_GMAIL_ATTACHMENT_MAX_MB`) |
+| /Users/artemis-build/artemis/tests/test_gmail_connector.py | create | categorize/signal, cache round-trip + locked→ScopeLockedError, split-depth ingest, memory-via-quarantine, backfill + incremental against FakeGmailApi, tool schemas + body-spotlighting |
+
+## Tasks
+
+- [ ] Task 1: Gmail API client + categorization + MIME helpers — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/client.py`, `/Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py` —
+  - `GMAIL_READONLY_SCOPE: Final = "https://www.googleapis.com/auth/gmail.readonly"`.
+  - `class MailCategory(StrEnum)`: `PRIMARY`, `UPDATES`, `FORUMS`, `PROMOTIONS`, `SOCIAL`, `SPAM`, `TRASH`. `SIGNAL_CATEGORIES: Final = frozenset({PRIMARY, UPDATES, FORUMS})`.
+  - `def categorize(label_ids: Sequence[str]) -> MailCategory`: map Gmail labels → category (`CATEGORY_PROMOTIONS`→PROMOTIONS, `CATEGORY_SOCIAL`→SOCIAL, `CATEGORY_UPDATES`→UPDATES, `CATEGORY_FORUMS`→FORUMS, `SPAM`→SPAM, `TRASH`→TRASH, else (incl. `CATEGORY_PERSONAL`/INBOX-only) → PRIMARY). `def is_signal(cat: MailCategory) -> bool` = `cat in SIGNAL_CATEGORIES`.
+  - `class GmailApiPort(Protocol)`: `list_message_ids(self, *, q: str, page_token: str | None) -> tuple[list[str], str | None]`; `get_message(self, message_id: str, *, fmt: Literal["full","metadata"]) -> Mapping[str, object]`; `list_history(self, *, start_history_id: str, page_token: str | None) -> tuple[list[Mapping[str, object]], str | None]`; `get_attachment(self, *, message_id: str, attachment_id: str) -> bytes`; `current_history_id(self) -> str`.
+  - `class GmailClient(GmailApiPort)` constructed with `(credentials_factory: GoogleCredentialsFactory)`: lazy-build `googleapiclient.discovery.build("gmail","v1",credentials=credentials_factory.authorized_credentials(), cache_discovery=False)` once; implement the port over `users().messages()/history()/getProfile()`. `ReauthRequiredError` from the factory propagates (owner must re-consent). NEVER log message bodies or the credentials object (M8-a contract).
+  - MIME helpers (module-level, pure): `def extract_headers(msg: Mapping) -> dict[str,str]` (From/To/Subject/Date, lower-keyed); `def extract_body_text(msg: Mapping) -> str` (walk `payload` parts, prefer `text/plain`, else strip `text/html`; base64url-decode `body.data`; return cleaned text); `def list_attachment_parts(msg: Mapping) -> list[AttachmentRef]` where `AttachmentRef = {filename, mime, attachment_id, size}`.
+  - `class FakeGmailApi(GmailApiPort)` (TEST): in-memory dict of canned messages/history/attachments; deterministic; no network.
+  - `__init__.py`: re-export `GMAIL_READONLY_SCOPE`, `GmailClient`, `GmailApiPort`, `FakeGmailApi`, `MailCategory`, `categorize`, `is_signal` with `__all__`.
+  — done when: `uv run mypy --strict src` passes; `categorize(["CATEGORY_PROMOTIONS","INBOX"]) == MailCategory.PROMOTIONS` and `is_signal` is False for it; `is_signal(categorize(["INBOX"]))` is True; `extract_body_text` decodes a base64url text/plain part fixture; importing `client` does NOT import `googleapiclient` (lazy).
+
+- [ ] Task 2: Owner-private SQLCipher read-cache (metadata-all + sync cursor) — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/cache.py` —
+  - `@dataclass(frozen=True) class CachedMessage { message_id: str, thread_id: str, history_id: str, sender: str, subject: str, internal_date_ms: int, category: MailCategory, snippet: str, label_ids: tuple[str,...], has_attachments: bool, unread: bool, important: bool, body_ingested: bool }`.
+  - `class GmailReadCache` constructed with `(settings: Settings, key_provider: KeyProvider)`. `_db_path()` = `paths.scope_dir(settings, OWNER_PRIVATE) / "connectors" / "gmail" / "cache.db"` (document the vault-path reconciliation deferral). `_connect()`: `key = key_provider.dek_for_scope(OWNER_PRIVATE)` (propagate `ScopeLockedError` — no unlock, no cache access), `mkdir(parents=True, exist_ok=True)`, `sqlcipher_open(path, key.as_hex())` (assign `key.as_hex()` to a LOCAL only, never an attribute — M8-a precedent), create tables IF NOT EXISTS: `messages(message_id TEXT PRIMARY KEY, thread_id, history_id, sender, subject, internal_date_ms INTEGER, category TEXT, snippet TEXT, label_ids TEXT, has_attachments INTEGER, unread INTEGER, important INTEGER, body_ingested INTEGER)` + `sync_state(id INTEGER PRIMARY KEY CHECK(id=1), history_id TEXT NOT NULL)`.
+  - Methods: `upsert(msg: CachedMessage) -> None` (INSERT…ON CONFLICT(message_id) DO UPDATE; label_ids JSON); `get(message_id) -> CachedMessage | None`; `mark_body_ingested(message_id) -> None`; `mark_removed(message_id) -> None` (DELETE row — the message left the mailbox); `set_cursor(history_id) -> None` / `get_cursor() -> str | None` (the `sync_state` singleton); `list_unread(category: MailCategory | None) -> list[CachedMessage]`; `search_metadata(query: str, limit: int) -> list[CachedMessage]` (LIKE over sender/subject/snippet — the offline awareness path). NEVER log sender/subject/snippet at info.
+  — done when: `uv run mypy --strict src` passes; with a `FakeKeyProvider(owner_unlocked=True)` over a temp dir, `upsert`→`get` round-trips a `CachedMessage` (category + flags preserved); `set_cursor`/`get_cursor` round-trip; a `FakeKeyProvider(owner_unlocked=False)` raises `ScopeLockedError` on any method (Task 8).
+
+- [ ] Task 3: Split-depth ingest + memory extraction via quarantine — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/ingest.py`, `/Users/artemis-build/artemis/src/artemis/ingest/connectors.py` (modify) —
+  - **connectors.py (modify):** widen `Source.kind` to `Literal["file","web","email","email_attachment"]`. No other change.
+  - `class GmailBodyConnector` (M3-a `Connector`) constructed with `(api: GmailApiPort)`: `fetch(source)` for `source.kind=="email"` (`source.uri` = message_id) → `api.get_message(id, fmt="full")` → one `RawItem(text=extract_body_text(msg), raw_bytes=None, mime="text/plain", source_id=f"gmail:{id}", origin_uri=f"gmail:{id}", fetched_at=now)`.
+  - `class GmailAttachmentConnector` (M3-a `Connector`) constructed with `(api: GmailApiPort)`: `fetch(source)` for `source.kind=="email_attachment"` (`source.uri` = `f"{message_id}:{attachment_id}:{mime}"`) → `api.get_attachment(...)` → one `RawItem(raw_bytes=<bytes>, text=None, mime=<mime>, source_id=f"gmail-att:{message_id}:{attachment_id}", origin_uri=..., fetched_at=now)` (Docling parses it downstream).
+  - `def gmail_connector_for(base: Callable[[Source], Connector], api: GmailApiPort) -> Callable[[Source], Connector]`: return a router that yields the Gmail connectors for `email`/`email_attachment` kinds, else delegates to `base` (the composition root passes this as the `IngestPipeline.connector_for`).
+  - `class GmailIngestor` constructed with `(pipeline: IngestPipeline, cache: GmailReadCache, settings: Settings)`: `def ingest_message(self, msg: Mapping, *, scope: str) -> None` — only call for SIGNAL mail. (a) `pipeline.ingest(Source(kind="email", uri=message_id, scope=scope))` (body → knowledge, verbatim/untrusted-at-rest); (b) for each `AttachmentRef` in `list_attachment_parts(msg)` whose `mime` is Docling-parseable (`PARSEABLE_MIME` set: pdf/docx/pptx/md/html/txt) AND `size <= settings.gmail_attachment_max_mb*1024*1024`: `pipeline.ingest(Source(kind="email_attachment", uri=f"{message_id}:{ref.attachment_id}:{ref.mime}", scope=scope))`; (c) `cache.mark_body_ingested(message_id)`. Degrade-don't-crash: wrap each `ingest` in try/except → log (no body) + continue.
+  - `class GmailMemoryExtractor` constructed with `(reader: QuarantinedReader, queue: MemoryWriteQueue)`: `async def extract(self, *, message_id: str, body: str) -> None` — `ex = await reader.read(raw_content=body, source_url=f"gmail:{message_id}", source_domain="mail.google.com", query="standing facts, commitments, and key contacts about the owner")`; if `ex.parse_failed` → log + return (do not feed garbage to memory); else `queue.enqueue(text=ex.summary + "\n" + "\n".join(ex.claims), turn_id=f"gmail:{message_id}")` (the SANITIZED extract → M4-b; raw mail NEVER reaches the memory extractor). Only signal mail.
+  — done when: `uv run mypy --strict src` passes; `Source(kind="email", uri="x", scope="owner-private")` constructs; `GmailIngestor.ingest_message` over a `FakeGmailApi` signal message with one PDF attachment calls `pipeline.ingest` twice (body + attachment) and `mark_body_ingested`; an oversized/non-parseable attachment is skipped; `GmailMemoryExtractor.extract` enqueues the `Extract.summary`/claims (NOT the raw body) and a `parse_failed` Extract enqueues nothing (Task 8).
+
+- [ ] Task 4: Sync — bounded backfill + History-API incremental — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/sync.py` —
+  - `class GmailSync` constructed with `(api: GmailApiPort, cache: GmailReadCache, ingestor: GmailIngestor, memory: GmailMemoryExtractor, settings: Settings, *, scope: str = OWNER_PRIVATE)`.
+  - `def _to_cached(self, msg: Mapping) -> CachedMessage`: build from headers + labelIds (`categorize`), `unread = "UNREAD" in labels`, `important = "IMPORTANT" in labels`, `has_attachments` from parts.
+  - `async def backfill(self) -> BackfillResult` where `BackfillResult = {scanned: int, signal_ingested: int}`: compute `after = today - relativedelta(months=settings.gmail_backfill_months)` → `q = f"after:{after:%Y/%m/%d}"`; page `api.list_message_ids(q=q, …)`; for each id: `msg = api.get_message(id, fmt="metadata")` → `cached = _to_cached(msg)` → `cache.upsert(cached)` (metadata for ALL); if `is_signal(cached.category)`: `full = api.get_message(id, fmt="full")` → `ingestor.ingest_message(full, scope=scope)` + `await memory.extract(message_id=id, body=extract_body_text(full))`. After paging, `cache.set_cursor(api.current_history_id())`. Idempotent: re-running skips already-`body_ingested` rows + M3-a content_hash makes ingest a no-op.
+  - `async def incremental(self) -> IncrementalResult` where `IncrementalResult = {added: int, removed: int, label_changes: int}`: `start = cache.get_cursor()` (if `None` → raise `SyncNotInitialisedError` "run backfill first"); page `api.list_history(start_history_id=start, …)`; apply each record: `messagesAdded` → fetch + upsert + (signal ⇒ ingest + memory); `messagesDeleted` → `cache.mark_removed(id)`; `labelsAdded`/`labelsRemoved` → re-fetch metadata + `cache.upsert` (keeps unread/important/category current). After paging, `cache.set_cursor(<new latest historyId>)`. Degrade-don't-crash per record. (A `404`/expired-historyId from Gmail → raise `HistoryExpiredError` "cursor too old — re-backfill"; the caller/M8-b2 falls back to backfill — document.)
+  — done when: `uv run mypy --strict src` passes; over a `FakeGmailApi` seeded with mixed-category messages, `backfill()` upserts ALL into the cache but ingests/extracts only signal ones (`signal_ingested` == signal count); the cursor is set; `incremental()` after a seeded `messagesAdded` signal message ingests it and advances the cursor; `messagesDeleted` removes the cache row; `incremental()` with no cursor raises `SyncNotInitialisedError` (Task 8).
+
+- [ ] Task 5: Five read tools (Pydantic schemas + callables) — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/tools.py` —
+  - Pydantic arg/return models (`mypy --strict`-clean): `GmailSearchArgs{query: str, max_results: int = 20}` → `GmailSearchResult{messages: list[MessageRef]}` where `MessageRef{message_id, thread_id, sender, subject, date_iso, snippet, category, unread}`; `GetMessageArgs{message_id: str}` → `MessageDetail{header: dict[str,str], body_spotlighted: str, category: str, has_attachments: bool}`; `ListThreadsArgs{query: str = "", max_results: int = 20}` → `ThreadList{threads: list[ThreadRef]}`; `GetThreadArgs{thread_id: str}` → `ThreadDetail{messages: list[MessageDetail]}`; `ListUnreadArgs{category: str | None = None}` → `GmailSearchResult`.
+  - Callables (constructed via a `def build_gmail_tools(api: GmailApiPort, cache: GmailReadCache) -> list[ToolSpec]` factory closing over `api`+`cache`): `search` (Gmail `q` via `api.list_message_ids` → metadata refs, falling back to `cache.search_metadata` when locked is NOT applicable — tools run only when unlocked); `get_message`/`get_thread` return `MessageDetail` with `body_spotlighted = spotlight(extract_body_text(msg))[1]` (the marked block — the brain treats it as untrusted data); `list_threads`; `list_unread` (cache-served). Every `ToolSpec.action_risk = ActionRisk.READ`. Tool names: `gmail.search`, `gmail.get_message`, `gmail.list_threads`, `gmail.get_thread`, `gmail.list_unread`.
+  — done when: `uv run mypy --strict src` passes; `build_gmail_tools(FakeGmailApi(...), cache)` returns 5 `ToolSpec`s all `action_risk == READ`; the `gmail.get_message` callable over a fixture returns a `MessageDetail` whose `body_spotlighted` contains the `<<UNTRUSTED:` marker and NOT a forged marker; `gmail.search` returns `MessageRef`s with category + unread (Task 8).
+
+- [ ] Task 6: Module manifest + scope registration — files: `/Users/artemis-build/artemis/src/artemis/modules/gmail/module.py`, `/Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py` (modify) —
+  - `def register_gmail_scope() -> None`: `register_google_scopes("gmail", {GMAIL_READONLY_SCOPE})` (idempotent).
+  - `def build_gmail_manifest(api: GmailApiPort, cache: GmailReadCache) -> ModuleManifest`: `register_gmail_scope()`; return `ModuleManifest(name="gmail", version="0.1.0", description="Read-only Gmail awareness: search, read, and surface the owner's mail (no send/modify).", tools=build_gmail_tools(api, cache), data_scope=DataScope.OWNER_PRIVATE, permissions=Permissions(owner=True, guest=False), proactive_hooks=[])` (NO hooks — M8-b2 adds the urgency hook).
+  - **`__init__.py` (modify):** add `build_gmail_manifest` and `register_gmail_scope` to the `__all__` re-exports (these are defined in `module.py`, which is created in this task; the `__init__.py` was created in Task 1 with the client-layer re-exports and must be extended here once `module.py` exists).
+  — done when: `uv run mypy --strict src` passes; `build_gmail_manifest(FakeGmailApi(...), cache).name == "gmail"`, `data_scope == OWNER_PRIVATE`, `len(tools) == 5`, `proactive_hooks == []`; after the call `required_scopes()` (M8-a) contains `GMAIL_READONLY_SCOPE`; `from artemis.modules.gmail import build_gmail_manifest, GMAIL_READONLY_SCOPE` succeeds.
+
+- [ ] Task 7: Config knobs — files: `/Users/artemis-build/artemis/src/artemis/config.py` (modify) — add `gmail_backfill_months: int = 12` (env `ARTEMIS_GMAIL_BACKFILL_MONTHS`) and `gmail_attachment_max_mb: int = 10` (env `ARTEMIS_GMAIL_ATTACHMENT_MAX_MB`) to the existing `Settings`, with pydantic-settings env binding consistent with the existing fields. Do not touch other settings. — done when: `uv run mypy --strict src` passes; `get_settings().gmail_backfill_months == 12` by default and reads the env override.
+
+- [ ] Task 8: Off-hardware tests (fakes only) — files: `/Users/artemis-build/artemis/tests/test_gmail_connector.py` — typed pytest with `FakeGmailApi`, `FakeKeyProvider`, `FakeEmbedder`, `FakeParser`, a real `LanceDBVectorStore` over a temp dir + a real `IngestPipeline` wired with `gmail_connector_for`, a `FakeModelPort`-backed `QuarantinedReader`, and an in-process `MemoryWriteQueue` over a temp M4 DB (or a `FakeMemoryQueue` capturing enqueues):
+  - categorize/signal mapping (Task 1); `extract_body_text` decodes base64url.
+  - cache: upsert→get round-trip preserves category/flags; cursor round-trip; locked `FakeKeyProvider` → `ScopeLockedError` on every method.
+  - ingest: a signal message with one in-budget PDF + one oversized attachment → `pipeline.ingest` called for body + the PDF only; `mark_body_ingested` set; the LanceDB temp table has the body chunks.
+  - memory: `GmailMemoryExtractor.extract` enqueues the `Extract.summary`+claims (assert the enqueued text != the raw body; assert raw body never passed to the queue); `parse_failed` Extract enqueues nothing.
+  - backfill: mixed-category seed → ALL upserted to cache, only signal ingested/extracted; cursor set; idempotent re-run ingests nothing new.
+  - incremental: seeded `messagesAdded` signal → ingested + cursor advanced; `messagesDeleted` → cache row gone; `labelsAdded` → cache flags updated; no-cursor → `SyncNotInitialisedError`.
+  - tools: `build_gmail_tools` returns 5 READ tools; `gmail.get_message` body carries the `<<UNTRUSTED:` marker; `gmail.search` returns refs.
+  - manifest: `build_gmail_manifest` → name/scope/tools/no-hooks; `required_scopes()` includes the Gmail scope.
+  — done when: `uv run pytest -q` passes AND `uv run mypy --strict src tests/test_gmail_connector.py` passes AND `uv run ruff check . && uv run ruff format --check .` both exit 0.
+
+- [ ] Task 9 (GATED — on-hardware / owner-present): Real Gmail backfill + incremental + real SQLCipher cache + served-model memory + Docling attachments — files: (uses Tasks 1–7) — on the Mini, owner GUI session, vault unlocked, after `artemis-google-auth login` has granted the `gmail.readonly` scope:
+  (a) run a real `backfill()` over the bounded window → confirm metadata for ALL mail lands in the real SQLCipher cache under the broker-mounted `vault/` path (reconcile the one-line path adapter), and only signal mail is ingested into the owner-private LanceDB doc corpus;
+  (b) confirm a real PDF attachment on a signal message is Docling-parsed + ingested; an oversized one is skipped;
+  (c) confirm memory extraction ran through the served `sensitive_reasoner` via the `QuarantinedReader` and produced facts from the SANITIZED extract (spot-check no raw mail body in any log);
+  (d) make a change in Gmail (new mail / read a message) → `incremental()` applies the delta and advances the cursor; an expired-cursor path raises `HistoryExpiredError` and re-backfills;
+  (e) confirm the cache DB opens only with the owner DEK (wrong key fails; not plaintext-readable) and no message body/sender appears in any log. — done when: (a)–(e) verified on the Mini and recorded in handoff.
+
+## Permissions
+
+The following actions will run autonomously during build.
+Approving this spec approves all of them.
+
+### File Operations
+| Action | Paths |
+|--------|-------|
+| Create | /Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/client.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/cache.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/ingest.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/sync.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/tools.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/module.py, /Users/artemis-build/artemis/tests/test_gmail_connector.py |
+| Modify | /Users/artemis-build/artemis/src/artemis/ingest/connectors.py, /Users/artemis-build/artemis/src/artemis/config.py, /Users/artemis-build/artemis/src/artemis/modules/gmail/__init__.py |
+| Delete | (none) |
+
+### Commands
+| Command | Purpose |
+|---------|---------|
+| `uv run mypy --strict src tests/test_gmail_connector.py` | Type gate |
+| `uv run ruff check . ; uv run ruff format --check .` | Lint + format gate |
+| `uv run pytest -q` | Test gate (fakes only; no network) |
+| `artemis-google-auth login --scope https://www.googleapis.com/auth/gmail.readonly` (GATED, on-Mini, owner-present) | Grant the Gmail scope (re-consent via M8-a) |
+
+### Git Operations
+| Operation | Scope |
+|-----------|-------|
+| `git add` | src/artemis/modules/gmail/**, src/artemis/ingest/connectors.py, src/artemis/config.py, tests/test_gmail_connector.py |
+| `git commit` | "feat: M8-b1 Gmail connector — read-only mirror (History-API sync, split-depth ingest, owner-private read-cache, quarantined memory, read tools)" |
+
+### Environment Access
+| Variable | Purpose |
+|----------|---------|
+| `ARTEMIS_GMAIL_BACKFILL_MONTHS` | Bounded-backfill window (default 12) |
+| `ARTEMIS_GMAIL_ATTACHMENT_MAX_MB` | Attachment size cap (default 10) |
+| `ARTEMIS_ENV_FILE` / `ARTEMIS_DATA_ROOT` / `ARTEMIS_SLOT` | Settings + cache-DB path resolution (M0-a) |
+
+### Network
+| Action | Purpose |
+|--------|---------|
+| HTTPS to `www.googleapis.com` / `gmail.googleapis.com` (GATED, on-Mini only) | Gmail v1 reads (messages/history/attachments). Trusted-connector egress (ADR-009 allowlist). No outbound in off-hardware tests. |
+
+## Specialist Context
+### Security
+Gmail content is **UNTRUSTED** (attacker-controllable: sender names, subjects, bodies, attachments). Invariants the build MUST honour:
+- **Two boundaries, by design (CONFIRMED SOUND):** (1) knowledge ingest stores RAW verbatim mail via `IngestPipeline` — untrusted-AT-REST, gated at RETRIEVAL by the existing M3-b/brain-boundary spotlighting (not rebuilt here, consistent with M3-a's explicit "M3-a stores it; spotlighting of retrieved chunks is the retrieval consumer's concern" posture). Requiring quarantine AT ingest-time for the doc corpus would duplicate work already done at retrieval and would break the M3-a pipeline's design. Boundary (1) is acceptable as specified. (2) every LLM-generative path (memory extraction here; urgency scoring in M8-b2) goes through the DR-a `QuarantinedReader` BEFORE the privileged side sees any mail content; the privileged side sees only the sanitized `Extract`. The two boundaries are complementary and correct.
+- **Body-returning read tools spotlight the body** (`spotlight()` markers) so the brain treats mail content as data, never instructions. Metadata-only tool results (sender/subject/snippet/date/category) are returned plain — these do not constitute instructions and spotlighting them would add noise without security benefit.
+- **Refresh token / credentials never logged** (M8-a contract); the `Credentials` object is never passed to a logger — documented in `GmailClient`'s docstring as a standing contract for callers.
+- **Read-cache is owner-private SQLCipher** opened only with the broker DEK; locked → `ScopeLockedError` (no cache access without an unlocked vault); `key.as_hex()` is assigned to a local variable only inside `_connect()`, never to an instance/module attribute — consistent with M8-a `SqlCipherTokenStore` precedent.
+- **No message body / sender / subject logged at info** anywhere; attachment bytes are streamed to Docling, never logged.
+- **Read-only scope** (`gmail.readonly`) means zero destructive blast radius even if compromised; no send/modify/label is built or plumbed.
+- **Attachments are untrusted** (a malicious PDF is attacker-controlled) — size-capped at `gmail_attachment_max_mb`, Docling-parseable MIME types only; the size cap is enforced BEFORE downloading the attachment bytes to prevent bandwidth exhaustion.
+- **SQL query in `search_metadata`** uses DB-API parameterised LIKE placeholders (never string concatenation) — the `query` argument is a user-facing search string, not trusted SQL.
+- **Egress** hits only Google hosts (ADR-009 allowlist), GATED on-hardware; no outbound in off-hardware tests.
+[Dispatched apex-security + apex-auth + apex-data review COMPLETE — findings resolved: boundary (1) confirmed sound (raw-at-rest + retrieval-spotlighting is the correct M3-a posture; no ingest-time quarantine needed); boundary (2) confirmed sound (QuarantinedReader on every LLM-generative path); key.as_hex local-only confirmed; no-logging invariants confirmed; size-cap-before-download note added; search_metadata parameterised-query noted; Task 6 __init__.py gap fixed.]
+
+### Performance
+Split-depth ingest means the bulk (Promotions/Social) costs only a metadata upsert, never an embed. The History API delta is O(changes) per cycle, not O(mailbox). Memory extraction is async/batched off the critical path (M4-b queue). Backfill is the one heavy pass — bounded by `gmail_backfill_months` + GATED on-hardware. The `QuarantinedReader` + M4-b extraction are two local-model calls per signal message (GATED) — acceptable for a one-time backfill, incremental thereafter.
+
+### Accessibility
+(none — headless connector; the eventual mail UI is a client-app concern, not M8-b1.)
+
+## Documentation
+| Doc type | File | Action |
+|----------|------|--------|
+| Inline | src/artemis/modules/gmail/*.py | Type + docstring all exports; document the two untrusted boundaries, the split-depth rule, the read-only scope, the History-API cursor lifecycle, and the body-spotlighting tool contract |
+| Product | (module design) | docs/technical/modules/gmail.md is the design source-of-truth; reference it |
+
+## Acceptance Criteria
+- [ ] Run `uv run mypy --strict src tests/test_gmail_connector.py` → verify: exit 0.
+- [ ] Run `uv run pytest -q tests/test_gmail_connector.py` → verify: categorize/signal mapping; cache round-trip + locked→`ScopeLockedError`; split-depth ingest (body + in-budget attachment only); memory via quarantine (sanitized text enqueued, raw body never); backfill (all-cached, signal-only ingested, cursor set, idempotent); incremental (add/remove/label-change + no-cursor→`SyncNotInitialisedError`); 5 READ tools + body-spotlighting; manifest name/scope/no-hooks — all pass.
+- [ ] Run `uv run python -c "from artemis.modules.gmail import build_gmail_manifest, GMAIL_READONLY_SCOPE; print(GMAIL_READONLY_SCOPE)"` → verify: prints the gmail.readonly scope URL.
+- [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
+- [ ] (GATED, on Mini, owner-present) Real backfill caches all mail + ingests signal only; PDF attachment Docling-parsed; memory from sanitized extract; incremental applies a delta; cache opens only with the owner DEK; no body/sender in any log → verify recorded in handoff.
+
+## Progress
+_(Coding mode writes here — do not edit manually)_

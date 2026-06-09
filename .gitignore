@@ -1,0 +1,42 @@
+# --- Local / machine-specific ---
+.claude/settings.local.json
+
+# Research scratch + vendored external repos studied for prior-art (not part of the project)
+.research/
+
+# --- Secrets (backstop; specs keep these out by design — never commit) ---
+.env
+.env.*
+!.env.*.example
+*.key
+*.pem
+id_rsa*
+*.wrapped
+secrets/
+keys/
+
+# --- Encrypted / runtime data stores ---
+*.db
+*.sqlite
+*.sqlite3
+# Runtime data root (lives on the Mini, never in the repo)
+/opt/artemis/
+
+# --- Python (forward-looking — code is built on the Mini) ---
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- MLX model weights (large; not source) ---
+models/
+*.safetensors
+*.gguf
+
+# NOTE: datasets/distill/ is intentionally TRACKED (distill-datagen-pipeline §P3) — do not ignore.
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db

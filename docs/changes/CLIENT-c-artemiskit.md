@@ -1,0 +1,120 @@
+---
+spec: client-c-artemiskit
+status: ready
+token_profile: balanced
+autonomy_level: L2
+---
+
+# Spec: CLIENT-c — ArtemisKit (shared Swift logic module: API client + wire DTOs + Secure-Enclave device identity + authenticator)
+
+**Identity:** Implements the platform-agnostic Swift 6 SPM module the client app builds on: the Codable wire DTOs for the CLIENT-b `/app/*` surface, an `ApiClient` (URLSession incl. SSE), a Secure-Enclave P-256 `DeviceIdentity` (the real `MockProver` replacement) behind a `Signer` protocol, and an `Authenticator` actor that drives the pairing / API-session / vault-unlock handshakes. No UI.
+→ why: see docs/technical/adr/ADR-010-client-app-auth.md (the three handshakes; X9.63 key; DER P-256 assertions) · docs/technical/architecture/app-flow.md (connection/lock states the Authenticator transitions).
+
+<!-- Split rule: flagged atomic exception (precedent: M2-a shipped the whole ArtemisBroker package as one spec — "must compile as a unit"). ArtemisKit is ONE SPM package (manifest + 4 sources + tests) whose types are mutually dependent (Authenticator needs Signer + ApiClient + Keychain + DTOs); sub-splitting leaves a non-building package. The UI (app shell, screens) is CLIENT-d / CLIENT-e and depends on this module. -->
+
+## Assumptions
+- Swift 6 toolchain (Xcode CLT) on the build Mac; **Swift 6 language mode / strict concurrency ON** (apex-swift hard block — never disabled). → impact: Stop (the module is authored Sendable-correct; disabling strict concurrency is not allowed).
+- The module is **platform-agnostic** (no SwiftUI, no UIKit) so it unit-tests on macOS and is imported by the iOS/iPadOS app target (CLIENT-d). `#if os(...)` does not appear here. → impact: Caution (keep all UIKit/SwiftUI out of ArtemisKit — apex-swift module boundary).
+- The Secure-Enclave key is a **CryptoKit `SecureEnclave.P256.Signing.PrivateKey`**; its public key exports as **`.x963Representation` → base64** (the exact form M2-a `pair` + the brain registry accept); a signature is **`.signature(for:).derRepresentation`** (DER ECDSA-P256-SHA256, which the brain verifies via `cryptography`). Face ID gates key use via an `LAContext` passed to the SE key initializer. → impact: Stop (key + signature encodings are the cross-language wire contract with CLIENT-a/b).
+- **The real SE key requires a Secure Enclave** (device or Apple-silicon simulator) → `DeviceIdentity` SE behaviour is **gated on-hardware/simulator**; all off-device unit tests use a `SoftwareSigner` (a CryptoKit non-SE `P256.Signing.PrivateKey`) behind the same `Signer` protocol — mirroring M2-a's injected-prover pattern. → impact: Caution (the `Signer` seam is what makes the Authenticator testable without an enclave).
+- The base URL is the tailnet MagicDNS HTTPS URL (`https://<host>.<tailnet>.ts.net`, CLIENT-b); Tailscale terminates TLS. The `ApiClient` takes the base URL + bearer token by injection. → impact: Low (configuration, not logic).
+- apex-swift's `## Verification Recipe` is **v0.1.0 unvalidated** (authored without a Mac) → the `swift build`/`swift test` commands are candidate; first real Mac build validates them. → impact: Caution (recorded; the gate's "recipe proven" item stays open until a Mac build runs).
+
+Simplicity check: considered SwiftData `@Model` for stored identity — rejected; the device id, counters, SE key blob, and session token are tiny secrets that belong in the **keychain**, not a model store (apex-swift: SwiftData for app data, never secrets). Considered one god-object for auth+API — rejected; `Signer` (SE) / `ApiClient` (transport) / `Authenticator` (orchestration) are three Sendable-clean responsibilities. Considered hand-rolling JSON — rejected; Codable DTOs.
+
+## Prerequisites
+- Specs that must be complete first: CLIENT-b (the `/app/*` contract this client targets — DTO shapes + routes). Off-hardware the tests use a mock `URLProtocol`, so the Swift module compiles + unit-tests without a live brain; the live round-trip is CLIENT-d/e integration (gated).
+- Environment setup required: Xcode CLT (Swift 6). No third-party SPM dependencies (URLSession + CryptoKit + LocalAuthentication + Security are system frameworks).
+
+## Files to Change
+| File | Operation | Notes |
+|------|-----------|-------|
+| /Users/artemis-build/artemis/swift/ArtemisKit/Package.swift | create | SPM manifest; Swift 6 language mode; `ArtemisKit` library product + `ArtemisKitTests` |
+| /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift | create | Codable DTOs for `/app/*` + `ConnectionState` enum |
+| /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Signer.swift | create | `Signer` protocol + `DeviceIdentity` (SE-backed) + `KeychainStore` |
+| /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift | create | URLSession client (incl. SSE byte stream) for `/app/*` |
+| /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Authenticator.swift | create | `actor Authenticator`: pairing / session / unlock orchestration + counter + token lifecycle |
+| /Users/artemis-build/artemis/swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift | create | DTO round-trips, ApiClient (mock URLProtocol), Authenticator flow (SoftwareSigner) |
+
+## Tasks
+- [ ] Task 1: Package manifest — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Package.swift` — `// swift-tools-version: 6.0`; package `ArtemisKit`; platforms `.iOS(.v17)`, `.macOS(.v14)` (macOS so the logic unit-tests on the build host); a library product `ArtemisKit`; targets `ArtemisKit` + test `ArtemisKitTests`; **Swift 6 language mode enabled** via `swiftSettings: [.swiftLanguageMode(.v6)]` on each target. No external dependencies. — done when: `swift build --package-path swift/ArtemisKit` resolves and compiles an empty module.
+
+- [ ] Task 2: Wire DTOs + connection state — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` — `Codable`, `Sendable`, `Equatable` structs mirroring CLIENT-b exactly (snake_case via `CodingKeys`): `PairRequest {deviceId, publicKeyB64, pairingCode, codeSignatureB64}`; `SessionBeginRequest {deviceId}` / `SessionBeginResponse {nonceB64}`; `SessionCompleteRequest {deviceId, nonceB64, counter, signatureB64}` / `SessionCompleteResponse {sessionToken, expiresAt}`; `UnlockBeginRequest {}` (empty — scope is derived by the brain from the session) / `UnlockBeginResponse {nonceB64}`; `UnlockCompleteRequest {nonceB64, counter, signatureB64}` (no scope); `StatusResponse {connected, vaultUnlocked, deviceId}`; `AskRequest {text}` / `AskResponse {text, path, toolUsed, escalated}`; `ReviewItem {name, description, status, actionClass, safety, explanation}`. Add `enum ConnectionState: Sendable, Equatable { case unpaired, disconnected, connectedLocked, unlocked }`. — done when: `swift build` passes; a round-trip `JSONEncoder`→`JSONDecoder` of each DTO is identity (Task 6 test).
+
+- [ ] Task 3: Signer protocol + Secure-Enclave device identity + keychain — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Signer.swift` —
+  - `protocol Signer: Sendable { var publicKeyX963Base64: String { get throws }; func sign(_ message: Data) throws -> Data }` (sign returns a **DER** ECDSA-P256-SHA256 signature).
+  - `struct KeychainStore: Sendable`: typed get/set/delete for `Data`/`String` under a service id `com.artemis.app`; keys: `deviceId`, `sessionToken`, `seKeyBlob`, `apiCounter`, `unlockCounter`. Uses `Security` (`SecItemAdd`/`SecItemCopyMatching`/`SecItemUpdate`/`SecItemDelete`). **Accessibility class per item (apex-auth/apex-security — tightest applicable):** the `sessionToken` (and counters) use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (foreground-only app → not readable while the device is locked); the `seKeyBlob` may use `…WhenUnlockedThisDeviceOnly` too (the SE access-control biometric gate is its real protection). Document the rationale per item. NEVER logs values.
+  - `final class DeviceIdentity: Signer`: wraps a `SecureEnclave.P256.Signing.PrivateKey`. `static func loadOrCreate(keychain:) throws -> DeviceIdentity` — load the SE key from the stored `seKeyBlob` (`SecureEnclave.P256.Signing.PrivateKey(dataRepresentation:)`) or create one (`SecureEnclave.P256.Signing.PrivateKey(accessControl:)` with a `SecAccessControl` requiring `.userPresence`/`.biometryCurrentSet`) and persist its **`.dataRepresentation`** (the encrypted, non-exportable SE key token — NOT the raw private key) to the keychain; ensure a `deviceId` (UUID string) exists. `publicKeyX963Base64` = `key.publicKey.x963Representation.base64EncodedString()`. `func sign(_ message: Data) throws -> Data` = `try key.signature(for: message).derRepresentation`. `func withBiometric(_ context: LAContext) throws -> DeviceIdentity` — **re-load the SE key from the persisted `seKeyBlob`** via `SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob, authenticationContext: context)` (SE keys are non-copyable — this is a fresh load with the supplied `LAContext`, not an in-memory copy), so one Face-ID prompt authorises the subsequent sign calls (the one-gesture/two-handshakes contract). The SE-key operations are guarded `#if canImport(LocalAuthentication)` and require a real enclave → **on-device/simulator gated** (Task 7). — done when: `swift build` passes; the `Signer` protocol + `DeviceIdentity` + `KeychainStore` compile; SE round-trip is the gated Task 7.
+
+- [ ] Task 4: ApiClient (URLSession + SSE) — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` — `struct ApiClient: Sendable` constructed with `(baseURL: URL, session: URLSession = .shared)`. A bearer token is supplied per-call (or via a `Sendable` token provider closure) — never stored in the struct. Methods (all `async throws`): `pair(_:)`, `sessionBegin(_:)`, `sessionComplete(_:)`, `unlockBegin(_:, token:)`, `unlockComplete(_:, token:)`, `status(token:)`, `reviewPending(token:)`, `reviewAutoEnabled(token:)`, `approve(name:, token:)`, `reject(name:, token:)`, `ask(_:, token:)`, `lock(token:)`, `logout(token:)` — each builds a `URLRequest` (JSON body, `Authorization: Bearer` where the route is authed), decodes the typed response, and maps non-2xx to a typed `ApiError` (carry the status code; **401 → `.unauthenticated`, 423 → `.vaultLocked`** so the app can drive re-unlock). Plus `func askStream(_ req: AskRequest, token: String) -> AsyncThrowingStream<String, Error>` — consume `session.bytes(for:)` and parse `data: <chunk>\n\n` SSE frames, yielding each chunk until `[DONE]`. No response body, token, or header is logged. — done when: `swift build` passes; against a mock `URLProtocol` the request shapes + bearer header + SSE parsing verify (Task 6).
+
+- [ ] Task 5: Authenticator actor — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Authenticator.swift` — `actor Authenticator` constructed with `(api: ApiClient, signer: Signer, keychain: KeychainStore)`. State: the current `sessionToken` (loaded from keychain), per-purpose counters. Methods:
+  - `func pair(pairingCode: String) async throws` — ensure a `deviceId` + the SE key; **reset the persisted `apiCounter`/`unlockCounter` to 0** (a re-pair matches the brain registry reset — CLIENT-a cross-ref); build the code signature over a **length-prefixed** message matching CLIENT-b: `msg = uint16BE(pairingCode.utf8.count) + Data(pairingCode.utf8) + Data(deviceId.utf8)` (no `|`-separator ambiguity); `codeSignature = signer.sign(msg)`; `api.pair(PairRequest(deviceId, publicKeyX963Base64, pairingCode, codeSignature.base64))`. Idempotent.
+  - `func connect() async throws -> SessionCompleteResponse` — `begin = api.sessionBegin(deviceId)`; `c = nextCounter(.api)`; **persist the bumped counter to the keychain BEFORE the network call** (persist-before-send: a lost response leaves the counter already advanced, never re-used — apex-auth counter-ordering fix); `msg = nonce + Data("artemis-api-session".utf8) + bigEndian8(c)`; `sig = signer.sign(msg)`; `resp = api.sessionComplete(deviceId, begin.nonce, c, sig.base64)`; persist `resp.sessionToken` (keychain). On `ApiError.unauthenticated` whose counter was freshly loaded/zero (a counter-desync after a keychain wipe/restore), **clear the local identity + token and surface `AuthenticatorError.repairRequired`** (the app transitions to `.unpaired` rather than retrying a doomed counter). Returns the response.
+  - `func unlock(scope: String = "owner-private") async throws` — requires a session token; `begin = api.unlockBegin(token)` (**no scope sent — the brain derives it**); `c = nextCounter(.unlock)`; persist-before-send; `msg = nonce + Data(scope.utf8) + bigEndian8(c)`; `sig = signer.sign(msg)`; `api.unlockComplete(begin.nonce, c, sig.base64, token)`; (the vault-proof message shape matches M2-a's `nonce ‖ scope ‖ counter`; `scope` here is the local default used only to build the signed bytes the broker verifies).
+  - `func connectAndUnlock(biometric context: LAContext) async throws` — reload the signer `try withBiometric(context)` (one Face-ID gesture), then `connect()` then `unlock()` (the one-gesture/two-handshake flow, ADR-010 §4). **If `sign` throws in `unlock` because the `LAContext` reuse window (~5 s) expired or presence was denied → throw `AuthenticatorError.biometricRequired`** so the caller can retry `connectAndUnlock` from the top with a fresh context (no silent connected-but-locked dead end).
+  - `func logout() async throws` — `api.logout(token)`, clear the keychain token.
+  - `func currentToken() -> String?`. `enum AuthenticatorError: Error { case biometricRequired, repairRequired }`. Counters are monotonic + persisted (strictly increasing across launches — the brain rejects a non-increasing counter). NEVER log nonces/signatures/token. — done when: `swift build` passes; with a `FakeApi` + `SoftwareSigner` a full `pair`→`connect`→`unlock` issues correctly-structured assertions, persists each counter before the call, and bumps both counters (Task 6).
+
+- [ ] Task 6: Off-device unit tests — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift` — swift-testing (or XCTest). (a) DTO Codable round-trips for every model (snake_case keys verified). (b) `ApiClient` against a `MockURLProtocol`: assert each method sends the right path/method/JSON + the `Authorization: Bearer` header on authed routes; feed a canned SSE body to `askStream` and assert the yielded chunks + `[DONE]` termination; assert a 401 response surfaces `.unauthenticated` and 423 `.vaultLocked`. (c) `Authenticator` with a `FakeApi` (records calls, returns canned nonces) + a `SoftwareSigner` (CryptoKit non-SE `P256.Signing.PrivateKey`): `pair` produces a code-signature the SoftwareSigner's public key verifies over `pairingCode|deviceId`; `connect` signs `nonce ‖ "artemis-api-session" ‖ counter` and the message is byte-exact; `unlock` signs `nonce ‖ scope ‖ counter`; counters strictly increase across two `connect` calls. Verify each signature with `P256.Signing.PublicKey.isValidSignature(_:for:)` to prove the brain (which uses the same algorithm) will accept it. — done when: `swift test --package-path swift/ArtemisKit` passes off-device (SE-guarded behaviour excluded — Task 7).
+
+- [ ] Task 7 (GATED — on-device/simulator): Secure-Enclave round-trip — files: (uses Task 3) — on an Apple-silicon simulator/device with a Secure Enclave: `DeviceIdentity.loadOrCreate` creates a real SE key; export `publicKeyX963Base64`; `withBiometric` + `sign` produces a DER signature that `P256.Signing.PublicKey(x963Representation:)` validates; confirm the key persists across `loadOrCreate` calls (keychain blob) and that signing requires the biometric/`.userPresence` gate. ADR-010 build-time check (real enclave). — done when: a real SE key signs + verifies + persists on-device, recorded in handoff.
+
+## Permissions
+
+The following actions will run autonomously during build.
+Approving this spec approves all of them.
+
+### File Operations
+| Action | Paths |
+|--------|-------|
+| Create | /Users/artemis-build/artemis/swift/ArtemisKit/Package.swift, /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift, /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Signer.swift, /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift, /Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/Authenticator.swift, /Users/artemis-build/artemis/swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift |
+| Modify | (none) |
+| Delete | (none) |
+
+### Commands
+| Command | Purpose |
+|---------|---------|
+| `swift build --package-path swift/ArtemisKit` | Build gate |
+| `swift test --package-path swift/ArtemisKit` | Test gate (DTOs, ApiClient mock, Authenticator with SoftwareSigner) |
+
+### Git Operations
+| Operation | Scope |
+|-----------|-------|
+| `git add` | swift/ArtemisKit/** |
+| `git commit` | "feat: CLIENT-c ArtemisKit (API client + DTOs + SE device identity + authenticator)" |
+
+### Environment Access
+| Variable | Purpose |
+|----------|---------|
+| (none at build) | Base URL + token are injected at runtime by the app (CLIENT-d) |
+
+### Network
+| Action | Purpose |
+|--------|---------|
+| (none at build/test) | Unit tests use a mock `URLProtocol`; no real network |
+
+## Specialist Context
+### Security
+ArtemisKit holds the phone's half of the auth contract (ADR-010). Invariants: the SE private key is **non-exportable** (`SecureEnclave.P256.Signing.PrivateKey` — only its encrypted blob is stored, in the keychain `…ThisDeviceOnly`); the session token lives in the **keychain**, never `UserDefaults`; counters are **monotonic + persisted** (a replay/clone is rejected by the brain on a non-increasing counter); the two assertion types are **domain-separated** (`"artemis-api-session"` vs the scope string); Face ID (`LAContext`) gates SE key use; **nothing — nonce, signature, token, key — is ever logged**. The `Signer` seam keeps the SE off the unit-test path without weakening the device path.
+
+Review resolutions baked in (2026-06-08): keychain `sessionToken`/counters use `…WhenUnlockedThisDeviceOnly` (tightest, foreground app); `withBiometric` **re-loads** the SE key from the persisted blob with the `LAContext` (SE keys are non-copyable); **counter persist-before-send** (a lost response never re-uses a counter); a re-pair **resets both counters to 0** (matches the brain registry); a counter-desync 401 → `AuthenticatorError.repairRequired` (→ re-pair, no doomed retry); an expired `LAContext` mid-flow → `AuthenticatorError.biometricRequired` (retry with a fresh prompt); the pairing signed message is **length-prefixed** (no `|`-ambiguity, matches CLIENT-b). [FLAG apex-auth + apex-security: re-confirm the SE access control requires user presence, the assertion bytes match the brain's verifier exactly, counters persist-before-send + increase, and no secret reaches a log/`UserDefaults`.]
+
+### Performance
+P-256 sign is sub-ms; SSE streaming via `URLSession.bytes` is back-pressure-friendly. The Authenticator is an `actor` (serialised auth state, no data races).
+
+### Accessibility
+(none — no UI in ArtemisKit; a11y lands in CLIENT-d/e.)
+
+## Documentation
+| Doc type | File | Action |
+|----------|------|--------|
+| Inline | ArtemisKit sources | DocC-comment all public symbols; document the assertion-byte contract (`nonce ‖ context ‖ counter`, X9.63 key, DER sig), the `Signer` seam, and the keychain/counter invariants |
+
+## Acceptance Criteria
+- [ ] Run `swift build --package-path swift/ArtemisKit` → verify: exit 0 (Swift 6 language mode, no warnings-as-errors bypass).
+- [ ] Run `swift test --package-path swift/ArtemisKit` → verify: DTO round-trips pass; ApiClient sends correct paths/bearer + parses SSE + maps 401→`.unauthenticated`/423→`.vaultLocked`; the Authenticator's `connect`/`unlock` assertions are byte-exact and validate via `P256.Signing.PublicKey.isValidSignature`; counters strictly increase.
+- [ ] (GATED, on-device/sim) Real SE key signs + verifies + persists with a biometric gate → verify recorded in handoff.
+
+## Progress
+_(Coding mode writes here — do not edit manually)_

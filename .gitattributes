@@ -1,0 +1,3 @@
+# Normalize line endings: store as LF in the repo, check out native.
+# Code is authored on Windows (planning) and runs on macOS (build) — keep LF canonical.
+* text=auto eol=lf
