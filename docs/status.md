@@ -8,14 +8,21 @@ specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults appli
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
 backends: planning=claude | coding=deepseek-v4-flash
 
-_Last updated by planning mode:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardware
-DECIDED: wait for M5 Mini → 64GB (ADR-001 §Refinement). 4 research docs in `docs/research/` (WWDC verified:
-no forced stack changes, 1 watch-item = Apple on-device FM Python SDK if real, 1 strategic note = Siri AI).
-Homelab framed as **ACI** (Artemis Cognitive Infrastructure), phased+trigger-gated, GPU-box = keystone lever.
-Self-training reframed to **capability via reasoning-distillation** → new ready spec `distill-datagen-pipeline`
-+ cross-phase ACI capability lane. **Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 NEW gaps
-surfaced (env-injection script · repo-transfer). Camera module → BACKLOG. ~57 specs ready. — prior entry: )
-_Prior:_ 2026-06-09 (**M8 first-spoke-wave — COMPLETE; zero parked specs.** Designed + locked the Gmail (`modules/gmail.md`) + Productivity (`modules/productivity.md`) modules; resolved the gated-action staging gap → **ADR-012** + the **GATE-a/b** staging subsystem; module-layout LOCKED = `src/artemis/modules/<name>/`. **13 spoke specs READY in `docs/changes/`:** Gmail (M8-a, M8-b1, M8-b2), Calendar (CAL-a/b/c/d), Productivity (M8-d-a, M8-d-b, M8-d-c1, M8-d-c2), GATE (a/b). **M6-c amended in place** (`pre_tick_steps` seam — enables M8-b2's quarantined urgency pre-flight). **M8-d-c2 capture-graduation seam RESOLVED:** an owner-behaviour-distilled CANDIDATE recipe (`RecipeStore.write`) → M7-b owner-gated promotion — a 3rd recipe-author alongside teacher (M7-a2) + curiosity (M7-c); NOT M7-c (its external-grounding gate is incompatible with owner-derived automation). ~56 specs ready total. All drafting/reconciliation ran via parallel background-agent waves.)
+_Last updated by planning mode:_ 2026-06-10 (**Cross-module-links ADR — LOCKED → ADR-013.** Locked the 6
+keystone decisions from `docs/research/cross-module-links.md` §Part 7: (1) canonical person pointer =
+M4 `person_fact_key` (not ad-hoc strings); (2) logical `{module, entity_id}` ref resolved via ToolRegistry,
+never cross-store joins; (3) lifecycle-sync (no orphans, generalizes M8-d-b auto-cancel); (4) hub views =
+Brain query-time synthesis, not module joins; (5) bidirectional + auto-suggested links (no over-linking);
+(6) **extend M4 as the entity backbone** + home **Person + Place + Goal** as M4 entity types — owner chose
+end-state lock (all three committed now; detailed schema deferred to implementing specs). **Next concrete
+build step = an M4-c amendment spec** (`memory.resolve_entity` + `person_fact_key` + Place/Goal schema) —
+NOT yet written. Flagged follow-ups: shared `artemis.untrusted` helper refactor; overview.md should name
+M4 as the entity backbone. ~56 specs ready (unchanged — ADR-only session).)
+_Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardware DECIDED: wait for M5 Mini
+→ 64GB (ADR-001 §Refinement). 4 research docs in `docs/research/`. Homelab framed as **ACI**, phased+trigger-
+gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
+**Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 gaps surfaced (env-injection script · repo-transfer,
+since resolved). Camera module → BACKLOG.)
 _Last updated by coding mode:_ never
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
@@ -107,15 +114,17 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   `docs/research/wwdc-2026-stack-implications.md`.
 - **✅ Arrival-readiness artifacts — DONE 2026-06-09.** `PRE-ARRIVAL-PREP.md` + `docs/bring-up/BRING-UP-RUNBOOK.md`
   + `docs/bring-up/SECRETS-INVENTORY.md` all written. The runbook/inventory Parked tables list build-time seams.
-- **✅ cross-module-linking — RESEARCHED 2026-06-09 → `docs/research/cross-module-links.md`** (4-agent dive:
-  current+future links, external prior-art, entity backbone). **Conclusions:** 3 universal hubs
-  (Calendar/Memory/Tasks) + Finance-as-receiver; **keystone = extend M4 as the entity backbone (NOT a new
-  Contacts module)**, with the **M4 `fact_key` as the canonical cross-module person pointer** — decide before
-  Finance/Health/Comms/Travel are specced (ad-hoc strings break at ~10–15 spokes). **NEXT: write the
-  cross-module-links ADR** locking the 6 decisions in §Part 7 (fact_key pointer · `{module,entity_id}` logical-
-  ref contract · lifecycle sync · hub query-time synthesis · bidirectional+auto-suggested · extend M4 +
-  home a Place entity + add a Goal node). Cross-cutting refactors flagged: shared `artemis.untrusted` boundary
-  helper · unhomed Place/Location · no Goal entity.
+- **✅ cross-module-linking — RESOLVED + LOCKED 2026-06-10 → ADR-013** (research basis:
+  `docs/research/cross-module-links.md`). All 6 §Part 7 decisions locked: M4 `person_fact_key` canonical
+  pointer · `{module,entity_id}` logical ref via ToolRegistry (no cross-store joins) · lifecycle-sync (no
+  orphans) · hub views = Brain query-time synthesis · bidirectional + auto-suggested links · **extend M4 as the
+  entity backbone homing Person + Place + Goal** (owner chose end-state lock — all three committed now, schema
+  deferred to implementing specs). **NEXT BUILD STEP (not yet specced): M4-c amendment spec** adding
+  `memory.resolve_entity` read-tool + `person_fact_key` convention + Place/Goal entity schema. Decide before
+  Finance/Health/Comms/Travel are specced — they bind to the fixed pointer.
+- **⚠️ Follow-ups spun out of ADR-013 (not locked there):** (a) shared `artemis.untrusted` boundary-helper
+  refactor (currently re-implemented per-module); (b) ✅ `overview.md` updated 2026-06-10 — M4 named as the
+  entity backbone + ADR-012/013 added to the ADR index; (c) first Tier-0 entity candidate still undecided.
 - **⚠️ NEW gap — launchd→Keychain `.env`-injection script unspecced** (SECRETS-INVENTORY §P5 / RUNBOOK §P8).
   Referenced by M8-a/M0-b/DR-b/DR-c (Keychain → slot `.env` at service start) but the injection script itself
   is never specced. Load-bearing for the secrets-loading step. → small M0-b follow-up spec needed.

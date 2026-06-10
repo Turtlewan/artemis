@@ -102,7 +102,7 @@ responder → escalate to a heavier/cloud model only on need. One-line responsib
   real boundary. `data_scope` on a module (`owner-private | guest-visible | shared`) is the **sensitivity Tier
   source of truth** — M5's voice Tier gate reads it; there is no separate `sensitive` flag.
 
-## ◆ Memory engine — the owner-memory store (M4, ADR-004)
+## ◆ Memory engine — the owner-memory store + cross-module entity backbone (M4, ADR-004 · ADR-013)
 A **custom bitemporal `MemoryStore`** on a **per-person SQLCipher file + sqlite-vec** (chosen over Mem0/Graphiti:
 only a custom store satisfies SQLCipher-at-rest + bitemporal + small-model robustness + per-person partition
 together; both runner-ups are documented upgrades). Distinct from the document RAG corpus.
@@ -117,6 +117,11 @@ together; both runner-ups are documented upgrades). Distinct from the document R
   owner-driven purge is the only hard delete. **Auto-inject** ranked current facts into each turn's prompt.
 - **A-MEM** note metadata (`keywords`, `contextual_description`, `linked_ids`) for multi-hop recall; full
   provenance + owner view/edit (a normal bitemporal UPDATE) / purge.
+- **Cross-module entity backbone (ADR-013).** M4 is also the canonical entity registry — not a separate
+  Contacts module (privacy: it already lives owner-private behind the M2 wall). Homes three entity types:
+  **Person · Place · Goal**. Other spokes reference a person by the stable **`person_fact_key`** (no ad-hoc
+  strings) and resolve cross-module refs via a **`memory.resolve_entity`** tool through the ToolRegistry —
+  never cross-store joins. (Build: a deferred **M4-c amendment** spec adds the tool + key + Place/Goal schema.)
 
 ## ◆ Knowledge layer — the second brain (M3, ADR-007)
 Adaptive RAG over the document/"second-brain" corpus. **Sensitive → LanceDB inside the per-scope encrypted
@@ -270,6 +275,8 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [009](../adr/ADR-009-untrusted-content-and-deep-research.md) | `artemis.untrusted` dual-LLM layer + Deep-Research engine |
 | [010](../adr/ADR-010-client-app-auth.md) | Client ↔ brain auth: paired-device key (one key, two authorities) |
 | [011](../adr/ADR-011-spoke-source-of-truth.md) | Spoke source-of-truth: default-mirror, no bidirectional sync |
+| [012](../adr/ADR-012-gated-action-staging.md) | Gated-action staging: owner-approval `PendingAction` for one-off external writes |
+| [013](../adr/ADR-013-cross-module-links.md) | Cross-module links: M4 entity backbone (Person/Place/Goal) + ToolRegistry-mediated logical refs |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·
