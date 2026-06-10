@@ -14,10 +14,12 @@ M4 `person_fact_key` (not ad-hoc strings); (2) logical `{module, entity_id}` ref
 never cross-store joins; (3) lifecycle-sync (no orphans, generalizes M8-d-b auto-cancel); (4) hub views =
 Brain query-time synthesis, not module joins; (5) bidirectional + auto-suggested links (no over-linking);
 (6) **extend M4 as the entity backbone** + home **Person + Place + Goal** as M4 entity types — owner chose
-end-state lock (all three committed now; detailed schema deferred to implementing specs). **Next concrete
-build step = an M4-c amendment spec** (`memory.resolve_entity` + `person_fact_key` + Place/Goal schema) —
-NOT yet written. Flagged follow-ups: shared `artemis.untrusted` helper refactor; overview.md should name
-M4 as the entity backbone. ~56 specs ready (unchanged — ADR-only session).)
+end-state lock (all three committed now; detailed schema deferred to implementing specs). **The M4 entity-
+backbone build is now SPECCED:** `M4-d-1` (entity data layer — entities/aliases/`person_fact_key`/`EntityRef`/
+`EntityRepository`) + `M4-d-2` (write-path subject→PERSON wiring + `memory.resolve_entity` tool registered in
+the ToolRegistry) — both `status: ready` in `docs/changes/`, drafted AFK + 4-reviewer pass (security+data ×2;
+2 BLOCKs on `facts_for_entity` bitemporal predicate + index sargability resolved, all FLAGs folded). overview.md
++ data-model.md reconciled. Flagged follow-up: shared `artemis.untrusted` helper refactor. ~58 specs ready.)
 _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardware DECIDED: wait for M5 Mini
 → 64GB (ADR-001 §Refinement). 4 research docs in `docs/research/`. Homelab framed as **ACI**, phased+trigger-
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
@@ -39,8 +41,8 @@ _(no build until the Mini arrives — planning/specs only)_
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~56 specs `status: ready` in `docs/changes/`. **Zero parked spec drafts** — the first spoke wave is
-complete. Listed by milestone in dependency/build order. Batch handoff to DeepSeek when the Mini arrives._
+_~58 specs `status: ready` in `docs/changes/`. **Zero parked spec drafts.** Listed by milestone in
+dependency/build order. Batch handoff to DeepSeek when the Mini arrives._
 
 | Milestone | Specs | Summary |
 |-----------|-------|---------|
@@ -49,6 +51,7 @@ complete. Listed by milestone in dependency/build order. Batch handoff to DeepSe
 | M2 security wall | M2-a..d (4) | SE key-broker, scope + crypto wall, brain broker-client + Tier-0 key, **M2-d security gate** |
 | M3 knowledge | M3-a..d (4) | ingestion (Docling→LanceDB), hybrid retriever, agentic multi-hop, visual-doc |
 | M4 memory | M4-a..c (3) | bitemporal schema, A.U.D.N. write path, auto-inject + decay + owner surface |
+| M4 entity backbone | **M4-d-1, M4-d-2 (2, ready)** | ADR-013 build. M4-d-1: `entities`/`entity_aliases` tables + `subject_entity_id` fact link + `EntityRepository` (resolve/alias/merge) + `person_fact_key` + `EntityRef`. M4-d-2: write-path auto-links fact subjects→PERSON entities + the `memory.resolve_entity` read-tool (ToolRegistry-registered cross-module resolver). Build M4-d-1→M4-d-2 (after M4-a/b/c + M1-a/c). Gate before Finance/Health/Comms/Travel. |
 | M5 voice | M5-a..d (4) | Swift audio sidecar, STT/TTS, speaker-ID + voice-Tier gate, voice-loop orchestrator |
 | M6 heartbeat | M6-a..c (3) | scheduler tick-loop + hooks, batched-LLM HIT handling, ntfy delivery + Tier-1 queue. **M6-c amended 2026-06-09: `pre_tick_steps` async seam on `attach_to_heartbeat`/`compose_proactive` (for M8-b2).** |
 | M7 teacher/recipe | M7-a1/a2/a3, b, c (5) | recipe format/store/signing, escalation→distill→replay, dedupe/retire, promotion + review surface, curiosity loop |
@@ -119,9 +122,11 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   pointer · `{module,entity_id}` logical ref via ToolRegistry (no cross-store joins) · lifecycle-sync (no
   orphans) · hub views = Brain query-time synthesis · bidirectional + auto-suggested links · **extend M4 as the
   entity backbone homing Person + Place + Goal** (owner chose end-state lock — all three committed now, schema
-  deferred to implementing specs). **NEXT BUILD STEP (not yet specced): M4-c amendment spec** adding
-  `memory.resolve_entity` read-tool + `person_fact_key` convention + Place/Goal entity schema. Decide before
-  Finance/Health/Comms/Travel are specced — they bind to the fixed pointer.
+  deferred to implementing specs). **✅ BUILD SPECCED: `M4-d-1` (entity data layer) + `M4-d-2` (write-path
+  wiring + `memory.resolve_entity` tool)**, both ready in `docs/changes/` (drafted AFK; security+data review
+  pass, 2 BLOCKs resolved). Build before Finance/Health/Comms/Travel — they bind to the `person_fact_key`
+  pointer. PLACE/GOAL entities are supported now but created on-demand by their owning spokes
+  (Productivity→Goal, Maps/Travel→Place).
 - **⚠️ Follow-ups spun out of ADR-013 (not locked there):** (a) shared `artemis.untrusted` boundary-helper
   refactor (currently re-implemented per-module); (b) ✅ `overview.md` updated 2026-06-10 — M4 named as the
   entity backbone + ADR-012/013 added to the ADR index; (c) first Tier-0 entity candidate still undecided.

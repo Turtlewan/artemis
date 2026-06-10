@@ -67,8 +67,19 @@ on every node/edge/vector.
   · subject/relation/object · `confidence` · provenance (links to source Episode/Chunk) · **`valid_at` /
   `invalid_at`** (temporal validity + explicit supersession for stale-confident facts) · embedding + graph edges.
   Written via **A.U.D.N.** (ADD/UPDATE/DELETE/NOOP) to dedupe + resolve contradictions; extraction runs on the teacher.
-- **EntityAlias** — resolution map ("my wife" → `person/fact` reference) · `person_id`-scoped. Resolves
-  references before retrieval.
+- **Entity** (cross-module backbone — ADR-013) — a first-class referenced node in the owner-private memory
+  DB: `entity_id` (PK, stable) · `entity_type` (`person` | `place` | `goal`) · `canonical_name` · `external_ref`
+  (e.g. email; nullable) · `attributes` (deferred-schema JSON, nullable). **Distinct from §1 Person/`person_id`**
+  (the scope-partition owner): an Entity is a person/place/goal the owner's facts are *about*. For a `person`
+  Entity the `entity_id` is the **`person_fact_key`** — the canonical cross-module person pointer (same email ⇒
+  same key) that every spoke references instead of ad-hoc strings. `SemanticFact.subject_entity_id` → Entity
+  (soft link, no FK). Place/Goal entities exist now but are created on-demand by their owning spokes
+  (Productivity→Goal, Maps/Travel→Place); detailed type schema deferred (ADR-013 Decision 6).
+- **EntityAlias** — resolution map ("my wife" → `entity_id`) · normalized/lowercased · `source`
+  (`seed`|`extracted`|`owner`). Resolves references to an Entity before retrieval. Cross-module references use
+  a logical **`{module, entity_id}`** (EntityRef) resolved via the target module's tool through the
+  ToolRegistry — never a cross-store join (ADR-013 Decision 2); `memory.resolve_entity` is the memory-module
+  resolver.
 - **Distillation tiers** — working / episodic / semantic / procedural are *roles over the above*, not new
   tables: forgetting = recency × salience × access-frequency decay, **distil up to SemanticFact before
   discarding** the raw Episode (no catastrophic forgetting).
@@ -131,7 +142,10 @@ Chunk ──provenance──▶ Source | Module-record
 Person ──1:N── Episode                     (bitemporal raw log)
 Episode ──distil(A.U.D.N.)──▶ SemanticFact (temporal, graph)
 SemanticFact ──provenance──▶ Episode | Chunk
-Person ──1:N── EntityAlias ──▶ Person | SemanticFact
+SemanticFact ──subject_entity_id (soft)──▶ Entity   (person|place|goal; ADR-013 backbone)
+EntityAlias ──▶ Entity                     (alias resolution, normalized)
+Entity(person).entity_id = person_fact_key (canonical cross-module person pointer)
+Module record ──{module, entity_id} (EntityRef)──▶ resolve via ToolRegistry  (never a cross-store join)
 
 Module ──1:1── Manifest ──1:N── Tool
 Module ──1:N── ProactiveHook
