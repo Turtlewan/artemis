@@ -4,6 +4,15 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 3, 5, 6) + m8-productivity.md BLOCKs B1, B2, F7 -->
+<!-- Seam 3: stage() uses front-door fq id; _execute twins registered per tool — no gated tools in M8-d-b
+     (block_focus_time is AUTO via CAL-b classifier rule 2; cancel_event for self-only block is AUTO).
+     No staging service calls needed here; no change required for Seam 3.
+     Seam 5: check_ref sync, payload ids+counts — no hooks in M8-d-b; no change required.
+     Seam 6: no GOAL/PERSON entity linking in M8-d-b; no change required.
+     B1 fix: manifest signature stated cumulatively; tool count is relative; build order pinned.
+     B2 fix: link-clear uses clear_task_schedule_link (NOT update_task with None sentinels).
+     F7 fix: Assumption text uses CalPrefs (not CalendarPrefs). -->
 
 # Spec: M8-d-b — Calendar time-blocking seam: `calendar.schedule_task` primitive + `task.schedule` tool + Task↔Event link
 
@@ -18,13 +27,13 @@ autonomy_level: L2
 ## Assumptions
 
 - **M8-d-a** is complete: `ProductivityRepository.update_task(id, *, calendar_event_id=None, scheduled_block=None)` exists; `task.complete` tool calls `repository.complete_task(id)` (recurrence-aware); `ProductivityStore` is importable from `artemis.modules.productivity`. → impact: Stop (the link-write path calls `update_task`; verify exact method signature before executing Task 3).
-- **CAL-a** is complete: `FindTimeEngine`, `find_time_tool`, `CalendarPrefs` (`focus_block_duration_minutes`, `default_write_calendar`, `owner_email`), `EventCacheStore`, `FakeCalendarClient` are all importable from `artemis.modules.calendar`. → impact: Stop.
+- **CAL-a** is complete: `FindTimeEngine`, `find_time_tool`, `CalPrefs` (`focus_block_duration_minutes`, `default_write_calendar`, `owner_email`), `EventCacheStore`, `FakeCalendarClient` are all importable from `artemis.modules.calendar`. (F7 fix: `CalPrefs` is the canonical name per contracts.md Seam 4 / CAL-a Task 1; `CalendarPrefs` is a stale alias.) → impact: Stop.
 - **CAL-b** is complete: `CalendarWriteTools.block_focus_time(BlockFocusTimeArgs)` exists and returns `WriteResult(event_id, summary, status, tool_name)`; `gating.classify("block_focus_time", [], owner_email)` → `AUTO` (confirmed by CAL-b spec Task 2 rule 2 — `block_focus_time` is always auto); `ActivityLog` is present. → impact: Stop.
 - `CalendarWriteTools` is constructed with `(client, cache, prefs, staging, activity_log)` as in CAL-b Task 3. It is a normal (non-final) class — confirmed by CAL-b Task 3 which defines `class CalendarWriteTools` with no `@final` decorator or sealing mechanism. The `calendar.schedule_task` primitive is a NEW module-level function `schedule_task(args, *, write_tools, find_time_fn, prefs)` (NOT a method of `CalendarWriteTools`) — it calls `write_tools.block_focus_time(BlockFocusTimeArgs(...))` via the public method. The CAL-b classifier hard-codes `block_focus_time` → `AUTO` (rule 2), so this call always executes write-through. → impact: Caution (verify exact `CalendarWriteTools` constructor arg names match CAL-b Task 3 before executing Task 1).
 - `BlockFocusTimeArgs.title` is a settable string field (not a hardcoded constant). Confirmed by CAL-b Task 1: `BlockFocusTimeArgs(start_datetime: str, end_datetime: str, title: str = "Focus time", calendar_id: str | None = None)`. The `calendar.schedule_task` primitive passes `title=f"[Task] {task_title}"` to distinguish task-focus-blocks from generic focus-time blocks. → impact: Low.
 - `WriteResult.event_id` is the created Google Calendar event id (confirmed by CAL-b Task 1). This is what is stored as `task.calendar_event_id`. → impact: Stop.
 - `find_time_tool` returns a `FindTimeResult(slots: list[FreeSlot])` where `FreeSlot` has `start_dt: str` and `end_dt: str` (ISO-8601). The primitive picks `slots[0]` (earliest). If `slots` is empty, `calendar.schedule_task` returns a typed `NoSlotFoundError` — it does NOT raise. → impact: Stop (the `task.schedule` tool must surface this to the brain as an informative result, not a crash).
-- `CalendarPrefs.focus_block_duration_minutes` (default 90) is used as the slot duration when no `window` override is provided. When a `window` is passed, the primitive uses the window's duration (end − start) as the requested `duration_minutes`. → impact: Low.
+- `CalPrefs.focus_block_duration_minutes` (default 90) is used as the slot duration when no `window` override is provided. When a `window` is passed, the primitive uses the window's duration (end − start) as the requested `duration_minutes`. → impact: Low.
 - `task.complete` in M8-d-a sets `status="done"`, `completed_at=now`, and spawns the recurrence next-instance. The link-aware behaviour added here clears `calendar_event_id` and `scheduled_block` on the COMPLETED task (the link is stale once done — the event already happened). The SPAWNED next-instance starts with NULL `calendar_event_id`/`scheduled_block` (it needs its own scheduling). → impact: Caution (confirm that `complete_task` in `repository.py` is the correct insertion point and that it returns the completed task dict before exit — M8-d-a Task 2 confirms it does).
 - Off-hardware: `FakeCalendarClient` (from CAL-a) + `ProductivityStore` over a temp SQLCipher (or plain sqlite fallback per M8-d-a pattern) + `FakeKeyProvider`. No real Google calls. Real write-through is GATED on-hardware. → impact: Stop (CI must pass without credentials).
 - Module package paths: `src/artemis/modules/calendar/` and `src/artemis/modules/productivity/` are the locked conventions (both confirmed by CAL-a and M8-d-a). → impact: Stop.
@@ -34,7 +43,9 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
 
 ## Prerequisites
 
-- Specs complete: **M8-d-a** (repository + `update_task` with `calendar_event_id`/`scheduled_block`; `complete_task`; `ProductivityStore`; `task.complete` tool), **CAL-a** (`find_time_tool`, `FakeCalendarClient`, `CalendarPrefs`, `EventCacheStore`), **CAL-b** (`CalendarWriteTools.block_focus_time`, `BlockFocusTimeArgs`, `WriteResult`, `ActivityLog`, `GateDecision`).
+**Build order (B1 fix): a → b → c1 → c2.** This spec (b) requires M8-d-a complete. M8-d-c1 requires M8-d-b complete. M8-d-c2 requires M8-d-c1 complete.
+
+- Specs complete: **M8-d-a** (repository + `update_task` + `clear_task_schedule_link`; `complete_task`; `ProductivityStore`; `task.complete` tool), **CAL-a** (`find_time_tool`, `FakeCalendarClient`, `CalPrefs`, `EventCacheStore`), **CAL-b** (`CalendarWriteTools.block_focus_time`, `BlockFocusTimeArgs`, `WriteResult`, `ActivityLog`, `GateDecision`).
 - Environment setup: no new PyPI deps. `uv sync` suffices off-hardware.
 
 ## Files to Change
@@ -78,15 +89,15 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
       message: str                        # human-readable outcome for the brain
   ```
 
-  **`schedule_task` function signature:**
+  **`schedule_task` function signature** (ADR-016: this is the bound `calendar.schedule_task` `callable_ref` via `functools.partial`, so it is `async def`; it `await`s `write_tools.block_focus_time` — the `_execute` write twin does Google API I/O):
 
   ```python
-  def schedule_task(
+  async def schedule_task(
       args: ScheduleTaskArgs,
       *,
       write_tools: CalendarWriteTools,      # CAL-b: for block_focus_time
-      find_time_fn: Callable[[FindTimeArgs], FindTimeResult],  # CAL-a: find_time_tool bound with store+prefs
-      prefs: CalPrefs,                      # CAL-a CalPrefs
+      find_time_fn: Callable[[FindTimeArgs], Awaitable[FindTimeResult]],  # CAL-a: find_time_tool bound with store+prefs (async callable_ref — ADR-016)
+      prefs: CalPrefs,                      # CAL-a canonical name (not CalendarPrefs — F7)
   ) -> ScheduleTaskResult:
   ```
 
@@ -98,9 +109,9 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
 
   2. Resolve search window:
      - If `args.window_start` and `args.window_end` are both provided → use as-is.
-     - If either is None → `window_start = now_iso()`, `window_end = (now + timedelta(days=7)).isoformat() + "Z"` (use stdlib `datetime.utcnow()`).
+     - If either is None → use `datetime.now(timezone.utc)` as `now`; `window_start = now.isoformat()`, `window_end = (now + timedelta(days=7)).isoformat()` (timezone-aware; yields `+00:00` suffix — do NOT append `"Z"` separately; consistent with the `now_iso()` helper defined in M8-d-a).
 
-  3. Call `find_time_fn(FindTimeArgs(duration_minutes=duration_minutes, window=Window(start=window_start, end=window_end)))`.
+  3. Call `result = await find_time_fn(FindTimeArgs(duration_minutes=duration_minutes, window=Window(start=window_start, end=window_end)))` (ADR-016: `find_time_fn` is an async `callable_ref` — `await` it).
 
   4. If `result.slots` is empty:
      - Return `ScheduleTaskResult(scheduled=None, message=f"No open slot found for '{args.task_title}' in the requested window.")`.
@@ -109,7 +120,7 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
 
   6. Build the focus-block title: `title = f"[Task] {args.task_title}"`.
 
-  7. Call `write_tools.block_focus_time(BlockFocusTimeArgs(start_datetime=slot.start_dt, end_datetime=slot.end_dt, title=title, calendar_id=args.calendar_id))`.
+  7. Call `write_result = await write_tools.block_focus_time(BlockFocusTimeArgs(start_datetime=slot.start_dt, end_datetime=slot.end_dt, title=title, calendar_id=args.calendar_id))` (ADR-016: `block_focus_time` is an async tool callable performing Google API I/O — `await` it).
      - `block_focus_time` is always `AUTO` per CAL-b classifier (rule 2: `block_focus_time` → unconditional `AUTO`).
      - Returns `WriteResult` with `event_id`, `status="executed"`.
      - On `CalendarWriteError` → re-raise (do NOT swallow; the caller logs).
@@ -118,9 +129,9 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
 
   9. Return `ScheduleTaskResult(scheduled=ScheduledBlock(event_id=write_result.event_id, start_dt=slot.start_dt, end_dt=slot.end_dt, calendar_id=resolved_calendar_id), message=f"Scheduled '{args.task_title}' on {slot.start_dt} → {slot.end_dt}.")`.
 
-  Imports required: `from artemis.modules.calendar.write_tools import CalendarWriteTools, BlockFocusTimeArgs, WriteResult, CalendarWriteError`; `from artemis.modules.calendar.read_tools import FindTimeArgs, FindTimeResult, FreeSlot, Window`; `from artemis.modules.calendar.preferences import CalPrefs`; standard `datetime`, `timedelta`, `Callable` from `typing`.
+  Imports required: `from artemis.modules.calendar.write_tools import CalendarWriteTools, BlockFocusTimeArgs, WriteResult, CalendarWriteError`; `from artemis.modules.calendar.read_tools import FindTimeArgs, FindTimeResult, FreeSlot, Window`; `from artemis.modules.calendar.preferences import CalPrefs`; standard `datetime`, `timedelta`; `Callable`, `Awaitable` from `collections.abc` (ADR-016 async `find_time_fn` type).
 
-  — done when: `uv run mypy --strict src` passes; `schedule_task` with a `FakeCalendarClient` + mocked `find_time_fn` returning one slot → returns `ScheduleTaskResult` with `scheduled.event_id` set; no-slot case returns `scheduled=None`; `CalendarWriteError` from `block_focus_time` propagates.
+  — done when: `uv run mypy --strict src` passes; `await schedule_task(...)` (async test) with a `FakeCalendarClient` + mocked async `find_time_fn` returning one slot → returns `ScheduleTaskResult` with `scheduled.event_id` set; no-slot case returns `scheduled=None`; `CalendarWriteError` from `block_focus_time` propagates.
 
 - [ ] **Task 2: Add `calendar.schedule_task` ToolSpec to the Calendar manifest** — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/manifest.py` (modify, additive only) —
 
@@ -141,7 +152,7 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
   )
   ```
 
-  **Wiring note:** `schedule_task` needs `write_tools`, `find_time_fn`, and `prefs` injected. In `make_calendar_manifest` (or its equivalent factory), add a `schedule_task_fn` parameter (a `Callable[[ScheduleTaskArgs], ScheduleTaskResult]`) constructed by the composition root using `functools.partial(schedule_task, write_tools=wt, find_time_fn=ft, prefs=p)`. Pass it as `callable_ref`. The manifest factory signature change is additive: `make_calendar_manifest(tools: CalendarTools, schedule_task_fn: Callable[[ScheduleTaskArgs], ScheduleTaskResult]) -> ModuleManifest`. Update `__init__.py` re-export of `make_calendar_manifest` accordingly.
+  **Wiring note:** `schedule_task` needs `write_tools`, `find_time_fn`, and `prefs` injected. In `make_calendar_manifest` (or its equivalent factory), add a `schedule_task_fn` parameter (an async `Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]]` — ADR-016: `callable_ref` is async; `functools.partial` over an `async def` is itself a coroutine function) constructed by the composition root using `functools.partial(schedule_task, write_tools=wt, find_time_fn=ft, prefs=p)`. Pass it as `callable_ref`. The manifest factory signature change is additive: `make_calendar_manifest(tools: CalendarTools, schedule_task_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]]) -> ModuleManifest`. Update `__init__.py` re-export of `make_calendar_manifest` accordingly.
 
   — done when: `uv run mypy --strict src` passes; `from artemis.modules.calendar.manifest import make_calendar_manifest` succeeds; the new ToolSpec appears in the tools list with `name="calendar.schedule_task"` and `action_risk=ActionRisk.WRITE`.
 
@@ -168,15 +179,15 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
       message: str
   ```
 
-  Callable function `task_schedule(args: TaskScheduleArgs) -> TaskScheduleResult`:
+  Callable function `async def task_schedule(args: TaskScheduleArgs) -> TaskScheduleResult` (ADR-016: every `ToolSpec.callable_ref` is uniformly `async def`; it `await`s the async `schedule_fn` and the async `write_tools.cancel_event`. The `store.*` SQLCipher calls stay sync inside the async body):
 
   ```python
-  def task_schedule(args: TaskScheduleArgs) -> TaskScheduleResult:
+  async def task_schedule(args: TaskScheduleArgs) -> TaskScheduleResult:
       store = _get_store()               # raises RuntimeError if not initialised
       schedule_fn = _get_schedule_fn()   # raises RuntimeError if not initialised (see wiring note)
       write_tools = _get_write_tools()   # raises RuntimeError if not initialised (see wiring note)
 
-      task = store.get_task(args.task_id)
+      task = store.get_task(args.task_id)   # sync SQLCipher read
       if task is None:
           return TaskScheduleResult(task_id=args.task_id, event_id=None, scheduled_block=None,
                                     message=f"Task {args.task_id} not found.")
@@ -185,9 +196,9 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
       # cancel_event on a self-only block is AUTO (no attendees → classifier rule 4 → AUTO).
       old_event_id = task.get("calendar_event_id")
       if old_event_id:
-          write_tools.cancel_event(CancelEventArgs(event_id=old_event_id, recurrence_scope="THIS_EVENT"))
+          await write_tools.cancel_event(CancelEventArgs(event_id=old_event_id, recurrence_scope="THIS_EVENT"))  # ADR-016: async Google-I/O tool — await
 
-      result: ScheduleTaskResult = schedule_fn(ScheduleTaskArgs(
+      result: ScheduleTaskResult = await schedule_fn(ScheduleTaskArgs(   # ADR-016: schedule_fn is an async callable_ref — await
           task_id=args.task_id,
           task_title=task["title"],
           estimate_minutes=task.get("estimate_minutes"),
@@ -215,7 +226,7 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
   ```
 
   **Wiring note for `_get_schedule_fn` and `_get_write_tools`:** Add module-level singletons following the `_store` / `init_tools` pattern already in `tools.py`:
-  - `_schedule_fn: Callable[[ScheduleTaskArgs], ScheduleTaskResult] | None = None` with `def init_schedule_fn(fn) -> None` (called by `productivity_manifest` alongside `init_tools`). `_get_schedule_fn()` raises `RuntimeError("schedule_fn not initialised")` if unset.
+  - `_schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None` (ADR-016: async callable_ref type) with `def init_schedule_fn(fn) -> None` (called by `productivity_manifest` alongside `init_tools`). `_get_schedule_fn()` raises `RuntimeError("schedule_fn not initialised")` if unset.
   - `_write_tools: CalendarWriteTools | None = None` with `def init_write_tools(wt: CalendarWriteTools) -> None` (called by `productivity_manifest` at the same time). `_get_write_tools()` raises `RuntimeError("write_tools not initialised")` if unset. This provides `cancel_event` for the auto-cancel re-schedule path. Update `productivity_manifest(store, schedule_fn, write_tools)` signature accordingly.
 
   **3b. Link-clear in `task_complete`:**
@@ -225,33 +236,38 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
   ```python
   # Clear the Task↔Event link — the block has been consumed (task done).
   # The spawned recurrence next-instance starts with NULL links (needs its own scheduling).
+  # B2 fix: use clear_task_schedule_link (NOT update_task with None sentinels — update_task
+  # treats None as "no change"; only the dedicated clear method sets the columns to NULL).
   if completed_task.get("calendar_event_id"):
-      store.update_task(args.id, calendar_event_id=None, scheduled_block=None)
+      store.clear_task_schedule_link(args.id)
   ```
 
   `store.complete_task(id)` returns `dict | None` (the spawned task or None per M8-d-a Task 2). The completed task itself is NOT returned by `complete_task` — add a `store.get_task(args.id)` call BEFORE `store.complete_task(args.id)` to snapshot the pre-complete state (needed to check `calendar_event_id`). Full updated flow:
 
   ```python
-  def task_complete(args: TaskCompleteArgs) -> TaskCompleteResult:
+  async def task_complete(args: TaskCompleteArgs) -> TaskCompleteResult:   # ADR-016: callable_ref is async (store.* calls stay sync inside)
       store = _get_store()
-      pre_state = store.get_task(args.id)   # snapshot before completion
+      pre_state = store.get_task(args.id)   # snapshot before completion (sync SQLCipher)
       spawned = store.complete_task(args.id)
       # Link-clear: completed task no longer needs its focus-block link
+      # B2 fix: clear_task_schedule_link, NOT update_task(..., calendar_event_id=None, ...)
       if pre_state and pre_state.get("calendar_event_id"):
-          store.update_task(args.id, calendar_event_id=None, scheduled_block=None)
+          store.clear_task_schedule_link(args.id)
       return TaskCompleteResult(spawned_task=spawned)
   ```
 
   Import additions required at top of `tools.py`:
   - `from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult`
   - `from artemis.modules.calendar.write_tools import CalendarWriteTools, CancelEventArgs`
-  - `from collections.abc import Callable`
+  - `from collections.abc import Callable, Awaitable`  (ADR-016: async callable_ref types)
 
-  — done when: `uv run mypy --strict src` passes; `task_schedule` with uninitialised `_schedule_fn` raises `RuntimeError`; `task_schedule` on a task with an existing `calendar_event_id` calls `write_tools.cancel_event(CancelEventArgs(event_id=old_id, recurrence_scope="THIS_EVENT"))` BEFORE calling `schedule_fn` (assert call order in test); `task_schedule` on a task with no existing `calendar_event_id` does NOT call `cancel_event`; `task_complete` on a task with `calendar_event_id` set clears both link fields after completion; `task_complete` on a task without a link field is a no-op (no error).
+  — done when: `uv run mypy --strict src` passes; `task_schedule`/`task_complete` are coroutine functions (`inspect.iscoroutinefunction(...) is True` — ADR-016); `await task_schedule(...)` (async test) with uninitialised `_schedule_fn` raises `RuntimeError`; `await task_schedule(...)` on a task with an existing `calendar_event_id` `await`s `write_tools.cancel_event(CancelEventArgs(event_id=old_id, recurrence_scope="THIS_EVENT"))` BEFORE awaiting `schedule_fn` (assert call order in test); `await task_schedule(...)` on a task with no existing `calendar_event_id` does NOT call `cancel_event`; `await task_complete(...)` on a task with `calendar_event_id` set clears both link fields after completion; `await task_complete(...)` on a task without a link field is a no-op (no error).
 
 - [ ] **Task 4: Add `task.schedule` ToolSpec to the Productivity manifest** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/manifest.py` (modify, additive) —
 
-  In `productivity_manifest(store, schedule_fn)` (add `schedule_fn: Callable[[ScheduleTaskArgs], ScheduleTaskResult]` as a second parameter):
+  **B1 fix — cumulative signature:** after M8-d-a (30 tools, `(store)`) and M8-d-b (this spec, adds 1 tool), the cumulative manifest signature is `productivity_manifest(store, schedule_fn, write_tools)` — these are the keyword-only params added by this spec. Tool count assertion must be **relative**: M8-d-a established 30; this spec adds exactly 1 (`task.schedule`) → assert `len(tools) == 30 + 1 == 31`. M8-d-c1 will add `registry` param; M8-d-c2 will add `capture_service`, `ingest_pipeline`, `memory_queue`.
+
+  In `productivity_manifest(store, schedule_fn, write_tools)` (add `schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]]` (ADR-016: async callable_ref type) and `write_tools: CalendarWriteTools` as second and third parameters — both added here, both needed because Task 3 wires both `init_schedule_fn` and `init_write_tools`):
 
   1. Call `init_schedule_fn(schedule_fn)` alongside `init_tools(store)`.
   2. Add one additional `ToolSpec` for `task.schedule`:
@@ -287,43 +303,45 @@ Simplicity check: considered adding `calendar.schedule_task` as a method on `Cal
   - `FakeKeyProvider({"owner-private": os.urandom(32)}, owner_unlocked=True)` + `Settings(data_root=tmp_path)`.
   - `ProductivityStore` via the off-hardware sqlite fallback (same pattern as M8-d-a Task 7).
   - `CalPrefs(focus_block_duration_minutes=60, default_write_calendar="primary", owner_email="me@test.com")`.
-  - A `find_time_fn` stub: a `Callable[[FindTimeArgs], FindTimeResult]` returning a single `FreeSlot(start_dt="2026-06-10T10:00:00Z", end_dt="2026-06-10T11:00:00Z", duration_minutes=60)`.
-  - A `FakeCalendarWriteTools` stub (does not call Google; records `block_focus_time` calls; returns `WriteResult(event_id="evt-123", summary="[Task] Buy milk", status="executed", tool_name="calendar.block_focus_time")`).
+  - A `find_time_fn` stub: an **async** `Callable[[FindTimeArgs], Awaitable[FindTimeResult]]` (`async def`, ADR-016) returning a single `FreeSlot(start_dt="2026-06-10T10:00:00Z", end_dt="2026-06-10T11:00:00Z", duration_minutes=60)`.
+  - A `FakeCalendarWriteTools` stub with **`async def block_focus_time`** and **`async def cancel_event`** (ADR-016: tool callables are async; does not call Google; records calls; `block_focus_time` returns `WriteResult(event_id="evt-123", summary="[Task] Buy milk", status="executed", tool_name="calendar.block_focus_time")`).
+
+  All tests that drive `schedule_task` / `task_schedule` / `task_complete` are `async def` (ADR-016: these are coroutine functions) and `await` the call (e.g. `pytest.mark.asyncio` / `anyio`, matching the project's existing async-test convention).
 
   **`schedule_task` — happy path:**
-  - `schedule_task(ScheduleTaskArgs(task_id="t1", task_title="Buy milk"), write_tools=fake_wt, find_time_fn=stub_fn, prefs=prefs)` → `result.scheduled.event_id == "evt-123"`, `result.scheduled.start_dt == "2026-06-10T10:00:00Z"`, `result.scheduled.calendar_id == "primary"` (from `prefs.default_write_calendar`), `result.message` is non-empty.
-  - Assert `FakeCalendarWriteTools.block_focus_time` was called once with `title="[Task] Buy milk"`.
+  - `await schedule_task(ScheduleTaskArgs(task_id="t1", task_title="Buy milk"), write_tools=fake_wt, find_time_fn=stub_fn, prefs=prefs)` → `result.scheduled.event_id == "evt-123"`, `result.scheduled.start_dt == "2026-06-10T10:00:00Z"`, `result.scheduled.calendar_id == "primary"` (from `prefs.default_write_calendar`), `result.message` is non-empty.
+  - Assert `FakeCalendarWriteTools.block_focus_time` was awaited once with `title="[Task] Buy milk"`.
 
   **`schedule_task` — no slot:**
-  - `find_time_fn` stub returns `FindTimeResult(slots=[])` → `result.scheduled is None`, `result.message` is non-empty; `block_focus_time` was NOT called.
+  - async `find_time_fn` stub returns `FindTimeResult(slots=[])` → `result.scheduled is None`, `result.message` is non-empty; `block_focus_time` was NOT called.
 
   **`schedule_task` — estimate_minutes overrides prefs:**
-  - `ScheduleTaskArgs(..., estimate_minutes=45)` → `find_time_fn` receives `FindTimeArgs(duration_minutes=45, ...)` (assert the arg).
+  - `ScheduleTaskArgs(..., estimate_minutes=45)` → `await`ed `find_time_fn` receives `FindTimeArgs(duration_minutes=45, ...)` (assert the arg).
 
   **`task_schedule` tool — link write round-trip:**
   - Create a task via `ProductivityStore` with `title="Buy milk"`, `estimate_minutes=60`.
-  - `init_tools(store)`, `init_schedule_fn(fake_schedule_fn)` where `fake_schedule_fn` returns a `ScheduleTaskResult` with `scheduled.event_id="evt-456"`, `scheduled.start_dt="2026-06-10T10:00:00Z"`.
-  - `task_schedule(TaskScheduleArgs(task_id=task_id))` → `TaskScheduleResult.event_id == "evt-456"`, `TaskScheduleResult.scheduled_block == "2026-06-10T10:00:00Z"`.
+  - `init_tools(store)`, `init_schedule_fn(fake_schedule_fn)` where `fake_schedule_fn` is an **async** callable returning a `ScheduleTaskResult` with `scheduled.event_id="evt-456"`, `scheduled.start_dt="2026-06-10T10:00:00Z"`.
+  - `await task_schedule(TaskScheduleArgs(task_id=task_id))` → `TaskScheduleResult.event_id == "evt-456"`, `TaskScheduleResult.scheduled_block == "2026-06-10T10:00:00Z"`.
   - `store.get_task(task_id)["calendar_event_id"] == "evt-456"` (link persisted).
   - `store.get_task(task_id)["scheduled_block"] == "2026-06-10T10:00:00Z"` (block persisted).
 
   **`task_schedule` tool — re-schedule cancels old block:**
   - Create a task; call `store.update_task(task_id, calendar_event_id="evt-old", scheduled_block="2026-06-10T09:00:00Z")` to simulate an already-scheduled state.
-  - `task_schedule(TaskScheduleArgs(task_id=task_id))` → assert `FakeCalendarWriteTools.cancel_event` was called with `event_id="evt-old"` BEFORE `fake_schedule_fn` was called (track call order); new `event_id="evt-456"` is written to the task row; `"evt-old"` is no longer the stored `calendar_event_id`.
+  - `await task_schedule(TaskScheduleArgs(task_id=task_id))` → assert `FakeCalendarWriteTools.cancel_event` was awaited with `event_id="evt-old"` BEFORE `fake_schedule_fn` was awaited (track call order); new `event_id="evt-456"` is written to the task row; `"evt-old"` is no longer the stored `calendar_event_id`.
   - Separate case: a task with `calendar_event_id=None` → `FakeCalendarWriteTools.cancel_event` is NOT called.
 
   **`task_schedule` tool — task not found:**
-  - `task_schedule(TaskScheduleArgs(task_id="nonexistent"))` → `TaskScheduleResult.event_id is None`, `message` mentions "not found"; `store` is not mutated.
+  - `await task_schedule(TaskScheduleArgs(task_id="nonexistent"))` → `TaskScheduleResult.event_id is None`, `message` mentions "not found"; `store` is not mutated.
 
   **`task_complete` — link-clear:**
   - Create a task; call `store.update_task(task_id, calendar_event_id="evt-789", scheduled_block="2026-06-10T10:00:00Z")`.
-  - `task_complete(TaskCompleteArgs(id=task_id))` → `store.get_task(task_id)["calendar_event_id"] is None` AND `store.get_task(task_id)["scheduled_block"] is None`.
+  - `await task_complete(TaskCompleteArgs(id=task_id))` → `store.get_task(task_id)["calendar_event_id"] is None` AND `store.get_task(task_id)["scheduled_block"] is None`.
 
   **`task_complete` — no link, no error:**
-  - Create a task with NULL `calendar_event_id`; `task_complete(...)` completes without error.
+  - Create a task with NULL `calendar_event_id`; `await task_complete(...)` completes without error.
 
   **Uninitialised `_schedule_fn`:**
-  - Without calling `init_schedule_fn`, `task_schedule(...)` raises `RuntimeError`.
+  - Without calling `init_schedule_fn`, `await task_schedule(...)` raises `RuntimeError`.
 
   **Manifest shape:**
   - `productivity_manifest(store, fake_schedule_fn)` has `len(tools) == 31`; `"task.schedule"` in tool names; `"task.complete"` in tool names; all names unique.
@@ -408,7 +426,7 @@ Additional:
 
 - [ ] `uv run mypy --strict src tests/test_time_blocking_seam.py` → verify: exit 0.
 - [ ] `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
-- [ ] `uv run pytest -q tests/test_time_blocking_seam.py` → verify: `schedule_task` happy-path sets `event_id` + `start_dt` + calls `block_focus_time` once; no-slot returns `scheduled=None` + does not call `block_focus_time`; `estimate_minutes` override propagates to `find_time_fn`; `task_schedule` writes `calendar_event_id` + `scheduled_block` to the task row; re-schedule calls `cancel_event(old_event_id)` BEFORE `schedule_fn` and then overwrites the link; no-prior-link re-schedule does NOT call `cancel_event`; task-not-found returns graceful result; `task_complete` on a linked task clears both link fields; `task_complete` on an unlinked task is a no-op; uninitialised `_schedule_fn` raises `RuntimeError`; manifest has 31 unique tools including `task.schedule`.
+- [ ] `uv run pytest -q tests/test_time_blocking_seam.py` → verify (all `schedule_task`/`task_schedule`/`task_complete` calls are `await`ed in async tests — ADR-016): `schedule_task` happy-path sets `event_id` + `start_dt` + awaits `block_focus_time` once; no-slot returns `scheduled=None` + does not call `block_focus_time`; `estimate_minutes` override propagates to `find_time_fn`; `task_schedule` writes `calendar_event_id` + `scheduled_block` to the task row; re-schedule awaits `cancel_event(old_event_id)` BEFORE `schedule_fn` and then overwrites the link; no-prior-link re-schedule does NOT call `cancel_event`; task-not-found returns graceful result; `task_complete` on a linked task clears both link fields; `task_complete` on an unlinked task is a no-op; uninitialised `_schedule_fn` raises `RuntimeError`; manifest has 31 unique tools including `task.schedule`.
 - [ ] `uv run pytest -q tests/test_productivity_core.py tests/test_calendar_write.py tests/test_calendar_read.py tests/test_time_blocking_seam.py` → verify: no regressions in any prereq test suite.
 - [ ] `uv run python -c "from artemis.modules.calendar.schedule_task import schedule_task, ScheduleTaskArgs; print('ok')"` → verify: prints `ok`.
 - [ ] `uv run python -c "from artemis.modules.productivity.tools import task_schedule; print('ok')"` → verify: prints `ok`.

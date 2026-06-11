@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seam 5) + cal-gate.md BLOCK B12 -->
 
 # Spec: CAL-d — Calendar brain-integration layer (knowledge push + memory extraction + untrusted-event-text quarantine)
 
@@ -83,18 +84,23 @@ Simplicity check: considered placing `quarantine_event_text` inside CAL-c (the s
     - `async def extract_batch(self, events: Sequence[CachedEvent]) -> None`: iterate + call `extract` per event; degrade-don't-crash.
   — done when: `uv run mypy --strict src` passes; `CalendarMemoryExtractor.extract` for an externally-authored recurring event calls `quarantine_event_text` then enqueues the `CalendarExtract.summary`+claims (assert the enqueued text != raw title/description); a `parse_failed` extract enqueues nothing; a non-recurring self-only event is skipped (not enqueued); a self-created recurring event goes through trusted passthrough and is enqueued (Task 5).
 
-- [ ] Task 4: Wire CAL-c briefing/prep render paths through `quarantine_event_text` — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/hooks.py` (modify) —
+- [ ] Task 4: Wire CAL-c briefing/prep render paths through `quarantine_event_text` via `pre_tick_steps` — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/hooks.py` (modify) —
 
-  CAL-c ships two `needs_llm=True` hook factories in `hooks.py` that currently use a `_quarantine_stub` placeholder returning `"[external content pending quarantine]"`: **`make_daily_briefing_check`** and **`make_prep_nudge_check`**. Each has a `# TODO(CAL-d): replace _quarantine_stub with quarantine_event_text once DR-a/CAL-d lands` comment marking the wiring point.
+  **B12 / Seam 5 D3 — `check_ref` MUST remain synchronous and zero-arg.** M6-a's contract is `check_ref: Callable[[], HookResult]` — **synchronous**, called inside the synchronous `tick()`. The previous plan to `await quarantine_event_text(...)` inside `check_ref` is illegal — no `asyncio.run`, no bridge, no sync wrapper for the quarantine model call.
 
-  Wiring steps — for each of the two factories:
-  1. Add `reader: QuarantinedReader` as a parameter to the factory (injected; not constructed inside the hook — required so tests can pass a `FakeModelPort`-backed reader without a real model call).
-  2. Wherever the factory's `check_ref` closure builds the hook payload for `needs_llm=True` rendering and calls `_quarantine_stub(event_field)`, replace with `await quarantine_event_text(reader, event)` and use the returned `CalendarExtract.summary` / `CalendarExtract.claims` in the payload — NEVER `event.summary`, `event.description`, `event.location` directly for externally-authored events.
-  3. If `CalendarExtract.parse_failed` → omit that event from the payload (degrade-don't-crash: exclude unparseable events rather than feeding garbage to the LLM prompt).
-  4. Remove the `_quarantine_stub` helper once no usages remain; remove the `TODO(CAL-d)` comment.
-  5. Update `build_calendar_hooks(...)` in `hooks.py` to thread `reader: QuarantinedReader` through to the two patched factories.
+  **The correct pattern (Seam 5 `pre_tick_steps`):** M6-a exposes `pre_tick_steps: list[Callable[[], Awaitable[None]]]` — async pre-flight callables owned and awaited by the runner before each `tick()`. This is **the one place untrusted text is laundered**. The composition root adds the calendar module's pre-flight callable.
 
-  — done when: `uv run mypy --strict src` passes; Task 5's "render-path wiring" test passes (a `CachedEvent` with `externally_authored=True` and a poisoned `summary` assembled into a daily-briefing or prep-nudge payload does NOT include the raw `event.summary`/`event.description` verbatim — only `CalendarExtract.summary`/`claims` appear in the payload).
+  > **ADR-016 scope note:** ADR-016 changes only `ToolSpec.callable_ref` (every tool callable → `async def`). CAL-d registers **no** new `ToolSpec`s (integration-only), so it has no `callable_ref` to convert. `check_ref` stays **synchronous** (Seam 5) and `pre_tick_steps` callables are **already** async (Seam 5) — both are unchanged by ADR-016. `quarantine_event_text` / `CalendarMemoryExtractor.extract` were already `async def` and are not tool callables; leave their signatures as-is.
+
+  Wiring steps — for each of the two `needs_llm=True` factories (`make_daily_briefing_check`, `make_prep_nudge_check`):
+  1. Define a **shared safe-claims cache** per factory (e.g. a module-level `dict[str, CalendarExtract]` keyed by event_id, or a simple list of laundered extracts). This is the hand-off point between the async pre-flight and the sync check_ref.
+  2. Add `reader: QuarantinedReader` as a parameter to the factory (injected; not constructed inside the hook).
+  3. The factory returns **two things**: the synchronous `check_ref: Callable[[], HookResult]` AND an async `pre_flight: Callable[[], Awaitable[None]]` pre-flight callable. The pre-flight: (a) fetches the relevant events from `cache_store`; (b) calls `await quarantine_event_text(reader, event)` for each externally-authored event; (c) writes `CalendarExtract` results into the shared safe-claims cache. The sync `check_ref` reads ONLY from the safe-claims cache (laundered data) — it NEVER calls the model or `await` anything.
+  4. If `CalendarExtract.parse_failed` → omit that event from the safe-claims cache (degrade-don't-crash).
+  5. Remove the `_quarantine_stub` helper once no usages remain; remove the `TODO(CAL-d)` comment.
+  6. Update `build_calendar_hooks(...)` in `hooks.py` to return `(list[HookSpec], list[Callable[[], Awaitable[None]]])` — the hooks list and the pre-flight callables list. The composition root wires the pre-flight callables into `M6-a`'s `pre_tick_steps`.
+
+  — done when: `uv run mypy --strict src` passes; `check_ref` is a plain synchronous function (`Callable[[], HookResult]`) with no `await` inside; pre-flight callable is `async def` and calls `quarantine_event_text`; Task 5's "render-path wiring" test passes (a `CachedEvent` with `externally_authored=True` and a poisoned `summary` assembled into a daily-briefing or prep-nudge payload does NOT include the raw `event.summary`/`event.description` verbatim after the pre-flight runs — only `CalendarExtract.summary`/`claims` appear in the payload).
 
 - [ ] Task 5: Off-hardware tests — files: `/Users/artemis-build/artemis/tests/test_calendar_integration.py` — typed pytest with `FakeCalendarClient`, `FakeKeyProvider(owner_unlocked=True/False)`, `FakeEmbedder`, `FakeParser`, `FakeModelPort`-backed `QuarantinedReader` (canned valid `Extract`), in-process `MemoryWriteQueue` capturing enqueues via a spy, temp `IngestPipeline` over a temp `LanceDBVectorStore`:
 
@@ -196,6 +202,7 @@ Calendar event fields from external invites (title, description, location, atten
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 - [ ] Run `uv run pytest -q tests/test_calendar_integration.py` → verify: quarantine boundary blocks injection (poisoned `event.summary` not verbatim in `CalendarExtract.summary`); trusted passthrough skips the reader; `parse_failed` propagates without raise and enqueues nothing; `flagged_injection` surfaces without suppressing the extract; knowledge push is idempotent (second call `skipped=True`); future-event push raises `ValueError`; memory extraction enqueues sanitized text only (raw `event.description` not in enqueued text); non-recurring self-only event skipped by memory extractor; locked vault → `ScopeLockedError` on knowledge + memory paths — all pass.
 - [ ] Run `uv run python -c "from artemis.modules.calendar.untrusted import quarantine_event_text, CalendarExtract, CALENDAR_QUARANTINE_QUERY; print('ok')"` → verify: prints `ok`.
+- [ ] Inspect `hooks.py` `make_daily_briefing_check` and `make_prep_nudge_check` → verify: `check_ref` contains no `await` expression; a separate async pre-flight callable is returned by the factory; `build_calendar_hooks` returns `(list[HookSpec], list[Awaitable])` (B12 / Seam 5 D3).
 - [ ] Run `uv run python -c "from artemis.ingest.connectors import Source; s = Source(kind='calendar_meeting', uri='evt1', scope='owner-private'); print(s.kind)"` → verify: prints `calendar_meeting`.
 - [ ] (GATED, on Mini) Real quarantine of a real external invite yields a sensible `CalendarExtract`; injection-attempt title is contained; knowledge push idempotent on real LanceDB; memory facts use only sanitized extract text; no raw event body in any log → verify recorded in handoff.
 

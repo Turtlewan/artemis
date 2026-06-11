@@ -93,7 +93,7 @@ Approving this spec approves all of them.
 Model weights are not owner data → live outside `owner-private/`. The mlx server binds `127.0.0.1` only. The teacher role deliberately is NOT served by mlx (it routes to the Claude CLI adapter) — keeping sensitive-vs-cloud routing a config concern, not an mlx concern.
 
 ### Performance
-brain.md: keep the responder (`Qwen3-4B`) resident/warm; lazy-load the rest. Encoded as `resident` flags in mlx.toml. RAM-fit on 48GB is a GATED on-hardware verification (Task 5).
+brain.md: keep the responder (`Qwen3-4B`) resident/warm; lazy-load the rest. Encoded as `on_demand: false` for the responder in `config/mlx-models.yaml`. RAM-fit on 48GB is a GATED on-hardware verification (Task 5).
 
 ### Accessibility
 (none — no frontend)

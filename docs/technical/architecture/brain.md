@@ -1,3 +1,4 @@
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md; amended 2026-06-11 per doc cleanup (recipe terminology) -->
 # Artemis Brain — Architecture Decisions (SP0-consolidated)
 
 _Status: **decision layer, LOCKED where marked.** This is the crystallised output of the brain
@@ -50,7 +51,7 @@ Borrow best-of-breed primitives behind ports.
 Semantic router (embedding-based, ~3–7ms CPU, zero LLM tokens) classifies each request → picks a small
 candidate tool set + path → **deterministic/automation path** for known tasks → **cheap local responder**
 for simple turns → **escalate** (local teacher, or cloud DeepSeek for non-sensitive) only on a
-confidence/complexity threshold. A **distilled-skill cache** short-circuits known task classes.
+confidence/complexity threshold. A **distilled-recipe cache** short-circuits known task classes.
 **Degrade-don't-crash:** model fallback → cached/static → per-module circuit breaker.
 
 ### Tool registry — keep all 25 modules' tools OUT of context
@@ -77,7 +78,7 @@ edges** (third-party / cross-machine / cross-language / risky-isolation).
   **semantic** = (subject,relation,object) facts (vector+graph, conflict-resolution on write). Two logical
   stores, different indexes, **not** one unified engine.
 - **Write path:** extract → **A.U.D.N.** (ADD/UPDATE/DELETE/NOOP, Mem0 pattern) to dedupe + resolve
-  contradictions; run async/batched. Entity/relation extraction runs on the **teacher**, not the 4B.
+  contradictions; run async/batched. Entity/relation extraction runs on the **local `sensitive_reasoner`** (Qwen3.6-27B), not the teacher — owner memory content is sensitive and must never reach the cloud (ADR-003; see REQUIREMENTS.md §A.U.D.N. write path).
 - **Recall is a system property:** auto-inject relevant *structured facts* every turn (don't make the model
   decide to call a memory tool); retrieve from distilled tiers, never re-feed the raw log.
 - **Forgetting:** recency × salience × access-frequency decay; **distill facts up to semantic before
@@ -124,13 +125,13 @@ quiet-hours-delay/action-buttons). Owner-tunable thresholds.
 **IN, RAG/skill-only, NEVER weight fine-tuning.** Idle-triggered gap scan (escalation clusters · low-confidence
 answers · recurring topics · staleness) → curriculum picks top gap → Deep-Research engine fills it (spotlighting
 + CaMeL on untrusted web) → **grounding gate** (≥2 independent EXTERNAL sources, URLs reachable — never
-self-generated, anti-collapse) → distill to a RAG chunk or a self-verified **SKILL.md** → **stage → owner-gated
+self-generated, anti-collapse) → distill to a RAG chunk or a self-verified **recipe** → **stage → owner-gated
 commit** via Heartbeat digest. Hard per-cycle + weekly token caps. Borrows Voyager auto-curriculum + ACE
 delta-merge. Explicitly NOT SEAL weight updates nor self-code-rewrite.
-- **Skill distillation:** Anthropic-standard SKILL.md (frontmatter + instructions + optional script); write a
+- **Recipe distillation:** recipe format (frontmatter + instructions + optional script); write a
   *candidate* on a verified teacher success; **promote only after the task class recurs (N≥2) or on owner
   command**; verify by replay against the original outcome; embed the *description* for retrieval; rule-based
-  dedupe/retire (no LLM at library time); promotion owner-gated; sign skills.
+  dedupe/retire (no LLM at library time); promotion owner-gated; sign recipes.
 
 ### Security — assume the planning LLM WILL be injected
 Enforce in deterministic code OUTSIDE the model.
@@ -168,14 +169,14 @@ reasoning stays on the lazy local Qwen3-14B.
 ### Teacher model — Claude Opus is THE single teacher, via subscription, during bootstrapping (DECIDED 2026-06-03)
 `teacher` role → **Claude Opus**, driven through the owner's **Claude subscription (Claude Code headless,
 `claude -p` / Agent SDK)** — **NOT the Anthropic API.** Bootstrapping window only. Rationale: the teacher's
-solution is **distilled into a permanent local skill**, so teacher quality is baked into every future local
-execution of that task class — invest in the strongest reasoner while the skill library is being **seeded**;
+solution is **distilled into a permanent local recipe**, so teacher quality is baked into every future local
+execution of that task class — invest in the strongest reasoner while the recipe library is being **seeded**;
 also lifts Curiosity-Loop / Deep-Research distillation quality.
 
 **Single teacher across ALL domains, incl. sensitive — boundary: Claude teaches the *how*, never sees the
 sensitive *what*.** Two-role split:
 - **Claude (teacher)** — reasons over non-sensitive tasks directly; for sensitive domains (finance/health/
-  journal) it writes the *procedure* as a SKILL.md from the task description + **synthetic/representative
+  journal) it writes the *procedure* as a **recipe** from the task description + **synthetic/representative
   examples, never real values**; drives deep research + curiosity loop.
 - **Local model (executor + sensitive reasoner)** — runs Claude's skills against the **real** sensitive data
   on-box, and handles novel sensitive judgment no skill covers.
@@ -216,7 +217,7 @@ change when a Studio is added).
   (finance/health/journal) + sensitive memory extraction — DeepSeek must never see this data.
 - **Cloud (DeepSeek, NON-sensitive only):** the whole teacher tier — hard reasoning, deep research, analysis,
   non-sensitive extraction/distillation, bulk ingestion — run at SGT off-peak (00:30–08:30). No resident local teacher.
-- **Cost control:** distillation loop turns each cloud solution into a local skill (cloud calls decline over
+- **Cost control:** distillation loop turns each cloud solution into a local recipe (cloud calls decline over
   time); automation-over-AI; DeepSeek prompt-caching.
 - **Upgrade path:** add a Mac Studio later → strong local sensitive teacher + less cloud; or add a Mini over
   Thunderbolt 5, **role-split not model-split** (Mini = responder/voice/edge; Studio = teacher/memory/ingestion/research).
@@ -227,7 +228,7 @@ Ports-and-adapters everywhere; the Brain depends only on ports:
 store metadata; model change = explicit re-index migration) · `VectorStore` · `Reranker` · `Router` ·
 `ModelPort` (OpenAI-compatible; models referenced by logical role "responder"/"teacher", mapped in config) ·
 voice `WakeWord`/`STT`/`TTS`/`VAD`/`SpeakerID` as separate processes · module manifest = a versioned contract;
-modules are plugins; an internal event bus carries proactive hooks; **skills are data** (declarative, loaded at runtime).
+modules are plugins; an internal event bus carries proactive hooks; **recipes are data** (declarative, loaded at runtime).
 
 ---
 
@@ -242,7 +243,7 @@ Python brain).
 ### → Owner-judgment (decide at stack-confirm or first build)
 Embedding tier 0.6B vs 4B (eval-gated) · teacher 30B-A3B vs dense 32B (the cloud-DeepSeek decision largely
 moots a *local* teacher, but keep for the upgrade-to-Studio path) · TTS quality vs RAM (Kokoro vs Voxtral) ·
-skill auto-promote for a low-risk class vs always owner-gated · multimodal/ColPali in v1 or later · target
+recipe auto-promote for a low-risk class vs always owner-gated · multimodal/ColPali in v1 or later · target
 **macOS 26** (unlocks Apple `container`) · Swift audio sidecar vs pure-Python AEC · mic plain vs XMOS upfront ·
 **Graphiti-on-Kuzu vs Mem0 OSS** as the memory primary · Pipecat vs HA/Wyoming voice orchestration ·
 **sensitive heavy-reasoning: default local Qwen3-14B vs allow Claude** (privacy call — DeepSeek NEVER allowed here).
@@ -253,7 +254,7 @@ fast-graphrag on small local models · CaMeL Q-LLM feasibility on local models �
 barge-in tuning · PDF-class routing.
 
 ### → Parked (later phase)
-Multi-room satellite rollout · speech-to-speech models (track, don't adopt) · skill dependency-graph (until the library is large).
+Multi-room satellite rollout · speech-to-speech models (track, don't adopt) · recipe dependency-graph (until the library is large).
 
 ---
 

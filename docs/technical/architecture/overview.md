@@ -1,7 +1,8 @@
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md; amended 2026-06-11 per doc cleanup (spec count + spoke wave) -->
 # Artemis — System Overview
 
-_Status: **consolidated refresh (2026-06-08).** Reflects the full design as locked across ADR-001…011 and
-spec'd as the M0–M7 core spine + OBS + DR + CLIENT batch (43 specs `status: ready` in `docs/changes/`).
+_Status: **consolidated refresh (2026-06-08; count updated 2026-06-11).** Reflects the full design as locked across ADR-001…011 and
+spec'd as the M0–M7 core spine + OBS + DR + CLIENT + M8 spoke wave (60 specs `status: ready` in `docs/changes/`).
 Supersedes the SP0 phase-3 decomposition snapshot. This is the platform map — every subsystem, its boundary,
 and how they connect — at altitude; depth lives in the linked ADRs, [`brain.md`](./brain.md),
 [`data-model.md`](./data-model.md), [`app-flow.md`](./app-flow.md), and the per-module docs under
@@ -197,6 +198,11 @@ The security envelope for everything the system reads from the outside world, an
   session, never the client.
 - **Remote access** — reachable anywhere via the private encrypted tunnel; data never touches cloud, only an
   encrypted path to the owner's box. Conversational-instant bar is a home/LAN target; remote allowed a beat slower.
+- **Vision (DESIGNED, deferred — ADR-014)** — a future vision *input* sibling to voice: an overhead desk camera +
+  on-screen annotated viewfinder HUD, a **voice-first guided build-assistant** for hands-on projects. A new Swift
+  **vision sidecar** (Apple Vision detect/track/OCR + open-vocab detector) feeds object crops on demand to the
+  brain's Qwen3-VL (MLX) for ID + M3/M4/web enrich; autonomous watch-and-verify is the north star, reached via a
+  capability ladder. Mini-local (no ACI edge box). Deferred behind M3/M4/M5/DR/Projects/CLIENT.
 
 ## ◆ Domain modules (the spokes)
 Each is a first-class module: ships a **manifest** (tools · `data_scope` · owner/guest permissions ·
@@ -208,10 +214,9 @@ proactive_hooks · ui), owns or mirrors its operational data (ADR-011), pushes k
   write-through + a thin **native proposal overlay** (Artemis-native proposals/holds that can't conflict,
   promoted to real Google events via the Review screen on approval).
 - **Own** (Artemis = truth): **Tasks** (optional one-way export), **Projects**, **Habits/Goals**.
-- **All external-effect writes are gated `TAKES_ACTION` recipes through the Review screen; reads/awareness need
-  no approval.** The CLIENT milestone is the **unlock** for write-enabled spokes.
+- **All external-effect writes are staged as `PendingAction` instances via `ActionStagingService` (ADR-012), surfaced on the pending-actions tab of the CLIENT Review screen; reads/awareness need no approval.** The CLIENT milestone is the **unlock** for write-enabled spokes.
 
-**First wave (M8, next to spec):** Google-auth foundation → **Calendar** (full module — source-of-truth doc
+**Spoke wave (M8, specced):** Google-auth foundation → **Calendar** (full module — source-of-truth doc
 [`../modules/calendar.md`](../modules/calendar.md)) → **Gmail** connector (read-only/awareness, every message
 through `artemis.untrusted`) → **Productivity** (Tasks/Projects/Habits/Goals).
 
@@ -241,7 +246,7 @@ A module is uniform **only where the hub depends on it**, free everywhere else:
 5. **Scope tags** — every datum tagged via `data_scope`; the crypto wall + sensitivity Tier enforce it.
 
 ## Build status & spec map
-**43 specs `status: ready`** in `docs/changes/` — the entire core is designed, spec'd, reviewed, and gated;
+**60 specs `status: ready`** in `docs/changes/` — the full core + spoke wave is designed, spec'd, reviewed, and gated;
 nothing is built yet (DeepSeek builds on the Mac Mini when it arrives — see ROADMAP §"Build handoff — start here").
 The core spine builds in dependency order; **M2-d is a hard gate before M3/M4**:
 
@@ -277,6 +282,7 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [011](../adr/ADR-011-spoke-source-of-truth.md) | Spoke source-of-truth: default-mirror, no bidirectional sync |
 | [012](../adr/ADR-012-gated-action-staging.md) | Gated-action staging: owner-approval `PendingAction` for one-off external writes |
 | [013](../adr/ADR-013-cross-module-links.md) | Cross-module links: M4 entity backbone (Person/Place/Goal) + ToolRegistry-mediated logical refs |
+| [014](../adr/ADR-014-vision-build-assistant.md) | Vision build-assistant: overhead desk-vision *input* + guided-build subsystem (DESIGNED, deferred; capability ladder Rung 0→3) |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·

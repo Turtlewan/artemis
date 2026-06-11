@@ -4,6 +4,17 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 3, 5, 6) + m8-productivity.md BLOCKs B1, B5, B6, B7, F1/F13 -->
+<!-- Seam 3: no gated tools in this spec (capture + knowledge push are auto/internal); no staging
+     service calls needed. Seam 5: no hooks here; payload safety already enforced. Seam 6: GOAL entity
+     creation deferred — see note at Task 6 below.
+     B1 fix: manifest signature stated cumulatively; tool count is relative.
+     B5 fix: Recipe.provenance field dropped (does not exist in M7-a1); origin encoded in description.
+     B6 fix: temp file written under scope_dir staging subdir, not /tmp.
+     B7 fix: graduation guard checks all statuses (not just CANDIDATE); never re-writes if any recipe
+     for the key exists.
+     F1/F13 fix: exactly ONE CaptureService definition (Task 4 canonical fields); "Wait — simpler approach"
+     self-revision narration removed; commitment_shape stored in dedicated column (U7) not notes field. -->
 
 # Spec: M8-d-c2 — Productivity capture + knowledge/memory integration
 
@@ -14,7 +25,7 @@ autonomy_level: L2
 
 ## Assumptions
 
-- **M8-d-a** complete: `ProductivityRepository.create_suggestion`, `accept_suggestion`, `list_suggestions`, `reject_suggestion` (the suggestions table with `source`, `status`, `raw_context`, `notes` columns) + `ProductivityStore` + `ProductivityRepository.complete_task` and `archive_project` are all importable at `artemis.modules.productivity.repository` / `.store`. → impact: Stop.
+- **M8-d-a** complete: `ProductivityRepository.create_suggestion`, `accept_suggestion`, `list_suggestions`, `reject_suggestion` (the suggestions table with `source`, `status`, `raw_context`, `notes`, **`commitment_shape TEXT`** columns — U7 fix: `commitment_shape` is a dedicated column, not a notes prefix) + `ProductivityStore` + `ProductivityRepository.complete_task` and `archive_project` are all importable. `get_suggestion(id)` may need to be added (conditional modify per Files to Change). → impact: Stop.
 - **M8-d-c1** complete: `hooks.py` exists at `src/artemis/modules/productivity/hooks.py`; `build_productivity_hooks` is importable. This spec adds `CaptureService` wiring to the same module — it DOES NOT modify `hooks.py` unless a `make_capture_check` factory is needed (no proactive capture hook is in scope per §E — capture is reactive only). → impact: Caution (c1 must exist before this spec so import paths are stable; no hook changes required).
 - **DR-a** complete: `QuarantinedReader`, `Extract`, `EXTRACTION_SCHEMA` importable from `artemis.untrusted`. The `FakeModelPort` + `FakeQuarantinedReader` pattern mirrors DR-a's test approach. → impact: Stop (email capture MUST route through quarantine before any LLM-generative step; this is load-bearing).
 - **M3-a** complete: `IngestPipeline.ingest(source: Source) -> IngestResult` importable from `artemis.ingest.pipeline`; `Source(kind, uri, scope)` from `artemis.ingest.connectors`; `ScopeLockedError` propagates from the unlocked-volume precondition. → impact: Stop (project-complete knowledge push calls this exactly).
@@ -80,25 +91,20 @@ All paths under `/Users/artemis-build/artemis/`.
 
 - [ ] **Task 2: Implement `suggest_from_text` with quarantine gate** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/capture.py` —
 
-  ```python
-  @dataclass
-  class CaptureService:
-      store: ProductivityStore
-      model: ModelPort                      # sensitive_reasoner role
-      quarantine: QuarantinedReader | None  # None for trusted sources; set for email
-      role: str = "sensitive_reasoner"
-  ```
+  `CaptureService` is defined ONCE in Task 4 (canonical, all six fields). **Do not add a `@dataclass class CaptureService` block here.** (F13 fix: a second definition in Task 2 was present in an earlier draft and has been removed.) Implement only `suggest_from_text` as a method of the class that will be defined in Task 4.
 
-  `def suggest_from_text(self, source: Literal["chat", "email", "calendar"], text: str, *, untrusted: bool = False) -> str | None`:
+  `async def suggest_from_text(self, source: Literal["chat", "email", "calendar"], text: str, *, untrusted: bool = False) -> str | None`:
 
-  1. If `untrusted` is True (email paths): `self.quarantine` MUST be set (raise `ValueError("quarantine required for untrusted source")`). Call `extract = await self.quarantine.read(raw_content=text, source_url="", source_domain="email", query="task commitments")` — NOTE: `QuarantinedReader.read` is async; `suggest_from_text` is therefore `async def`. If `extract.parse_failed` → log a WARNING and return `None` (degrade-don't-crash; a poisoned email that defeats the quarantined reader is silently dropped). The detection LLM receives `extract.summary` (a plain English summary, already sanitised), never `text`.
+  1. If `untrusted` is True (email paths): `self.quarantine` MUST be set (raise `ValueError("quarantine required for untrusted source")`). Call `extract = await self.quarantine.read(raw_content=text, source_url="", source_domain="email", query="task commitments")`. If `extract.parse_failed` → log a WARNING and return `None` (degrade-don't-crash). The detection LLM receives `extract.summary`, never `text`.
   2. If `untrusted` is False (chat, calendar): run detection directly on `text` (trusted, owner-authored).
-  3. Detection: `detection_input = extract.summary if untrusted else text`. Call `resp = model.complete(role=self.role, messages=[{"role":"system","content":"Extract task commitments from the following text. Respond in JSON."},{"role":"user","content":detection_input}], response_schema=COMMITMENT_SCHEMA)`. Parse `resp.text` as JSON. If `parse_failed` or `is_commitment == False` → return `None`.
-  4. Build `notes = f"source: {source}"`. Call `suggestion_id = self.store.create_suggestion(title=detected["title"], notes=notes, source=source, raw_context=None)` — `raw_context` is deliberately `None` (we never store raw email text in the suggestions table; the sanitised title + source label is sufficient). Return `suggestion_id`.
+  3. Detection: `detection_input = extract.summary if untrusted else text`. Call `resp = await self.model.complete(role=self.role, messages=[{"role":"system","content":"Extract task commitments from the following text. Respond in JSON."},{"role":"user","content":detection_input}], response_schema=COMMITMENT_SCHEMA)`. Parse `resp.text` as JSON. If parse error or `is_commitment == False` → return `None`.
+  4. Extract `commitment_shape = detected.get("commitment_shape", "other")`. Call `suggestion_id = self.store.create_suggestion(title=detected["title"], notes=None, source=source, raw_context=None, commitment_shape=commitment_shape)` — **U7 fix: `commitment_shape` is stored in its own dedicated column (added to `suggestions` schema in M8-d-a Task 1 as `commitment_shape TEXT`), NOT encoded in the `notes` field.** `raw_context` is deliberately `None`. Return `suggestion_id`.
 
-  **Security invariant (inline comment):** `# SECURITY: raw email text (the `text` arg when untrusted=True) is NEVER passed to `store.create_suggestion` or to the extraction model. Only the QuarantinedReader's Extract.summary reaches the detection model. raw_context is always None.`
+  **Schema note (U7):** M8-d-a's `suggestions` table must include `commitment_shape TEXT` column (add to the DDL in M8-d-a Task 1). `ProductivityRepository.create_suggestion` must accept and write the `commitment_shape` kwarg.
 
-  — done when: `uv run mypy --strict src` passes; `suggest_from_text("email", "I'll send the report", untrusted=True)` with a `FakeQuarantinedReader` returns a `suggestion_id`; `suggest_from_text("email", ..., untrusted=True)` with `quarantine=None` raises `ValueError`; `suggest_from_text("chat", "not a task", untrusted=False)` with `FakeCommitmentDetector` returns `None`; `parse_failed` extract returns `None` without raising.
+  **Security invariant (inline comment):** `# SECURITY: raw email text (the text arg when untrusted=True) is NEVER passed to store.create_suggestion or to the extraction model. Only Extract.summary reaches the detection model. raw_context is always None.`
+
+  — done when: `uv run mypy --strict src` passes; `suggest_from_text("email", "I'll send the report", untrusted=True)` with a `FakeQuarantinedReader` returns a `suggestion_id`; `suggest_from_text("email", ..., untrusted=True)` with `quarantine=None` raises `ValueError`; `suggest_from_text("chat", "not a task", untrusted=False)` returns `None`; `parse_failed` extract returns `None` without raising.
 
 - [ ] **Task 3: Implement `build_capture_pattern_key` normaliser** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/capture.py` —
 
@@ -142,67 +148,38 @@ All paths under `/Users/artemis-build/artemis/`.
       role: str = "sensitive_reasoner"
   ```
 
-  `def accept_with_graduation(self, suggestion_id: str, *, project_id: str | None = None, area_id: str | None = None, due_at: str | None = None) -> str`:
+  `async def accept_with_graduation(self, suggestion_id: str, *, project_id: str | None = None, area_id: str | None = None, due_at: str | None = None) -> str` **(ADR-016: `async def` — it `await`s `RecipeStore.write` in the Task-5 graduation flow; called via the `await`ing `suggestion_accept` async `callable_ref`. The `accept_suggestion`/`get_suggestion`/`note_occurrence`/`set_status` SQLCipher calls inside it stay sync.)**:
 
-  1. Load the suggestion row first: `suggestion = self.store.list_suggestions(status="pending")` filtered by `suggestion_id`, OR add a `get_suggestion(id)` helper to `ProductivityRepository` (see note below). Extract `source` and `notes` from it to recover `commitment_shape` — the `notes` field was set to `"source: {source}"` in Task 2. **NOTE:** if `get_suggestion` does not exist in M8-d-a, add it as a thin SELECT by id to `ProductivityRepository` in this spec (one additional modify to `repository.py` — listed in Files to Change).
-  2. Parse `source_class` from `suggestion["source"]` and `commitment_shape` from the suggestion's notes (fallback `"other"` if not parseable — e.g. manual suggestions created without a shape).
+  1. Load the suggestion: add `get_suggestion(id) -> dict | None` to `ProductivityRepository` if not present (thin SELECT by id; listed in Files to Change as conditional). Extract `source_class = suggestion["source"]` and `commitment_shape = suggestion.get("commitment_shape") or "other"` — **U7 fix: `commitment_shape` is read from its dedicated column, not parsed from a notes string**.
+  2. `task_id = self.store.accept_suggestion(suggestion_id, project_id=project_id, area_id=area_id, due_at=due_at)`.
+  3. Compute `capture_key = build_capture_pattern_key(source_class, commitment_shape)`.
+  4. Graduation logic — see Task 5 for the full flow (count + threshold check + CANDIDATE write + `note_occurrence`).
+  5. Return `task_id`.
 
-  **Wait** — simpler approach: store `commitment_shape` directly in the `notes` field as a structured prefix `"shape:{shape}|source:{source}"` at `create_suggestion` time (Task 2 writes this). No separate `get_suggestion` call needed; parse the notes prefix here. Add this structured notes format in Task 2 (revise: `notes = f"shape:{commitment_shape}|source:{source}"` where `commitment_shape` is obtained from the detection result before creating the suggestion). Update Task 2 accordingly.
-
-  3. `task_id = self.store.accept_suggestion(suggestion_id, project_id=project_id, area_id=area_id, due_at=due_at)`.
-  4. Compute `capture_key = build_capture_pattern_key(source_class, commitment_shape)`.
-  5. `self.promoter.note_occurrence(capture_key)`.
-     - If a `CANDIDATE` exists for `capture_key` and the recurrence count hits threshold, M7-b's `Promoter._auto_promote` fires automatically → the recipe moves to `PENDING` (never `ENABLED` — it is `TOUCHES_DATA`, see Task 5 below). Nothing extra needed here; the promoter handles it.
-  6. Return `task_id`.
-
-  **NOTE on Task 2 revision:** in Task 2, after detection succeeds, set `commitment_shape = detected.get("commitment_shape", "other")` and write `notes = f"shape:{commitment_shape}|source:{source}"`. This makes Task 4 note parsing straightforward.
-
-  — done when: `uv run mypy --strict src` passes; `accept_with_graduation(id)` with a `FakeRecurrenceStore` calls `note_occurrence` with the expected key; the returned `task_id` is the one from `store.accept_suggestion`.
+  — done when: `uv run mypy --strict src` passes; `await accept_with_graduation(id)` (async test — `accept_with_graduation` is `async def` per ADR-016) reads `commitment_shape` from the suggestion column and computes the capture key correctly; the returned `task_id` is the one from `store.accept_suggestion`.
 
 - [ ] **Task 5: Build and write the CANDIDATE capture recipe at graduation threshold** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/capture.py` —
 
-  M7-b's `Promoter.note_occurrence` already calls `_auto_promote` when `count >= threshold` and a CANDIDATE exists. The gap is that no CANDIDATE exists yet — it must be created (written) when the threshold is first crossed. The graduation flow is therefore:
+  M7-b's `Promoter.note_occurrence` already calls `_auto_promote` when `count >= threshold` and a CANDIDATE exists. The gap is that no CANDIDATE exists yet — it must be created when the threshold is first crossed.
 
-  - After `promoter.note_occurrence(capture_key)` (Task 4 step 5), check whether the promoter just wrote a CANDIDATE (it will not — `note_occurrence` only promotes an EXISTING CANDIDATE; it does not create one). So M8-d-c2 is responsible for creating the `CANDIDATE` recipe and writing it to `RecipeStore` when the threshold is crossed.
+  **Graduation flow (canonical — implement exactly this in `accept_with_graduation` after step 3):**
 
-  Revised graduation logic in `accept_with_graduation` after step 5:
-
-  ```python
-  capture_key = build_capture_pattern_key(source_class, commitment_shape)
-  # note_occurrence returns nothing; check count directly
-  count = self.promoter.recurrence.count(capture_key)
-  self.promoter.recurrence.note(capture_key)  # increment
-  new_count = count + 1
-  threshold = self.promoter.threshold
-
-  # If we just hit the threshold, build and write a CANDIDATE recipe
-  # (Promoter._auto_promote will fire on note_occurrence only if CANDIDATE exists;
-  #  we CREATE the candidate here, then call note_occurrence to let M7-b promote it)
-  if new_count >= threshold:
-      candidate = _build_capture_recipe(capture_key, source_class, commitment_shape)
-      self.recipe_store.write(candidate)  # writes CANDIDATE, signed
-      # Now call note_occurrence so the Promoter sees the new CANDIDATE and promotes it
-      # (classify_safety(TOUCHES_DATA) → "gated" → Promoter moves to PENDING, not ENABLED)
-      self.promoter.note_occurrence(capture_key)
-  ```
-
-  **IMPORTANT:** Do NOT call `promoter.note_occurrence` if threshold not yet reached (it would no-op since no CANDIDATE exists, but it wastes a count increment — use the raw `recurrence.note` + `recurrence.count` directly, then call `note_occurrence` only when creating the CANDIDATE).
-
-  Revised flow:
-
+  <!-- (resolved by ADR-016: callable_ref + accept_with_graduation are async) — ADR-016 makes every `ToolSpec.callable_ref` uniformly `async def`, so the `suggestion_accept` brain-tool callable is `async def` and `await`s `accept_with_graduation`, which is itself `async def` and `await`s `RecipeStore.write` (async since ADR-015). The `note_occurrence`/`set_status` SQLCipher calls stay sync inside the async method. -->
   ```python
   count_before = self.promoter.recurrence.count(capture_key)
   self.promoter.recurrence.note(capture_key)
   new_count = count_before + 1
 
   if new_count >= self.promoter.threshold:
-      existing = [r for r in self.recipe_store.list(status=RecipeStatus.CANDIDATE)
-                  if r.task_class_key == capture_key]
-      if not existing:  # create the candidate only once
+      # B7 fix: check ALL statuses — if any recipe for this key exists (CANDIDATE, PENDING,
+      # or ENABLED), do NOT write again. Never clobber an owner-approved ENABLED recipe.
+      all_for_key = [r for r in self.recipe_store.list() if r.task_class_key == capture_key]
+      if not all_for_key:  # create the candidate only if no recipe exists for this key
           candidate = _build_capture_recipe(capture_key, source_class, commitment_shape)
-          self.recipe_store.write(candidate)
-          # Now Promoter sees the CANDIDATE and promote it
+          await self.recipe_store.write(candidate)  # ADR-016/ADR-015: RecipeStore.write is async → await it; writes CANDIDATE, signed
+          # Promoter sees the new CANDIDATE and promotes it to PENDING
           # classify_safety(TOUCHES_DATA) → gated → PENDING (never ENABLED automatically)
+          # note_occurrence/set_status are sync SQLCipher calls inside this async method
           self.promoter.note_occurrence(capture_key)
   ```
 
@@ -233,22 +210,24 @@ All paths under `/Users/artemis-build/artemis/`.
       instructions=(
           f"When a {commitment_shape.replace('_', ' ')} commitment is detected in a {source_class} message, "
           f"automatically call suggest_from_text(source='{source_class}', text=<text>, untrusted={'true' if source_class == 'email' else 'false'}) "
-          f"and create an inert suggestion. The owner reviews and accepts it from the suggestion inbox."
+          f"and create an inert suggestion. The owner reviews and accepts it from the suggestion inbox. "
+          f"Origin: capture_graduation/{capture_key}."
+          # B5 fix: Recipe has no provenance field (not in M7-a1 schema). Origin is encoded in
+          # description + instructions strings above. Do NOT pass provenance= to Recipe().
       ),
       status=RecipeStatus.CANDIDATE,
-      provenance={"origin": "capture_graduation", "capture_key": capture_key}
   )
   ```
 
   **Security assertion (inline comment):** `# ACTION_CLASS=TOUCHES_DATA → classify_safety → "gated" → Promoter._auto_promote moves this to PENDING only (never ENABLED). Owner must explicitly approve via ReviewSurface.approve(). Verified: see M7-b Assumptions + test_productivity_capture.py graduation_gated test.`
 
-  — done when: `uv run mypy --strict src` passes; `accept_with_graduation` called N≥threshold times with the same source+shape pattern → `recipe_store.list(status=CANDIDATE)` contains the recipe (and `recipe_store.list(status=PENDING)` contains it after the promoter fires); the recipe is `TOUCHES_DATA`; `ReviewSurface.pending_for_review()` includes it.
+  — done when: `uv run mypy --strict src` passes; `await accept_with_graduation` (async test) called N≥threshold times with the same source+shape pattern → `recipe_store.list(status=CANDIDATE)` contains the recipe (and `recipe_store.list(status=PENDING)` contains it after the promoter fires); the recipe is `TOUCHES_DATA`; `ReviewSurface.pending_for_review()` includes it.
 
 ### Phase 3 — Knowledge + memory push on project completion
 
 - [ ] **Task 6: Implement `_push_knowledge` helper and wire to `project_complete` and `project_archive`** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/tools.py` (SURGICAL modify) —
 
-  Add a module-level `_ingest_pipeline: IngestPipeline | None = None` and `_memory_queue: MemoryWriteQueue | None = None` (analogous to `_store`). Add `def init_capture(capture_service: CaptureService, ingest_pipeline: IngestPipeline, memory_queue: MemoryWriteQueue) -> None` (sets these three module-level handles).
+  Add module-level singletons: `_ingest_pipeline: IngestPipeline | None = None`, `_memory_queue: MemoryWriteQueue | None = None`, `_settings: Settings | None = None` (needed by `_push_knowledge` for the B6 staging path), and `_capture_service: CaptureService | None = None`. Add `def init_capture(capture_service: CaptureService, ingest_pipeline: IngestPipeline, memory_queue: MemoryWriteQueue, settings: Settings) -> None` (sets all four module-level handles).
 
   Add `def _push_knowledge(project: dict) -> None`:
 
@@ -281,41 +260,34 @@ All paths under `/Users/artemis-build/artemis/`.
           )
   ```
 
-  **NOTE on IngestPipeline seam:** `IngestPipeline.ingest(source)` in M3-a takes a `Source` and internally resolves the connector. For a synthetic project summary (not a real file), M8-d-c2 uses a `TextSource` adapter (a thin wrapper that presents the summary_text as a virtual file source). Define `class TextSource` in `capture.py`:
+  **NOTE on IngestPipeline seam (B6 fix):** M3-a's `FileConnector` rejects paths outside an allowed roots set. Writing to `tempfile.NamedTemporaryFile` (system `/tmp`) would produce a `ValueError` — the composition root's `FileConnector` is rooted at the data dirs, not `/tmp`. **Use a staging subdir inside `scope_dir` instead:**
 
   ```python
-  @dataclass
-  class SummaryDocument:
-      """A virtual document for project summaries, satisfying the IngestPipeline connector seam."""
-      text: str
-      document_id: str
-  ```
-
-  The `IngestPipeline` is constructed at composition time with a connector that handles `kind="summary"` sources by returning the pre-set text. Alternatively, use a `kind="file"` source pointing to a real temp file written by `_push_knowledge`. **Simplest approach:** write summary to a `NamedTemporaryFile` before calling `ingest`, then delete. Document this inline. The `IngestPipeline` already handles `kind="file"` via `FileConnector`. This avoids any connector extension.
-
-  Revise `_push_knowledge`:
-
-  ```python
-  import tempfile, os
-  with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-      f.write(summary_text)
-      tmp_path = f.name
+  import os
+  staging_dir = paths.scope_dir(settings, OWNER_PRIVATE) / "ingest-staging"
+  staging_dir.mkdir(parents=True, exist_ok=True)
+  tmp_path = staging_dir / f"project-{project['id']}.txt"
   try:
-      source = Source(kind="file", uri=tmp_path, scope="owner-private")
+      tmp_path.write_text(summary_text, encoding="utf-8")
+      source = Source(kind="file", uri=str(tmp_path), scope=OWNER_PRIVATE)
       _ingest_pipeline.ingest(source)
   finally:
-      os.unlink(tmp_path)
+      tmp_path.unlink(missing_ok=True)
   ```
+
+  `settings` must be accessible in `_push_knowledge` — add `_settings: Settings | None = None` as a module-level singleton alongside `_ingest_pipeline` / `_memory_queue`, and set it in `init_capture`. The `FileConnector` at the composition root must include `scope_dir(settings, OWNER_PRIVATE)` (and its subdirs) in its allowed roots — document this wiring requirement for the composition root author.
+
+  **Do NOT use `tempfile.NamedTemporaryFile` with a system temp path** — M3-a `FileConnector` will reject it.
 
   SURGICAL modifications to `tools.py`:
   1. Add `from artemis.modules.productivity.capture import CaptureService, _push_knowledge` (or move `_push_knowledge` inline — either is fine; `capture.py` is cleaner).
-  2. In the `suggestion_accept` callable: replace `store.accept_suggestion(...)` with `_capture_service.accept_with_graduation(...)`.
+  2. In the `suggestion_accept` callable: make it `async def` (ADR-016: every `ToolSpec.callable_ref` is uniformly async) and replace `store.accept_suggestion(...)` with `await _capture_service.accept_with_graduation(...)` (`accept_with_graduation` is `async def` per Task 4). The callable's `args`/return models are unchanged; only the `def` → `async def` + the `await` on the graduation call change.
   3. In `project_archive` callable: after the store call, call `_push_knowledge(store.get_project(args.id))` (degrade: wrapped in try/except per the function body).
-  4. Add `project_complete` tool if not already present (it was not in M8-d-a's tool list — M8-d-a has `project_archive` but no explicit `project.complete`). Add `project_complete` as a WRITE tool: calls `store.update_project(id, status="done")` then `_push_knowledge`. Add the `ToolSpec` for `"project.complete"` (one additional tool — total becomes 31; update manifest task count accordingly).
+  4. Add `project_complete` tool if not already present (it was not in M8-d-a's tool list — M8-d-a has `project_archive` but no explicit `project.complete`). Add `project_complete` as a WRITE tool, defined `async def` (ADR-016: every `ToolSpec.callable_ref` is uniformly async — same as all M8-d-a callables; `store.update_project`/`_push_knowledge` stay sync inside the async body): calls `store.update_project(id, status="done")` then `_push_knowledge`. Add the `ToolSpec` for `"project.complete"` (one additional tool — total becomes 32; update manifest task count accordingly).
 
-  **NOTE on tool count:** M8-d-a spec says 30 tools. Adding `project.complete` makes it 31. This is a minimal unavoidable addition; the manifest count must be updated. Document in this spec that M8-d-a's manifest count changes from 30 to 31.
+  **B1 fix — tool count (cumulative):** M8-d-a: 30 tools. M8-d-b adds `task.schedule` → 31. M8-d-c1 adds no tools → still 31. M8-d-c2 (this spec) adds `project.complete` → **32 total**. The manifest count assertion in this spec must be 32. The "31" note in earlier task descriptions was based on a pre-M8-d-b count — 32 is correct after the full a→b→c1→c2 build.
 
-  — done when: `uv run mypy --strict src` passes; `init_capture(...)` sets the module handles; `suggestion_accept` calls `accept_with_graduation`; `project_archive` calls `_push_knowledge` (asserted in tests via FakeIngestPipeline call count); `project.complete` tool exists and calls `_push_knowledge`.
+  — done when: `uv run mypy --strict src` passes; `init_capture(...)` sets the module handles; `suggestion_accept` is `async def` and `await`s `accept_with_graduation`; `project_archive` calls `_push_knowledge` (asserted in tests via FakeIngestPipeline call count); `project.complete` tool exists and calls `_push_knowledge`.
 
 - [ ] **Task 7: Manifest wiring** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/manifest.py` (SURGICAL modify) —
 
@@ -324,6 +296,8 @@ All paths under `/Users/artemis-build/artemis/`.
   ```python
   def productivity_manifest(
       store: ProductivityStore,
+      schedule_fn: ...,
+      write_tools: CalendarWriteTools,
       registry: TemplateRegistry,
       capture_service: CaptureService,
       ingest_pipeline: IngestPipeline,
@@ -333,15 +307,19 @@ All paths under `/Users/artemis-build/artemis/`.
 
   Inside, add:
   ```python
+  from artemis.config import get_settings
   from artemis.modules.productivity.tools import init_capture
-  init_capture(capture_service, ingest_pipeline, memory_queue)
+  init_capture(capture_service, ingest_pipeline, memory_queue, get_settings())
   ```
+  Do NOT add `settings` as an 8th parameter to `productivity_manifest(...)` — that would contradict the canonical 7-param signature and all three call sites (the Task-7 done-when, the Task-8 manifest-smoke AC line 378, and the AC line 483). `init_capture` genuinely needs `settings` (its signature requires it; `_push_knowledge` reads `_settings` for `paths.scope_dir`), so obtain it via the module-level `get_settings()` accessor (M0-a convention — same accessor CAL-a/M8-d-a use) inside the function body. The `productivity_manifest(...)` signature stays the 7-param order unchanged.
 
-  Add the `project.complete` `ToolSpec` to the tools list (total = 31). Update `__init__.py` re-export to reflect the new params.
+  Add the `project.complete` `ToolSpec` to the tools list (**B1 fix: total = 32 after the full a→b→c1→c2 build**). Update `__init__.py` re-export to reflect the new params.
+
+  **B1 fix — cumulative signature:** M8-d-c1 already added `registry`; M8-d-b added `schedule_fn`/`write_tools`. The cumulative signature after this spec is: `productivity_manifest(store, schedule_fn, write_tools, registry, capture_service, ingest_pipeline, memory_queue)`. This spec adds only the last three params; verify c1's `registry` and M8-d-b's `schedule_fn`/`write_tools` are already present before editing.
 
   SURGICAL: touch ONLY the new param wiring, `init_capture` call, and the `project.complete` ToolSpec. Do NOT change hooks, data_scope, permissions, or existing tool specs.
 
-  — done when: `uv run mypy --strict src` passes; `productivity_manifest(store, registry, capture_svc, ingest, queue).tools` has 31 entries; the `project.complete` tool is in the list.
+  — done when: `uv run mypy --strict src` passes; `productivity_manifest(store, schedule_fn, write_tools, registry, capture_svc, ingest, queue).tools` has 32 entries; the `project.complete` tool is in the list.
 
 ### Phase 4 — Tests
 
@@ -349,14 +327,15 @@ All paths under `/Users/artemis-build/artemis/`.
 
   **Fixtures:**
   - `FakeKeyProvider({"owner-private": os.urandom(32)}, owner_unlocked=True)` + `Settings(data_root=tmp_path)` + `ProductivityStore(settings, fake_key)` (plain-sqlite fallback).
-  - `FakeModelPort`: `complete(role, messages, response_schema=None)` → returns `ModelResponse(text=json.dumps({"is_commitment": True, "title": "Send the report", "due": None, "commitment_shape": "will_send"}), finish_reason="stop", usage=None)` for any input; for the `"not a task"` input returns `{"is_commitment": False, "title": "", "commitment_shape": "other"}`.
+  - `FakeModelPort`: `async def complete(role, messages, response_schema=None, ...)` → returns `ModelResponse(text=json.dumps({"is_commitment": True, "title": "Send the report", "due": None, "commitment_shape": "will_send"}), finish_reason="stop", usage=None, origin="local", model_id="fake")` for any input; for the `"not a task"` input, `text` encodes `{"is_commitment": False, "title": "", "commitment_shape": "other"}`. (Seam 1: `ModelPort.complete` is `async def`; `ModelResponse` includes `origin` + `model_id` fields.)
   - `FakeQuarantinedReader`: `read(...)` → `Extract(source_url="", source_domain="email", summary="I'll send the report on Friday", claims=(), flagged_injection=False, parse_failed=False)`. Variant: `FakeFailingQuarantinedReader`: `parse_failed=True`.
-  - `FakeRecipeStore` (in-memory `dict[str, Recipe]`): implements `write(recipe)` (stores by name), `list(status=None)` (filters by status), `get(name)`.
+  - `FakeRecipeStore` (in-memory `dict[str, Recipe]`): implements `async def write(self, recipe)` (ADR-015/ADR-016: `RecipeStore.write` is async and is `await`ed by `accept_with_graduation` — the fake's `write` must be `async def` too; stores by name), `list(status=None)` (sync — filters by status), `get(name)` (sync).
   - `FakeRecurrenceStore`: implements `note(key)`, `count(key)`, `reset(key)` over an in-memory `dict`.
   - `FakePromoter`: wraps `FakeRecipeStore` + `FakeRecurrenceStore` + `threshold=2`; exposes real `note_occurrence` logic (just calls `recurrence.note` + checks threshold; if CANDIDATE exists, calls `store.set_status → PENDING`).
   - `FakeIngestPipeline`: `ingest(source)` → `IngestResult(document_id="x", chunks_written=1, skipped=False)`; records calls.
   - `FakeMemoryWriteQueue`: `enqueue(text, turn_id)` → records calls.
-  - `CaptureService` fixture: `CaptureService(store=store, model=FakeModelPort(), quarantine=FakeQuarantinedReader(), recipe_store=FakeRecipeStore(), promoter=FakePromoter(FakeRecipeStore(), FakeRecurrenceStore()), role="sensitive_reasoner")`.
+  - **F12 fix — shared store instances:** define `shared_recipe_store = FakeRecipeStore()` and `shared_recurrence_store = FakeRecurrenceStore()` ONCE as pytest fixtures; pass the SAME instances to `CaptureService`, `FakePromoter`, and `ReviewSurface`. Never pass fresh `FakeRecipeStore()` / `FakeRecurrenceStore()` at multiple call sites — doing so gives each component an isolated empty store and graduation assertions will always fail.
+  - `CaptureService` fixture: `CaptureService(store=store, model=FakeModelPort(), quarantine=FakeQuarantinedReader(), recipe_store=shared_recipe_store, promoter=FakePromoter(shared_recipe_store, shared_recurrence_store), role="sensitive_reasoner")`.
 
   **Tests:**
 
@@ -377,10 +356,10 @@ All paths under `/Users/artemis-build/artemis/`.
   - `build_capture_pattern_key("email", "unknown_verb") == "email:other"` (unknown shape → "other").
 
   **Graduation — below threshold:**
-  - Create a suggestion and call `accept_with_graduation` once. Assert `FakeRecurrenceStore.count("email:will_send") == 1`; `FakeRecipeStore.list(status=RecipeStatus.CANDIDATE)` is empty (threshold not yet met).
+  - Create a suggestion and `await accept_with_graduation` once (async test — `accept_with_graduation` is `async def` per ADR-016). Assert `FakeRecurrenceStore.count("email:will_send") == 1`; `FakeRecipeStore.list(status=RecipeStatus.CANDIDATE)` is empty (threshold not yet met).
 
   **Graduation — at threshold (CANDIDATE written, gated):**
-  - Call `accept_with_graduation` a second time for the same source+shape. Assert:
+  - `await accept_with_graduation` a second time for the same source+shape. Assert:
     - `FakeRecipeStore.list(status=RecipeStatus.CANDIDATE)` is NOT empty (the candidate was written at threshold).
     - The candidate recipe's `name` starts with `"capture_email_will_send"`.
     - `recipe.action_class == ActionClass.TOUCHES_DATA`.
@@ -389,16 +368,16 @@ All paths under `/Users/artemis-build/artemis/`.
     - The recipe is NOT in `ENABLED` state (explicit assertion: `assert recipe.status != RecipeStatus.ENABLED`).
 
   **Graduation — idempotency:**
-  - A third `accept_with_graduation` call for the same key does NOT write a second CANDIDATE recipe (the `if not existing` guard — `FakeRecipeStore.list(status=CANDIDATE)` still has exactly one entry).
+  - A third `await accept_with_graduation` call for the same key does NOT write a second CANDIDATE recipe (the `if not existing` guard — `FakeRecipeStore.list(status=CANDIDATE)` still has exactly one entry).
 
   **Knowledge push on project complete:**
-  - Create a project; call `tools.project_complete(args)` (or `project_archive` — whichever triggers `_push_knowledge`). Assert `FakeIngestPipeline.calls` has 1 entry; `FakeMemoryWriteQueue.calls` has 1 entry; the memory enqueue `turn_id` starts with `"project_complete:"`.
+  - Create a project; `await tools.project_complete(args)` (or `project_archive` — whichever triggers `_push_knowledge`; both are `async def` tool callables per ADR-016, so the test is async and `await`s the call). Assert `FakeIngestPipeline.calls` has 1 entry; `FakeMemoryWriteQueue.calls` has 1 entry; the memory enqueue `turn_id` starts with `"project_complete:"`.
 
   **Knowledge push degrades gracefully:**
   - `_push_knowledge(project)` where `_ingest_pipeline` raises → no exception propagates to the caller; tool returns `OkResult(ok=True)`.
 
   **Manifest smoke:**
-  - `productivity_manifest(store, registry, capture_svc, ingest, queue).tools` has 31 tools; `"project.complete"` tool name is in the list; no duplicate names.
+  - `productivity_manifest(store, schedule_fn, write_tools, registry, capture_svc, ingest, queue).tools` has **32** tools; `"project.complete"` tool name is in the list; no duplicate names. (B1 fix.)
 
   — done when: `uv run pytest -q tests/test_productivity_capture.py` passes AND `uv run mypy --strict src tests/test_productivity_capture.py` passes.
 
@@ -500,10 +479,10 @@ Approving this spec approves all of them.
   - `build_capture_pattern_key` normalises case + unknown values correctly.
   - graduation below threshold: no CANDIDATE written.
   - graduation at threshold: CANDIDATE written as `TOUCHES_DATA`; Promoter moves it to `PENDING` (not `ENABLED`); `ReviewSurface.pending_for_review()` includes it; `recipe.status != RecipeStatus.ENABLED`.
-  - graduation idempotency: second threshold crossing does not create a duplicate CANDIDATE.
-  - `project_complete` → `FakeIngestPipeline.calls == 1`; `FakeMemoryWriteQueue.calls == 1`.
+  - graduation idempotency (B7 fix): after threshold crossing, a third `accept_with_graduation` with the same key does NOT create a duplicate CANDIDATE, AND (if the recipe was promoted to PENDING or ENABLED) does NOT downgrade it back to CANDIDATE. Assert `len([r for r in recipe_store.list() if r.task_class_key == "email:will_send"]) == 1`.
+  - `await project_complete` (async tool callable per ADR-016) → `FakeIngestPipeline.calls == 1`; `FakeMemoryWriteQueue.calls == 1`.
   - knowledge push failure does not propagate to tool caller.
-  - manifest has 31 tools including `"project.complete"`; no duplicate names.
+  - manifest has **32** tools including `"project.complete"`; no duplicate names. (B1 fix: 30 from M8-d-a + 1 from M8-d-b + 1 from M8-d-c2 = 32.)
 - [ ] `uv run python -c "from artemis.modules.productivity.capture import CaptureService, build_capture_pattern_key; print('ok')"` → verify: prints `ok`.
 - [ ] (GATED, on Mini) Task 9: full on-hardware round-trip (real model, real vault, real recipe store, real knowledge push) → verify: recorded in handoff.
 

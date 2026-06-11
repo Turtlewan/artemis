@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seam 3) + cal-gate.md BLOCKs B2, B3 -->
 
 # Spec: GATE-b — Pending-actions review surface (brain endpoints + ArtemisKit DTOs + Review screen tab)
 
@@ -15,8 +16,8 @@ autonomy_level: L2
 ## Assumptions
 
 - GATE-a (`ActionStagingService` + `PendingActionStore`) is complete with the following confirmed contract (bound to ADR-012 §3):
-  - `ActionStagingService.list_pending() -> list[PendingAction]` — returns all `PENDING`-status actions (not expired).
-  - `ActionStagingService.approve(id: str) -> PendingAction` — executes once, sets `APPROVED`; raises `KeyError` if not found, `ValueError` if not `PENDING` (confirmed: plain `ValueError`, no dedicated subclass), `ScopeLockedError` if vault is locked during dispatch (propagates unwrapped from `callable_ref`).
+  - `ActionStagingService.list_pending() -> list[PendingAction]` — calls `expire_due(now)` first (marks any past-expiry rows EXPIRED), then delegates to `store.list_pending()`; returns only `PENDING`-status actions. This method is now confirmed on GATE-a Task 3 (added per B2 / Seam 3). `ToolSpec.name` is bare; `module.tool` is the registry id used by `stage()`/`get_tool()`.
+  - `ActionStagingService.approve(id: str) -> PendingAction` — **`async def`** (ADR-016 / Seam 3; the route `await`s it); executes once, sets `APPROVED`; raises `KeyError` if not found, `ValueError` if not `PENDING` (confirmed: plain `ValueError`, no dedicated subclass), `ScopeLockedError` if vault is locked during dispatch (propagates unwrapped from `callable_ref`).
   - `ActionStagingService.reject(id: str) -> PendingAction` — sets `REJECTED`; raises `KeyError` if not found, `ValueError` if not `PENDING`; no tool dispatch, no `ScopeLockedError` path.
   - `PendingAction` is a frozen Pydantic model with fields: `id: str`, `module: str`, `tool: str`, `args: dict[str, object]`, `summary: str`, `action_class: Literal["takes-action"]` (confirmed by GATE-a Task 1 — value is `"takes-action"`, lowercase hyphen), `status: ActionStatus` (enum values: `"pending"` | `"approved"` | `"rejected"` | `"expired"` — lowercase, confirmed by GATE-a `ActionStatus(StrEnum)`), `created_at: datetime`, `expires_at: datetime`, `result: dict[str, object] | None`.
   - The "already settled" exception is `ValueError` — confirmed by GATE-a Task 3: `raise ValueError(f"Cannot approve action {action_id}: status is {action.status}")` (and identically for `reject`). No dedicated `ActionAlreadySettledError` exists. The 409 mapping to `ValueError` in the routes below is correct as written.
@@ -72,22 +73,24 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   **Routes** (add at the end of `app_router`, after the existing review/chat/status routes):
   ```python
+  # B3 fix: `request: Request` placed BEFORE defaulted `Depends(...)` params to avoid
+  # Python SyntaxError (non-default argument after default argument).
   @app_router.get("/actions/pending", response_model=list[PendingActionResponse])
   async def get_pending_actions(
-      principal: Principal = Depends(require_unlocked),
       request: Request,
+      principal: Principal = Depends(require_unlocked),
   ) -> list[PendingActionResponse]:
       actions = request.app.state.action_staging.list_pending()
       return [PendingActionResponse.from_pending_action(a) for a in actions]
 
   @app_router.post("/actions/approve", response_model=PendingActionResponse)
   async def approve_action(
+      request: Request,
       body: ActionIdRequest,
       principal: Principal = Depends(require_unlocked),
-      request: Request,
   ) -> PendingActionResponse:
       try:
-          pa = request.app.state.action_staging.approve(body.id)
+          pa = await request.app.state.action_staging.approve(body.id)
       except KeyError:
           raise HTTPException(status_code=404, detail="action not found")
       except ValueError:
@@ -96,9 +99,9 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   @app_router.post("/actions/reject", response_model=PendingActionResponse)
   async def reject_action(
+      request: Request,
       body: ActionIdRequest,
       principal: Principal = Depends(require_unlocked),
-      request: Request,
   ) -> PendingActionResponse:
       try:
           pa = request.app.state.action_staging.reject(body.id)
@@ -115,7 +118,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
       id: str
   ```
 
-  Error mapping: `KeyError` → 404 `"action not found"`, `ValueError` → 409 `"action already settled"`. A `VaultLockedError` from `approve` cannot be reached (the route is behind `require_unlocked`) — no mapping needed.
+  Error mapping: `KeyError` → 404 `"action not found"`, `ValueError` → 409 `"action already settled"`. Add `except ScopeLockedError: raise HTTPException(423, "vault locked")` to the approve route — the vault can idle-lock between the `require_unlocked` dependency check and the awaited async dispatch (ADR-016: `approve` is `async`, awaited in the route), so `ScopeLockedError` can surface as a 500 without this guard. Consistent with CLIENT-b's fail-closed posture. Note: the exception is named `ScopeLockedError` (not `VaultLockedError`).
 
   All three routes use `require_unlocked` as the sole dependency (which itself depends on `require_session` via `Depends` — the two-tier guard from CLIENT-b §Security is inherited, not re-implemented). No session-only variant exists for these routes.
 
@@ -131,7 +134,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
       tool_registry=app.state.gateway.tool_registry,  # reuse the existing ToolRegistry from the gateway
   )
   ```
-  The `ActionStagingService` takes the same `ToolRegistry` the brain already uses (ADR-012 §3: approve re-dispatches via `ToolRegistry.get_tool(fq_name).callable_ref(args)` — no second execution route). Do NOT create a second `ToolRegistry`.
+  The `ActionStagingService` takes the same `ToolRegistry` the brain already uses (ADR-012 §3: approve re-dispatches via `await ToolRegistry.get_tool(fq_name).callable_ref(args)` — ADR-016: `callable_ref` is `async def`; no second execution route). Do NOT create a second `ToolRegistry`.
 
   — done when: `uv run mypy --strict src` passes; `python -c "from artemis.main import app; assert hasattr(app.state, 'action_staging')"` (after startup) exits 0.
 
@@ -145,8 +148,8 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
               "act-1": FakePendingAction(id="act-1", summary="Send invite to bob@example.com for 3pm Thu"),
           }
       def list_pending(self) -> list[FakePendingAction]: ...
-      def approve(self, id: str) -> FakePendingAction: ...  # raises KeyError / ValueError
-      def reject(self, id: str) -> FakePendingAction: ...
+      async def approve(self, id: str) -> FakePendingAction: ...  # async (ADR-016: route awaits it); raises KeyError / ValueError
+      def reject(self, id: str) -> FakePendingAction: ...  # sync — reject route does not await
   ```
 
   Test cases (each sets `app.state.action_staging = FakeActionStagingService()`):
@@ -426,7 +429,7 @@ No token, action id, or result is logged in the brain routes (consistent with CL
 Rate limiting: these routes are `require_unlocked` (authenticated), so they inherit the session layer. No additional rate limit is specified — the vault-unlock TTL and session expiry are the natural throttle. [FLAG apex-security: confirm whether approve/reject need an explicit per-action rate limit beyond session gating — relevant if an adversary with a valid session tries to hammer approve on expired/nonexistent ids.]
 
 ### Performance
-`list_pending()` is an owner-private SQLCipher read (small table — at most O(dozens) of staged actions outstanding). `approve` dispatches the bound tool synchronously (the same call path as a live brain tool call — latency is tool-dependent; calendar writes are ~100-300ms). No streaming; these are short synchronous responses.
+`list_pending()` is an owner-private SQLCipher read (small table — at most O(dozens) of staged actions outstanding). `approve` awaits the bound tool's async dispatch (ADR-016: `callable_ref` is `async def`; the same call path as a live brain tool call — latency is tool-dependent; calendar writes are ~100-300ms). No streaming; these are short awaited responses.
 
 ### Accessibility
 The "Pending actions" section targets WCAG 2.2 AA on SwiftUI/VoiceOver (apex-accessibility):

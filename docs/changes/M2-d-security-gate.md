@@ -1,3 +1,4 @@
+<!-- amended 2026-06-11 per m2-obs-dr-security.md FLAG F13 — AC4 tightened to in-file check only -->
 ---
 spec: m2-d-security-gate
 status: ready
@@ -93,7 +94,7 @@ This IS the security specialist task — the consolidated apex-security gate ADR
 - [ ] The gate record addresses all FIVE ADR-005 residual risks + the IPC peer-uid/code-signing wall + the M2-b owner-auth model + the encrypted-volume mount/unmount lifecycle (ADR-007) → verify: each has an explicit BLOCK/FLAG/accepted verdict in the file.
 - [ ] The on-hardware spike results (SE `.userPresence`, SQLCipher `cipher_memory_security`, mlock, auto-login+FileVault, macOS-26 daemon re-check, encrypted-volume mount/unmount lifecycle) are cited from the handoff records → verify: each spike is referenced with its result, not left "unrun".
 - [ ] The file ends with one verdict ∈ {PASS, CONDITIONAL-PASS, FAIL} + the reviewed M2-a/b/c commit SHAs → verify: present.
-- [ ] The verdict record states explicitly that M3-* and M4-* remain BLOCKED until this gate is PASS/CONDITIONAL-PASS, and is referenced as a prerequisite by the M3/M4 specs → verify: the block statement is present in the file.
+- [ ] The verdict record states explicitly that M3-* and M4-* remain BLOCKED until this gate is PASS/CONDITIONAL-PASS → verify: **(F13 — tightened)** the block statement is present IN THIS FILE (`M2-wall-threat-model.md`). Verifying that M3/M4 specs' Prerequisites lines reference M2-d is a planning-mode checklist item outside this spec's file scope; it is not a runnable in-spec check.
 - [ ] Every CONDITIONAL/FAIL finding has a matching `docs/changes/m2-hardening-*.md` stub → verify: one stub per open finding; PASS ⇒ none required.
 
 ## Progress

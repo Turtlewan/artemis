@@ -4,6 +4,15 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 3, 5, 6) + m8-productivity.md BLOCKs B2, B3, B4, F2; Decision D3 (eager GOAL entity) -->
+<!-- Seam 6: GOAL entity created EAGERLY by create_project (Decision D3 2026-06-11) — see Task 2.
+     Seam 5: check_ref is sync, payload = ids+counts only — enforced by M8-d-c1; no change here.
+     Seam 3: all gated-tool staging uses front-door fq id + _execute twin — no gated tools in M8-d-a
+     (all tools are WRITE/READ AUTO per ADR-011 self-only writes); no change required here.
+     B2 fix: add clear_task_schedule_link to repository.
+     B3 fix: complete_task early-returns if already done; guard uses >=.
+     B4 fix: fixed-mode recurrence advances from previous due_at for "every N" rules.
+     F2 fix: comment "# all 28 ToolSpecs" corrected to 30. -->
 
 # Spec: M8-d-a — Productivity core: owned SQLCipher schema (areas / projects / tasks / subtasks / recurrence / suggestions) + CRUD tools + recurrence engine + ModuleManifest
 
@@ -67,7 +76,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   **`areas`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))`.
   Index: `idx_areas_archived` on `(archived)`.
 
-  **`projects`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','on_hold','done')), target_date TEXT, notes TEXT, area_id TEXT REFERENCES areas(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))`.
+  **`projects`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','on_hold','done')), target_date TEXT, notes TEXT, area_id TEXT REFERENCES areas(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)), project_goal_entity_id TEXT` (nullable — stores the `EntityRef.entity_id` of the eagerly-created GOAL entity; `goal:{project_id}` when present; NULL if `EntityRepository` was not available at creation time — Decision D3).
   Indexes: `idx_projects_area_id` on `(area_id)`, `idx_projects_status` on `(status)`.
 
   **`tasks`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT, status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo','doing','done','cancelled')), priority TEXT NOT NULL DEFAULT 'none' CHECK(priority IN ('none','low','medium','high')), tags TEXT NOT NULL DEFAULT '[]'` (JSON array text), `project_id TEXT REFERENCES projects(id), area_id TEXT REFERENCES areas(id), estimate_minutes INTEGER, due_at TEXT, scheduled_block TEXT, calendar_event_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT`.
@@ -79,7 +88,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   **`task_recurrence`**: `task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE, mode TEXT NOT NULL CHECK(mode IN ('fixed','after_completion')), rule TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL`.
   (One row per recurring task. `rule` = an RRULE-compatible string or a simple interval descriptor — see repository Task 2 for interpretation. Index: covered by PK.)
 
-  **`suggestions`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT, source TEXT NOT NULL DEFAULT 'manual'` (e.g. `"chat"`, `"email"`, `"calendar"`), `raw_context TEXT, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL`.
+  **`suggestions`**: `id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT, source TEXT NOT NULL DEFAULT 'manual'` (e.g. `"chat"`, `"email"`, `"calendar"`), `raw_context TEXT, commitment_shape TEXT, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL`. (`commitment_shape` stores the normalised commitment verb e.g. `"will_send"` from `COMMITMENT_SCHEMA`; `NULL` for manually-created suggestions — U7 fix to avoid encoding machine state in the `notes` field.)
   Index: `idx_suggestions_status` on `(status)`.
 
   Enable FK enforcement on every connection: `PRAGMA foreign_keys = ON`.
@@ -88,7 +97,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
 
 - [ ] **Task 2: Repository** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/repository.py` —
 
-  `class ProductivityRepository` constructed with `(conn)`. All SQL parameterised (no string interpolation of values). All writes return the affected `id`. Timestamps as ISO-8601 UTC text (`now_iso()` = stdlib `datetime.utcnow().isoformat() + "Z"`). All IDs are `uuid4()` hex strings.
+  `class ProductivityRepository` constructed with `(conn)`. All SQL parameterised (no string interpolation of values). All writes return the affected `id`. Timestamps as ISO-8601 UTC text (`now_iso()` = `datetime.now(timezone.utc).isoformat()` — uses timezone-aware datetime; yields `+00:00` suffix, which is valid ISO-8601 UTC; do NOT append a literal `"Z"` separately). All IDs are `uuid4()` hex strings.
 
   **Areas:**
   - `create_area(title, notes=None) -> str`
@@ -98,7 +107,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   - `archive_area(id) -> None` (sets `archived=1`; does NOT cascade — projects/tasks keep their `area_id` for history)
 
   **Projects:**
-  - `create_project(title, *, notes=None, area_id=None, target_date=None) -> str`
+  - `create_project(title, *, notes=None, area_id=None, target_date=None, entity_repo: EntityRepository | None = None) -> str` — after inserting the project row, if `entity_repo` is provided (non-None), calls `entity_repo.resolve_or_create_entity(name=title, entity_type=EntityType.GOAL, entity_id=f"goal:{project_id}")` and stores the returned `EntityRef` in a new `project_goal_entity_id` column on the `projects` table (nullable TEXT; stores `entity_ref.entity_id`). **Decision D3 (2026-06-11): every project is cross-module-linkable at creation** (contracts.md Seam 6). If `entity_repo is None` (off-hardware / tests without M4-d), the GOAL creation is skipped and `project_goal_entity_id` is NULL — degrade-don't-crash. (The `project_goal_entity_id TEXT` column is defined in the Task 1 `projects` DDL.)
   - `get_project(id) -> dict | None`
   - `list_projects(*, status=None, area_id=None, include_archived=False) -> list[dict]`
   - `update_project(id, *, title=None, notes=None, status=None, target_date=None, area_id=None) -> None`
@@ -114,19 +123,23 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   - `today_tasks() -> list[dict]` — tasks with `due_at <= today` AND `status NOT IN ('done','cancelled')`.
   - `upcoming_tasks(days=7) -> list[dict]` — tasks with `due_at` within the next N days AND active.
   - `overdue_tasks() -> list[dict]` — tasks with `due_at < today` AND `status NOT IN ('done','cancelled')`.
-  - `complete_task(id) -> dict | None` — sets `status='done'`, `completed_at=now`; **if the task has a `task_recurrence` row, calls `spawn_next_recurrence(id)` and returns the spawned task dict**; otherwise returns `None`.
+  - `complete_task(id) -> dict | None` — **Early-return if task is already `done` or `cancelled`: load the row first; if `status` is already `'done'` or `'cancelled'`, return `None` immediately (no-op — prevents double-spawn and stale `completed_at` overwrite on retry).** Otherwise, sets `status='done'`, `completed_at=now`; **if the task has a `task_recurrence` row, calls `spawn_next_recurrence(id)` and returns the spawned task dict**; otherwise returns `None`. (Fixes B3.)
   - `cancel_task(id) -> None`
   - `update_task(id, *, title=None, notes=None, priority=None, tags=None, project_id=None, area_id=None, estimate_minutes=None, due_at=None, scheduled_block=None, calendar_event_id=None) -> None`
   - `assign_task_to_project(task_id, project_id) -> None`
   - `assign_task_to_area(task_id, area_id) -> None`
   - `set_recurrence(task_id, mode: str, rule: str) -> None` — UPSERT into `task_recurrence`.
   - `clear_recurrence(task_id) -> None` — DELETE from `task_recurrence`.
+  - `clear_task_schedule_link(task_id) -> None` — sets `calendar_event_id=NULL`, `scheduled_block=NULL` for the given task id. **Use this (not `update_task(..., calendar_event_id=None, ...)`) whenever M8-d-b needs to clear the link** — `update_task` treats `None` as "no change" (only non-None kwargs are written), so a sentinel-safe clear method is required. (Fixes B2.)
 
   **Recurrence engine — `spawn_next_recurrence(completed_task_id) -> dict`:**
   Called ONLY from `complete_task`; idempotent guard: if a task with the same `title` + `project_id` + `area_id` already exists with `status='todo'` AND `created_at > completed_at`, return that existing task (prevents double-spawn on retry).
   - Load the completed task row and its `task_recurrence` row.
   - Compute `next_due_at`:
-    - `mode == "fixed"`: parse `rule` as a simple descriptor. Supported rule grammar (document in module docstring): `"every <N> <unit>"` where unit ∈ `days|weeks|months`; `"every <weekday>"` (e.g. `"every monday"`); `"monthly on <N>"` (e.g. `"monthly on 1"`). Compute next occurrence from `now` (NOT from `completed_at`) by advancing to the next calendar boundary matching the rule. Use stdlib `datetime` only. If `rule` is not parseable → `next_due_at = None` (defer; log a warning; do NOT raise — the task is still created).
+    - `mode == "fixed"`: parse `rule` as a simple descriptor. Supported rule grammar (document in module docstring): `"every <N> <unit>"` where unit ∈ `days|weeks|months`; `"every <weekday>"` (e.g. `"every monday"`); `"monthly on <N>"` (e.g. `"monthly on 1"`). **Rule-type-specific advance semantics (fixes B4):**
+      - `"every <weekday>"` and `"monthly on <N>"`: snap to the next matching calendar boundary strictly after `now` — these are calendar-position rules where a late completion should not shift future instances.
+      - `"every <N> days|weeks|months"`: advance from the task's `due_at` field (not `now`) by adding N units repeatedly until the result is strictly after `now`. This preserves the fixed-schedule invariant (late completion does not drift future due dates). If `due_at` is `None`, fall back to `now` as the base. For month arithmetic, clamp the day to the last day of the target month (e.g. `"every 1 months"` from Jan 31 → Feb 28/29 — no `ValueError`).
+      Use stdlib `datetime` only. If `rule` is not parseable → `next_due_at = None` (defer; log a warning; do NOT raise — the task is still created).
     - `mode == "after_completion"`: parse `rule` as `"<N> <unit> after completion"` (unit ∈ `days|weeks`). Compute `completed_at + timedelta(N * unit_in_days)` → `next_due_at`.
   - Create a NEW task row with the same `title`, `notes`, `priority`, `tags`, `project_id`, `area_id`, `estimate_minutes`, `due_at=next_due_at`, `status='todo'`; copy the `task_recurrence` row to the new task (so recurrence carries forward).
   - Return the new task dict.
@@ -138,7 +151,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   - `delete_subtask(subtask_id) -> None`
 
   **Suggestions (capture inbox):**
-  - `create_suggestion(title, *, notes=None, source="manual", raw_context=None) -> str`
+  - `create_suggestion(title, *, notes=None, source="manual", raw_context=None, commitment_shape=None) -> str` — writes `commitment_shape` column (U7 fix)
   - `list_suggestions(*, status="pending") -> list[dict]`
   - `accept_suggestion(suggestion_id, *, project_id=None, area_id=None, due_at=None) -> str` — sets suggestion `status='accepted'`, creates a task from the suggestion data + overrides, returns the new `task_id`.
   - `reject_suggestion(suggestion_id) -> None`
@@ -182,7 +195,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
 
 - [ ] **Task 4: Tool callables** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/tools.py` —
 
-  Each tool callable is a plain Python function with a Pydantic `BaseModel` args class and a Pydantic `BaseModel` return class. Thin: validate args, call `store.<method>`, return result. All `action_risk = ActionRisk.READ` or `ActionRisk.WRITE` per the tables below; ALL tools are auto (no gating). 30 tools total (12 read + 18 write).
+  Each tool callable is a plain Python **`async def`** function (ADR-016: every `ToolSpec.callable_ref` is uniformly `async def` returning a Pydantic result model — front-door, read-only, no-I/O alike; the Brain/GATE dispatch sites `await` it) with a Pydantic `BaseModel` args class and a Pydantic `BaseModel` return class. Thin: validate args, call `store.<method>`, return result. The `store.<method>` calls are sync SQLCipher reads/writes — they stay sync inside the `async def` body (no `await` on them); the function is `async def` purely for `callable_ref` signature uniformity (zero-cost — it returns immediately without suspending). All `action_risk = ActionRisk.READ` or `ActionRisk.WRITE` per the tables below; ALL tools are auto (no gating). 30 tools total (12 read + 18 write).
 
   Define a module-level `_store: ProductivityStore | None = None` and `def init_tools(store: ProductivityStore) -> None` that sets it (the manifest wiring seam — the brain injects the store at startup; tools call `_get_store()` which raises `RuntimeError("productivity store not initialised")` if unset).
 
@@ -226,7 +239,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   | `suggestion_accept` | `suggestion_id: str`, `project_id: str \| None`, `area_id: str \| None`, `due_at: str \| None` | `TaskCreatedResult` |
   | `suggestion_reject` | `suggestion_id: str` | `OkResult` |
 
-  — done when: `uv run mypy --strict src` passes; every callable is importable and its args/return classes are valid Pydantic models; `task_create` with an uninitialised store raises `RuntimeError`.
+  — done when: `uv run mypy --strict src` passes; every callable is importable, is a coroutine function (`inspect.iscoroutinefunction(task_create) is True` — ADR-016), and its args/return classes are valid Pydantic models; `await task_create(...)` with an uninitialised store raises `RuntimeError` (async test — the `RuntimeError` surfaces when the coroutine is awaited).
 
 - [ ] **Task 5: ModuleManifest** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/manifest.py` —
 
@@ -243,7 +256,7 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
          name="productivity",
          version="0.1.0",
          description="Owned tasks, projects, and areas — Artemis is the source of truth.",
-         tools=[...],  # all 28 ToolSpecs
+         tools=[...],  # all 30 ToolSpecs
          data_scope=DataScope.OWNER_PRIVATE,
          permissions=Permissions(owner=True, guest=False),
          proactive_hooks=[],   # hooks are M8-d-c
@@ -262,10 +275,11 @@ Simplicity check: considered combining all CRUD into a single `TaskStore` God cl
   - **Schema:** `create_schema` on a fresh connection creates all 7 tables and 6+ indexes (assert via `sqlite_master`); idempotent re-call raises no error.
   - **Area CRUD:** `create_area("Health")` → `get_area(id)` round-trips; `list_areas(include_archived=False)` excludes archived; `archive_area(id)` → excluded from default list; `area_contents(id)` returns correct shape.
   - **Project CRUD:** `create_project("Q3 budget", area_id=area_id)` → `get_project` → FK to area; `list_projects(status="active")` includes it; `project_tasks(id)` returns empty list.
+  - **Eager GOAL entity (Decision D3):** `create_project("Build feature", entity_repo=FakeEntityRepository())` → `get_project` returns a row with `project_goal_entity_id == f"goal:{project_id}"`; `FakeEntityRepository.resolve_or_create_entity` was called with `name="Build feature"`, `entity_type=EntityType.GOAL`, `entity_id=f"goal:{project_id}"`. Without `entity_repo` (default None): `project_goal_entity_id` is NULL; no error raised (degrade-don't-crash).
   - **Task CRUD + FK enforcement:** `create_task("Send report", project_id=proj_id, due_at="2026-07-01")` → `get_task` includes it; `today_tasks()` / `overdue_tasks()` / `upcoming_tasks()` return correct rows for manipulated `due_at` values; creating a task with a non-existent `project_id` raises an IntegrityError (FK enforced).
   - **Recurrence — fixed mode:** `create_task` → `set_recurrence(mode="fixed", rule="every monday")`; `complete_task(id)` returns `spawned_task` with `status="todo"` and `due_at` = next Monday ≥ today; the spawned task has its OWN `task_recurrence` row (recurrence carries forward). Calling `complete_task` again on the SAME original task (now done) is idempotent (no second spawn — already done).
   - **Recurrence — after_completion mode:** `set_recurrence(mode="after_completion", rule="7 days after completion")`; `complete_task(id)` → spawned task's `due_at` = `completed_at + 7 days`.
-  - **Recurrence idempotency guard:** completing the same task twice (second call = task already `done`) does NOT spawn a second next-task — the guard returns the existing pending task.
+  - **Recurrence idempotency guard (B3 fix):** `complete_task(id)` called a second time on a task already in `status='done'` returns `None` immediately (no-op early-return). The spawn guard inside `spawn_next_recurrence` uses `>=` (not strict `>`) when comparing `created_at >= completed_at` to tolerate same-second timestamps.
   - **Suggestion flow:** `create_suggestion("Call dentist", source="chat")` → `list_suggestions(status="pending")` includes it; `accept_suggestion(id)` creates a task and returns `task_id`; `list_suggestions(status="pending")` is now empty; `reject_suggestion` sets status to rejected.
   - **ScopeLockedError propagation:** `ProductivityStore(settings, FakeKeyProvider(owner_unlocked=False))._get_conn()` raises `ScopeLockedError` (no key → no open).
   - **Manifest shape:** `productivity_manifest(store).name == "productivity"`; `len(tools) == 30`; no duplicate tool names; `data_scope == DataScope.OWNER_PRIVATE`; `proactive_hooks == []`.

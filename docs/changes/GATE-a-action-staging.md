@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 2, 3) + cal-gate.md BLOCKs B1, B2, U1 -->
 
 # Spec: GATE-a — Pending-action staging subsystem (PendingActionStore + ActionStagingService)
 
@@ -15,11 +16,12 @@ autonomy_level: L2
 ## Assumptions
 - **M2-b** (`KeyProvider` Protocol with `dek_for_scope(scope: Scope) -> SecretKey`, `is_owner_unlocked() -> bool`, `SecretKey.as_hex() -> str`, `ScopeLockedError`, `OWNER_PRIVATE: Scope = "owner-private"` from `artemis.identity.scope`, `FakeKeyProvider`) is complete. → impact: Stop (PendingActionStore uses these exact symbols)
 - **M2-c** (`sqlcipher_open(path: Path, key_hex: str) -> Connection` from `artemis.data.sqlcipher`) is complete. → impact: Stop (PendingActionStore's `_connect` copies the M8-a keyed pattern verbatim)
-- **M1-a** (`ToolRegistry.get_tool(fq_name: str) -> ToolSpec`, `ToolSpec.callable_ref: Callable[..., BaseModel]`, `ToolSpec.args_schema: type[BaseModel]` from `artemis.registry`) is complete. → impact: Stop (ActionStagingService.approve dispatches via these exact symbols)
+- **M1-a** (`ToolRegistry.get_tool(fq_name: str) -> ToolSpec`, `ToolSpec.callable_ref: Callable[..., Awaitable[BaseModel]]` (ADR-016: `async def`), `ToolSpec.args_schema: type[BaseModel]` from `artemis.registry`) is complete. → impact: Stop (ActionStagingService.approve dispatches via these exact symbols; the twin is awaited)
 - `staging/` is **shared governance infrastructure**, not a domain module — it ships no `ModuleManifest` and no brain-facing tools. It is a library consumed by CAL-b, CAL-c, and future write-enabled spokes. → impact: Caution (no manifest/registry wiring here; callers register their own)
 - The `PendingAction.args` dict is owner-authored intent captured at stage time from validated tool inputs — it never contains raw untrusted external text (the calling tool built it from validated inputs). The store is owner-private SQLCipher (same M2 wall as `SqlCipherTokenStore` in M8-a). → impact: Stop (this is the security boundary — owner-private at rest)
 - The on-disk DB path is derived from `paths.scope_dir(settings, OWNER_PRIVATE) / "staging" / "pending_actions.db"`. The vault-path reconciliation to the broker-mounted `/opt/artemis/<slot>/<scope>/vault/` is a one-line adapter deferred to on-hardware integration (identical to M8-a token-store deferral). → impact: Low (off-hardware tests do not care; one-line change on the Mini)
 - Real SQLCipher keyed persistence is GATED on-hardware (Task 5), exactly as M2-c and M8-a gate their real SQLCipher tasks. Off-hardware everything is tested with `FakeKeyProvider` + a fake `ToolRegistry`. → impact: Stop (keeps CI-buildable off the Mini)
+- Off-hardware `sqlcipher_open` is the plain-SQLite shim from M2-c (no binding required); real keyed SQLCipher is Task 6. → impact: Stop (the Task 5 store test connects via the shim with no SQLCipher binding installed)
 
 Simplicity check: considered reusing M7-b `RecipeStore`/`ReviewSurface` for pending actions — rejected: a `PendingAction` is a one-off instance with bound args; conflating it with the recipe abstraction overloads `approve` semantics (promote-template vs execute-instance) and introduces RAG/signing machinery that is meaningless for a single dispatch (ADR-012). The minimum is: a pydantic model + a SQLCipher store + a service that wires them to the ToolRegistry.
 
@@ -39,7 +41,7 @@ Simplicity check: considered reusing M7-b `RecipeStore`/`ReviewSurface` for pend
 ## Tasks
 
 - [ ] Task 1: Define the PendingAction model + ActionStatus enum — files: `/Users/artemis-build/artemis/src/artemis/staging/model.py` — pure Pydantic v2, `mypy --strict`-clean, no I/O:
-  - `class ActionStatus(StrEnum)`: `PENDING = "pending"`, `APPROVED = "approved"`, `REJECTED = "rejected"`, `EXPIRED = "expired"`.
+  - `class ActionStatus(StrEnum)`: `PENDING = "pending"`, `EXECUTING = "executing"`, `APPROVED = "approved"`, `REJECTED = "rejected"`, `EXPIRED = "expired"`. (`EXECUTING` = the in-flight state between the at-most-once flip and the dispatch outcome — see `approve`.)
   - `class PendingAction(BaseModel)` with `model_config = ConfigDict(frozen=True)`:
     - `id: str` — a UUID4 string generated at stage time (caller supplies; store does not generate)
     - `module: str` — the module name (e.g. `"calendar"`)
@@ -69,6 +71,7 @@ Simplicity check: considered reusing M7-b `RecipeStore`/`ReviewSurface` for pend
     - `def get(self, action_id: str) -> PendingAction`: SELECT by id; raise `KeyError` if absent; deserialise and return.
     - `def list_pending(self) -> list[PendingAction]`: SELECT WHERE status = "pending", ordered by created_at ASC.
     - `def set_status(self, action_id: str, status: ActionStatus, *, result: dict[str, object] | None = None) -> None`: UPDATE status (and result if provided) WHERE id = action_id; raise `KeyError` if absent.
+    - `def set_status_conditional(self, action_id: str, new_status: ActionStatus, expected_status: ActionStatus) -> None`: execute `UPDATE pending_actions SET status=? WHERE id=? AND status=?` with `(new_status, action_id, expected_status)`; check `cursor.rowcount`; if rowcount == 0 raise `ValueError(f"Conditional status update failed for {action_id}: expected {expected_status}")`. This is the at-most-once guard used by `ActionStagingService.approve` (U1 / Seam 3).
   — done when: `uv run mypy --strict src` passes; a `PendingActionStore` built with `FakeKeyProvider(owner_unlocked=False)` raises `ScopeLockedError` on `stage` and `get`; `stage` then `get` round-trips a `PendingAction` with all fields preserved (off-hardware fake-key test, real SQLCipher gated Task 5).
 
 - [ ] Task 3: Implement ActionStagingService — files: `/Users/artemis-build/artemis/src/artemis/staging/service.py` —
@@ -79,39 +82,44 @@ Simplicity check: considered reusing M7-b `RecipeStore`/`ReviewSurface` for pend
     - `action = PendingAction(id=str(uuid4()), module=module, tool=tool, args=args, summary=summary, action_class="takes-action", status=ActionStatus.PENDING, created_at=now, expires_at=now + effective_ttl)`
     - `store.stage(action)`
     - return `action`
-  - `def approve(self, action_id: str) -> PendingAction`:
+  - `async def approve(self, action_id: str) -> PendingAction` (ADR-016 / Seam 3: `async` because it awaits the async `_execute` twin; the SQLCipher `store` calls stay sync inside this async method):
     - `action = store.get(action_id)` — raises `KeyError` if absent
     - if `action.status != ActionStatus.PENDING`: raise `ValueError(f"Cannot approve action {action_id}: status is {action.status}")`
     - **Expiry check BEFORE dispatch**: if `datetime.now(tz=timezone.utc) >= action.expires_at`: call `store.set_status(action_id, ActionStatus.EXPIRED)` and raise `ValueError(f"Action {action_id} has expired and cannot be approved")`
-    - `tool_spec = tool_registry.get_tool(action.tool)` — raises `KeyError` if the tool is not registered; let it propagate
-    - `validated_args = tool_spec.args_schema.model_validate(action.args)` — re-validates args against the tool schema; raises `ValidationError` on mismatch (do NOT catch — let it propagate; a mismatched args payload is a hard error)
-    - `result_obj = tool_spec.callable_ref(validated_args)` — dispatch ONCE; raises `ScopeLockedError` if the vault is locked during dispatch; let it propagate (no catch)
-    - `result_dict = result_obj.model_dump()` — serialise the result to a plain dict
-    - `store.set_status(action_id, ActionStatus.APPROVED, result=result_dict)`
+    - **Prepare dispatch BEFORE the status flip (B1 / Seam 3 D1) — so a missing-twin / bad-args action stays PENDING, never stuck EXECUTING:** construct the fq execute-twin id `execute_tool_id = f"{action.tool}_execute"` (e.g. `"calendar.create_event"` → `"calendar.create_event_execute"`); `tool_spec = tool_registry.get_tool(execute_tool_id)` (raises `KeyError` if the twin is not registered — let it propagate; status still PENDING); `validated_args = tool_spec.args_schema.model_validate(action.args)` (raises `ValidationError` on mismatch — let it propagate; status still PENDING). The twin performs the raw effect with **no re-classification** — the GATED loop is broken because `approve()` never calls the front-door tool.
+    - **At-most-once flip to `EXECUTING` (U1 / Seam 3):** `store.set_status_conditional(action_id, new_status=ActionStatus.EXECUTING, expected_status=ActionStatus.PENDING)` — executes `UPDATE pending_actions SET status=? WHERE id=? AND status='pending'` and checks rowcount; if rowcount == 0 raise `ValueError(f"Cannot approve action {action_id}: concurrent status change detected")`. **No dispatch occurs before this flip.**
+    - **Dispatch ONCE inside try/except for honest at-most-once recovery:**
+      - `result_obj = await tool_spec.callable_ref(validated_args)` — dispatch the twin EXACTLY ONCE (ADR-016: `callable_ref` is `async def`).
+      - on success: `store.set_status(action_id, ActionStatus.APPROVED, result=result_obj.model_dump())`.
+      - on `ScopeLockedError` (vault re-locked mid-dispatch) or ANY dispatch exception: **revert** via `store.set_status_conditional(action_id, new_status=ActionStatus.PENDING, expected_status=ActionStatus.EXECUTING)`, then re-raise (never catch-and-swallow). The owner can then re-approve. A crash between the flip and either terminal write leaves the action visibly `EXECUTING` — recoverable by a sweep, **never** silently `APPROVED`-but-unexecuted.
     - return `store.get(action_id)` — return the updated action
-    - **No second dispatch path exists**: the only route to `callable_ref` is through `tool_registry.get_tool(tool).callable_ref` (the same ToolRegistry path the brain uses per ADR-012 §3). There is no fallback, no retry, no alternate dispatch.
+    - **`PendingAction.tool` stores the front-door fq id** (e.g. `"calendar.create_event"`) — what the owner sees in the Review screen. The `_execute` twin is internal; it is NOT included in `retrieve_tools()` / the brain's tool-selection surface.
   - `def reject(self, action_id: str) -> PendingAction`:
     - `action = store.get(action_id)` — raises `KeyError` if absent
     - if `action.status != ActionStatus.PENDING`: raise `ValueError(f"Cannot reject action {action_id}: status is {action.status}")`
     - `store.set_status(action_id, ActionStatus.REJECTED)`
     - return `store.get(action_id)`
+  - `def list_pending(self) -> list[PendingAction]`:
+    - Call `self.expire_due(datetime.now(tz=timezone.utc))` first (marks any past-expiry rows EXPIRED so they are never returned as PENDING — consistent with U2 wiring in `list_pending`).
+    - Delegate to `self.store.list_pending()` and return the result.
+    - This is the method GATE-b calls; it is the single public surface for "what needs the owner's attention".
   - `def expire_due(self, now: datetime) -> list[PendingAction]`:
     - fetch all `store.list_pending()`
     - for each where `now >= action.expires_at`: `store.set_status(action.id, ActionStatus.EXPIRED)` — **never dispatch, never call callable_ref**
     - return the list of actions that were expired (for logging/telemetry)
-  — done when: `uv run mypy --strict src` passes; stage→approve dispatches the spy callable EXACTLY ONCE and returns APPROVED with the result; stage→reject returns REJECTED; stage→approve on an already-approved action raises `ValueError`; stage then `expire_due(expires_at + 1s)` marks it EXPIRED and approve on it raises `ValueError`; approve with a locked vault (FakeKeyProvider that raises `ScopeLockedError` from `callable_ref`) propagates `ScopeLockedError`; approve re-validates args (a mismatched args dict raises `ValidationError`).
+  — done when: `uv run mypy --strict src` passes; stage→approve dispatches the spy callable (registered as `fq_id + "_execute"` twin) EXACTLY ONCE and returns APPROVED with the result; stage→reject returns REJECTED; stage→approve on an already-approved action raises `ValueError`; stage then `expire_due(expires_at + 1s)` marks it EXPIRED and approve on it raises `ValueError`; approve with a locked vault (FakeKeyProvider that raises `ScopeLockedError` from `callable_ref`) propagates `ScopeLockedError`; approve re-validates args (a mismatched args dict raises `ValidationError`); `set_status_conditional` with wrong expected_status raises `ValueError` (rowcount 0 path); `list_pending()` calls `expire_due` then returns store's pending list.
 
 - [ ] Task 4: Package surface — files: `/Users/artemis-build/artemis/src/artemis/staging/__init__.py` — re-export `PendingAction`, `ActionStatus`, `PendingActionStore`, `ActionStagingService` with `__all__`. — done when: `uv run python -c "from artemis.staging import PendingAction, ActionStatus, PendingActionStore, ActionStagingService"` exits 0.
 
-- [ ] Task 5: Write tests (off-hardware, fakes only) — files: `/Users/artemis-build/artemis/tests/test_action_staging.py` — typed pytest with `FakeKeyProvider` (from `artemis.identity.key_provider`), a `FakeToolSpec` + `FakeToolRegistry` (minimal: `get_tool(fq_name)` returns a `FakeToolSpec` whose `args_schema` is a trivial Pydantic model and whose `callable_ref` is a spy callable tracking invocation count + returning a minimal result model), and a `PendingActionStore` built over a real SQLite file in `tmp_path` (using `FakeKeyProvider(owner_unlocked=True)` with a fake `dek_for_scope` that returns a `SecretKey`; **real SQLCipher keyed round-trip is GATED on-hardware**):
+- [ ] Task 5: Write tests (off-hardware, fakes only) — files: `/Users/artemis-build/artemis/tests/test_action_staging.py` — typed pytest with `FakeKeyProvider` (from `artemis.identity.key_provider`), a `FakeToolSpec` + `FakeToolRegistry` (minimal: `get_tool(fq_name)` returns a `FakeToolSpec` whose `args_schema` is a trivial Pydantic model and whose `callable_ref` is an `async def` spy callable (ADR-016: every `callable_ref` is `async def`) tracking invocation count + returning a minimal result model), and a `PendingActionStore` built over a real SQLite file in `tmp_path` (using `FakeKeyProvider(owner_unlocked=True)` with a fake `dek_for_scope` that returns a `SecretKey`; **real SQLCipher keyed round-trip is GATED on-hardware**). The `approve`-dispatching tests below are `async def` + `@pytest.mark.anyio` and `await service.approve(...)` (ADR-016: `approve` is async); the model/store/stage/reject/expire_due tests stay sync. (NOTE: no async test runner config exists in the spec set yet — coding mode must ensure `anyio`/`pytest-anyio` or `pytest-asyncio` is available and an `anyio_backend`/`asyncio_mode` is configured; flag if absent.)
   - **model**: `PendingAction` constructs with all fields; `summary=""` raises `ValidationError`; `expires_at <= created_at` raises `ValidationError`; frozen (mutation raises).
   - **store locked**: `PendingActionStore(settings, FakeKeyProvider(owner_unlocked=False))` raises `ScopeLockedError` on `stage` and `get`.
   - **store round-trip** (fake key, real SQLite file): `stage` then `get` returns an identical `PendingAction` (all fields including datetimes timezone-aware, args dict preserved); `list_pending` returns staged PENDING action; `set_status(APPROVED, result={...})` updates; `get` reflects the new status and result.
   - **service stage**: `ActionStagingService.stage("cal", "cal.create_event", {"title": "T"}, "Create event T")` returns a `PendingAction` with `status=PENDING`, `tool="cal.create_event"`, `action_class="takes-action"`, `id` is a non-empty string, `expires_at == created_at + default_ttl`.
-  - **service approve — dispatch-once**: approve a PENDING action → spy callable invoked EXACTLY ONCE (assert `spy.call_count == 1`); returned action has `status=APPROVED` and `result` non-None. Call approve a second time → raises `ValueError` (already APPROVED, not dispatched again — assert spy still `call_count == 1`).
-  - **service approve — re-validates args**: stage an action with `args={"title": "T"}`; override the fake tool spec's `args_schema` with a model that requires an `int` field; approve → raises `ValidationError` (spy never called).
-  - **service approve — expiry before dispatch**: stage with `ttl=timedelta(seconds=1)`; advance `now` by 2 seconds; `expire_due(now)` returns the action; approve → raises `ValueError` (expired); spy call_count == 0 (never dispatched).
-  - **service approve — ScopeLockedError propagates**: spy callable raises `ScopeLockedError`; approve → raises `ScopeLockedError`; action status remains PENDING (no partial state update — verify via `store.get`).
+  - **service approve — dispatch-once** (`async def`, `@pytest.mark.anyio`): `await service.approve(...)` on a PENDING action → spy callable invoked EXACTLY ONCE (assert `spy.call_count == 1`); returned action has `status=APPROVED` and `result` non-None. `await service.approve(...)` a second time → raises `ValueError` (already APPROVED, not dispatched again — assert spy still `call_count == 1`).
+  - **service approve — re-validates args** (`async def`, `@pytest.mark.anyio`): stage an action with `args={"title": "T"}`; override the fake tool spec's `args_schema` with a model that requires an `int` field; `await service.approve(...)` → raises `ValidationError` (spy never called).
+  - **service approve — expiry before dispatch** (`async def`, `@pytest.mark.anyio`): stage with `ttl=timedelta(seconds=1)`; advance `now` by 2 seconds; `expire_due(now)` returns the action; `await service.approve(...)` → raises `ValueError` (expired); spy call_count == 0 (never dispatched).
+  - **service approve — ScopeLockedError reverts EXECUTING→PENDING** (`async def`, `@pytest.mark.anyio`): the `async def` spy callable raises `ScopeLockedError`; `await service.approve(...)` → raises `ScopeLockedError`; the revert fires so the final status is **PENDING** (verify via `store.get`) and a second `await service.approve(...)` succeeds (re-approvable; spy now `call_count == 2`) — proving the action was never stuck.
   - **service reject**: stage then reject → status is REJECTED; approve after reject → raises `ValueError`.
   - **service expire_due**: stage two actions; `expire_due` with `now > expires_at` → both EXPIRED; `list_pending()` is empty; approve on either raises `ValueError`; spy never called.
   - **args never contain untrusted text**: (documentation + inline comment test) — assert that `PendingAction.args` is a plain `dict` (i.e., not a string carrying raw external text); a staged action whose args come from a validated Pydantic model's `.model_dump()` only contains Python-native types (strings/ints/floats/bools/None/list/dict) — document this as the invariant and assert `isinstance(action.args, dict)`.
@@ -158,7 +166,8 @@ Approving this spec approves all of them.
 ## Specialist Context
 ### Security
 Load-bearing invariants the build MUST honour (per ADR-012 §3 + apex-security self-review):
-- **`approve` executes exactly once**: the only dispatch path is `tool_registry.get_tool(tool).callable_ref(validated_args)` inside a single `approve` call. No fallback, no retry. The `ValueError` guard on non-PENDING status prevents double-dispatch.
+- **`approve` executes at-most-once with recovery (U1 / Seam 3)**: dispatch prep (twin lookup + arg validation) happens first (failures leave status PENDING); then `set_status_conditional` flips `PENDING→EXECUTING` (rowcount check; 0 → concurrent/duplicate, rejected); the twin dispatches once; success → `EXECUTING→APPROVED`, transient failure (`ScopeLockedError`) → revert `EXECUTING→PENDING` (re-approvable). A crash mid-dispatch leaves the action visibly `EXECUTING` (sweep-recoverable), never silently `APPROVED`-but-unexecuted. Safe in a threadpool.
+- **`_execute` twin dispatch (B1 / Seam 3 D1)**: `approve()` dispatches the `{tool}_execute` twin (e.g. `"calendar.create_event_execute"`), NOT the front-door tool. The twin performs the raw write with no re-classification — breaking the infinite-staging loop. The `_execute` twin is registered for staging-dispatch only and is NOT in the brain's tool-selection surface (`retrieve_tools()`).
 - **Args re-validated before dispatch**: `tool_spec.args_schema.model_validate(action.args)` runs inside `approve` before `callable_ref` is called. A mismatched args payload raises `ValidationError` — the dispatch never occurs.
 - **Vault-locked → dispatch refused**: `ScopeLockedError` from `callable_ref` or from `store._connect` (via `dek_for_scope`) propagates unwrapped. There is no catch, no silent fallback.
 - **Expired actions never execute**: the expiry check (`now >= expires_at`) runs before the `tool_registry` lookup. `expire_due` marks stale PENDING rows EXPIRED and never calls `callable_ref`.
@@ -179,7 +188,7 @@ Load-bearing invariants the build MUST honour (per ADR-012 §3 + apex-security s
 
 ## Acceptance Criteria
 - [ ] `uv run mypy --strict src tests/test_action_staging.py` → verify: exit 0.
-- [ ] `uv run pytest -q tests/test_action_staging.py` → verify: model validation (empty summary, expired expiry rejects), store locked→`ScopeLockedError`, store round-trip (all fields preserved), service stage returns PENDING action, approve dispatches spy EXACTLY ONCE → APPROVED, second approve raises `ValueError` (spy still 1 call), re-validation failure raises `ValidationError` (spy 0 calls), expiry-before-dispatch raises `ValueError` (spy 0 calls), `ScopeLockedError` from callable propagates + status stays PENDING, reject→REJECTED, approve-after-reject raises `ValueError`, `expire_due` marks past-expiry rows EXPIRED + approve raises `ValueError` + spy 0 calls — all pass.
+- [ ] `uv run pytest -q tests/test_action_staging.py` → verify: model validation (empty summary, expired expiry rejects), store locked→`ScopeLockedError`, store round-trip (all fields preserved), `set_status_conditional` wrong expected_status raises `ValueError`, `list_pending()` calls expire_due first then returns store list, service stage returns PENDING action, approve dispatches `{tool}_execute` twin spy EXACTLY ONCE → APPROVED (status flipped before dispatch via conditional update), second approve raises `ValueError` (spy still 1 call), re-validation failure raises `ValidationError` (spy 0 calls), expiry-before-dispatch raises `ValueError` (spy 0 calls), `ScopeLockedError` from callable propagates + status reverts to PENDING (re-approvable per Task 3 revert) → document this as expected at-most-once behavior, reject→REJECTED, approve-after-reject raises `ValueError`, `expire_due` marks past-expiry rows EXPIRED + approve raises `ValueError` + spy 0 calls — all pass.
 - [ ] `uv run python -c "from artemis.staging import PendingAction, ActionStatus, PendingActionStore, ActionStagingService"` → verify: exit 0.
 - [ ] `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 - [ ] (GATED, on Mini) Real SQLCipher keyed persistence: stage→approve round-trip with correct DEK works; wrong key fails to open; expired action not dispatched → verify recorded in handoff.

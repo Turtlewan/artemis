@@ -1,3 +1,4 @@
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md -->
 # Artemis — Conceptual Data Model (SP0 phase 4)
 
 _Status: **SP0 phase-4 conceptual data model** (the ADR-008 early-data case — Artemis is data-heavy, so the
@@ -66,7 +67,7 @@ on every node/edge/vector.
 - **SemanticFact** (semantic store) — a distilled `(subject, relation, object)` triple. `fact_id` · `person_id`
   · subject/relation/object · `confidence` · provenance (links to source Episode/Chunk) · **`valid_at` /
   `invalid_at`** (temporal validity + explicit supersession for stale-confident facts) · embedding + graph edges.
-  Written via **A.U.D.N.** (ADD/UPDATE/DELETE/NOOP) to dedupe + resolve contradictions; extraction runs on the teacher.
+  Written via **A.U.D.N.** (ADD/UPDATE/DELETE/NOOP) to dedupe + resolve contradictions; extraction runs on the **local `sensitive_reasoner`** (Qwen3.6-27B), not the teacher — owner memory content is sensitive and must not reach the cloud (ADR-003).
 - **Entity** (cross-module backbone — ADR-013) — a first-class referenced node in the owner-private memory
   DB: `entity_id` (PK, stable) · `entity_type` (`person` | `place` | `goal`) · `canonical_name` · `external_ref`
   (e.g. email; nullable) · `attributes` (deferred-schema JSON, nullable). **Distinct from §1 Person/`person_id`**

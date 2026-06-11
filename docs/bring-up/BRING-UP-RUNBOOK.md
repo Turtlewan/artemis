@@ -140,13 +140,14 @@ Load every secret from the password manager into the owner-runtime user's macOS 
 - [ ] Search provider keys (S4, S5, optional S6) — used by DR-a/b
 - [ ] DeepSeek API key (S7) — build-agent coding sessions + DR-c + distill judge
 - [ ] Tailscale auth key (S8, if pre-generated) — used at Step 7
-- [ ] Generate + write the ntfy topic secret (S11) into the slot `.env`
 
 Standard Keychain load: `security add-generic-password -a <account> -s <service> -w <secret>` (exact service/account names per `SECRETS-INVENTORY.md`).
 
 **Verify:** `security find-generic-password -s <service> -a <account>` returns the item.
 
-**⚠️ Cross-cutting gap (SECRETS-INVENTORY §P5):** the launchd→Keychain `.env`-injection script that wires these into running services is referenced by several specs but not yet itself specced. Resolve before this step is fully automatable.
+**Then inject into the slot `.env`:** `uv run python scripts/inject_env.py --slot <slot>` (spec **M0-f**) reads these Keychain items, **generates** the ntfy topic secret (S11) on first run (preserved on re-runs), and writes the `0600` slot `config/.env.<slot>` (merging into the non-secret config already there from Step 4). It also runs automatically inside `deploy.sh` before `launchctl bootstrap`. Use `--allow-missing` only for a deliberate partial bring-up.
+
+**Verify:** `inject_env.py --slot <slot>` exits 0 and `config/.env.<slot>` is mode `0600` and contains the loaded secrets + `ARTEMIS_NTFY_TOPIC_SECRET`.
 
 ---
 
@@ -326,6 +327,6 @@ Per ADR-002 (lean-default pipeline; full-UAT auto-triggered for risky changes):
 | P5 | **Exact MLX model pull command** — M0-c Task 4 GATED on-hardware; mlx-openai-server 1.8.1 weight-loading mechanism. | Step 8b |
 | P6 | **SSE / Gateway smoke-test command** — `/app/chat/stream` shape is M1-c; replace illustrative command with the M1-c acceptance test. | Step 10c |
 | P7 | **Voice ack smoke test** — needs the M5 audio sidecar + STT/TTS. Deferred to M5 bring-up. | Step 10d |
-| P8 | **Launchd→Keychain `.env`-injection script** (also SECRETS-INVENTORY §P5) — referenced by M8-a/M0-b/DR-b but the injection script itself is unspecced. | Step 5, Step 8 |
+| P8 | ✅ RESOLVED 2026-06-10 → spec **M0-f** (`scripts/inject_env.py`): Keychain→`0600` slot `.env`, wired into `deploy.sh`. Step 5 updated. | Step 5, Step 8 |
 
 > Hardware note: targets the **M5 (Pro) Mac Mini, 64 GB** (ADR-001 §Refinement 2026-06-09). All M0–M2 specs were written to the 48 GB floor and are compatible; the extra headroom is pure upside (local non-sensitive teacher path opens up — parked to build).

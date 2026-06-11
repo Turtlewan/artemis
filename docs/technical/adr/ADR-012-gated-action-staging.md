@@ -1,3 +1,4 @@
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md -->
 # ADR-012 — Gated-action staging (pending-actions store, distinct from recipe Review)
 
 - **Status:** Accepted
@@ -84,6 +85,20 @@ external-effect spoke (Gmail-send, Tasks-export), is blocked.
 - **Security surface:** a `PendingAction.args` payload is owner-authored intent captured at stage time;
   it is owner-private at rest (SQLCipher) and never carries untrusted external instructions into
   execution (the gated tool built the args from validated inputs, not from raw external text).
+
+## §3 — Clarifying note: `EXECUTING` state and at-most-once semantics (refined 2026-06-11)
+
+_Added after Wave-0B pilot found a recovery hole in the original PENDING→APPROVED transition. See contracts.md Seam 3 for the normative contract; this note records the rationale._
+
+`ActionStatus` gains an intermediate **`EXECUTING`** state. `approve()` proceeds as:
+
+1. Validate `args` against the tool schema.
+2. Conditional flip **`PENDING → EXECUTING`** (`UPDATE … WHERE id=? AND status='pending'`; rowcount 0 → already taken, raise — prevents double-dispatch on concurrent calls).
+3. Dispatch the **`_execute` twin** (`{tool}_execute`) via the M1-a `ToolRegistry`. The `_execute` twin performs the raw external effect with no re-classification (the loop-break that prevents the gated entrypoint from re-staging the action).
+4. On **success** → flip `EXECUTING → APPROVED`, store `result`.
+5. On **transient failure** (`ScopeLockedError` / vault re-lock mid-dispatch) → revert `EXECUTING → PENDING` so the owner can re-approve.
+
+A crash mid-dispatch leaves the action visibly `EXECUTING` (operator-recoverable), **never** silently `APPROVED`-but-unexecuted. This is required for safe operation on threadpool routes. The `_execute` twin is registered in the `ToolRegistry` for staging-dispatch only and is **not** exposed in `retrieve_tools()` — the model can never call the ungated write directly.
 
 ## Alternatives considered
 

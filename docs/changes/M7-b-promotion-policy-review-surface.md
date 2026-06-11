@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seam 1) + m7-cap-teacher-distill.md BLOCKs B3; FLAGs F5, F6 -->
 
 # Spec: M7-b — Recipe promotion policy (#8) + owner review surface (recurrence/owner-command promotion, auto-enable-safe vs gate-data/action classification, list/explain/approve/reject API, owner-gated commit)
 
@@ -41,7 +42,7 @@ Simplicity check: considered an LLM-generated explanation per recipe — rejecte
   - `def classify_safety(recipe: Recipe) -> Literal["auto-enable", "gated"]`: pure function — return `"auto-enable"` iff `recipe.action_class in {ActionClass.READ_ONLY, ActionClass.NO_DATA}`, else `"gated"`. (This is the #8 split.)
   - `class RecurrenceStore` constructed with a `path: Path` (a JSON file under the recipes dir). `def note(self, task_class_key: str) -> int`: increment + persist the count for the key, return the new count (**same-dir atomic** temp + `os.replace`; corrupt-load → start empty). Assumes the Heartbeat is single-process/single-threaded (documented); a lost increment under hypothetical concurrency only delays promotion, never breaks the N≥2 gate. `def count(self, task_class_key: str) -> int`: read (0 if absent). `def reset(self, task_class_key: str) -> None`. Pure stdlib JSON; no model. — done when: `uv run mypy --strict src` passes; `classify_safety` returns `"gated"` for a `TAKES_ACTION` recipe and `"auto-enable"` for a `READ_ONLY` recipe; `RecurrenceStore.note` increments persistently across instances over the same path.
 
-- [ ] Task 2: Implement the Promoter (N≥2 / owner-command) — files: `/Users/artemis-build/artemis/src/artemis/recipes/promotion.py` — `class Promoter` constructed with `(store: RecipeStore, recurrence: RecurrenceStore, threshold: int = 2)`. Methods:
+- [ ] Task 2: Implement the Promoter (N≥2 / owner-command) — files: `/Users/artemis-build/artemis/src/artemis/recipes/promotion.py` — `class Promoter` constructed with `(store: RecipeStore, recurrence: RecurrenceStore, threshold: int = 2)`. **Store ctor args as public attributes: `self.store`, `self.recurrence`, `self.threshold`** (required public surface for downstream consumers). Methods:
   - `def note_occurrence(self, task_class_key: str) -> None`: if a `CANDIDATE` recipe exists for this key (via `store.list(status=CANDIDATE)` filtered by `task_class_key`), `recurrence.note(key)`, then if `count >= threshold` call `_auto_promote(recipe)`.
   - `def _auto_promote(self, recipe: Recipe) -> None`: if `classify_safety(recipe) == "auto-enable"` → `store.set_status(recipe.name, ENABLED)` (auto-enable clearly-safe); else → `store.set_status(recipe.name, PENDING)` (gated → await owner approval; do NOT enable). Idempotent (no-op if already ENABLED/PENDING).
   - `def promote(self, name: str) -> Recipe`: OWNER COMMAND — load the recipe **via `store.get(name)` (which verifies the HMAC signature; raises `RecipeSignatureError` on mismatch — refuse to enable an unsigned/tampered recipe even by owner command)**; **if its status is `RETIRED`, raise `RecipeAlreadyRetiredError`** (never silently re-enable a deduped recipe — owner must explicitly un-retire first); else set status `ENABLED` regardless of recurrence count or action_class (owner is the authority); return it. Define `RecipeAlreadyRetiredError(Exception)`. (The always-available owner override — but signature-gated.)
@@ -58,9 +59,11 @@ Simplicity check: considered an LLM-generated explanation per recipe — rejecte
     - `def reject(self, name: str) -> RecipeReview`: owner rejects → `promoter.reject(name)` (RETIRE) → return its review.
   Each method builds `RecipeReview` via `explain`. — done when: `uv run mypy --strict src` passes; `pending_for_review()` lists only PENDING recipes with non-empty explanations; `approve(name)` flips a PENDING recipe to ENABLED.
 
-- [ ] Task 4: Re-export the promotion + review surface — files: `/Users/artemis-build/artemis/src/artemis/recipes/__init__.py` — add `classify_safety`, `RecurrenceStore`, `Promoter`, `RecipeReview`, `explain`, `ReviewSurface` to the re-exports + `__all__`. Add `recurrence_path(s: Settings) -> Path` = `recipes_dir(s) / "recurrence.json"`. — done when: `uv run python -c "from artemis.recipes import Promoter, ReviewSurface, classify_safety, RecipeReview"` exits 0.
+- [ ] Task 4: Re-export the promotion + review surface — files: `/Users/artemis-build/artemis/src/artemis/recipes/__init__.py` — add `classify_safety`, `RecurrenceStore`, `Promoter`, `RecipeReview`, `explain`, `ReviewSurface`, **`RecipeAlreadyRetiredError`** to the re-exports + `__all__`. Add `recurrence_path(s: Settings) -> Path` = `recipes_dir(s) / "recurrence.json"`. (`RecipeAlreadyRetiredError` is defined in Task 2; CLIENT-b Task 4 imports it to map → HTTP 409.) — done when: `uv run python -c "from artemis.recipes import Promoter, ReviewSurface, classify_safety, RecipeReview, RecipeAlreadyRetiredError"` exits 0.
 
-- [ ] Task 5: Write the promotion + review tests (off-hardware, fakes) — files: `/Users/artemis-build/artemis/tests/test_recipes_promotion_review.py` — typed pytest reusing the M7-a `FakeEmbedder` + `FakeKeyProvider`; build a real `RecipeStore` over a `tmp_path` recipes dir, a `RecurrenceStore` over a tmp JSON, a `Promoter`, a `ReviewSurface`. Tests:
+- [ ] Task 5 (B3 — Brain wiring): Wire `Promoter.note_occurrence` into the Brain escalate path — files: `/Users/artemis-build/artemis/src/artemis/brain.py` — **additive ctor param** `promoter: Promoter | None = None` (default `None` → M7-a2/M1 tests still pass unchanged). In the escalate branch of `respond`, after returning `path="escalation_queued"` (M7-a2 Task 4(c)), call `self.promoter.note_occurrence(key)` if `self.promoter is not None` AND `any(r.task_class_key == key for r in self._store.list(status=RecipeStatus.CANDIDATE))` (M7-a1's `list(*, status=...)` returns `list[Recipe]`). This is the only call-site for `note_occurrence` from the teacher-escalation path (M8-d-c2 wires it for capture-pattern keys separately). — done when: `uv run mypy --strict src` passes; a `Brain(store=..., promoter=Promoter(...))` that receives two escalations for the same `task_class_key` (with a CANDIDATE present) ends with the CANDIDATE auto-promoted per `classify_safety` (asserted in Task 6 below).
+
+- [ ] Task 6: Write the promotion + review tests (off-hardware, fakes) — files: `/Users/artemis-build/artemis/tests/test_recipes_promotion_review.py` — typed pytest reusing the M7-a `FakeEmbedder` + `FakeKeyProvider`; build a real `RecipeStore` over a `tmp_path` recipes dir, a `RecurrenceStore` over a tmp JSON, a `Promoter`, a `ReviewSurface`. Tests:
   - classification: a `READ_ONLY` and a `NO_DATA` recipe → `classify_safety == "auto-enable"`; a `TOUCHES_DATA` and a `TAKES_ACTION` recipe → `"gated"`.
   - recurrence auto-enable (safe): write a CANDIDATE `READ_ONLY` recipe; two `note_occurrence(key)` calls → the recipe is now `ENABLED` (auto-enabled clearly-safe).
   - recurrence gate (data/action): write a CANDIDATE `TOUCHES_DATA` recipe; two `note_occurrence(key)` calls → status is `PENDING` (NOT enabled — gated); `pending_for_review()` includes it.
@@ -68,6 +71,7 @@ Simplicity check: considered an LLM-generated explanation per recipe — rejecte
   - owner command override: `promoter.promote(name)` on a gated CANDIDATE → `ENABLED` directly (owner authority).
   - review surface: `auto_enabled()` lists the auto-enabled safe recipe with a non-empty `explanation`; `pending_for_review()` lists the gated PENDING recipe; `approve(pending_name)` → it becomes `ENABLED` and is no longer in `pending_for_review()`; `reject(other_pending)` → it becomes `RETIRED`.
   - explanation coverage: `explain` returns a distinct, non-empty sentence for each of the four `action_class` values.
+  - brain wiring (B3): a `Brain` with `promoter=Promoter(store, recurrence, threshold=2)` and a CANDIDATE `READ_ONLY` recipe; two escalations for its `task_class_key` → the recipe status becomes `ENABLED` (auto-promoted via `note_occurrence`). A `Brain(promoter=None)` receiving the same escalations leaves the recipe `CANDIDATE` (backward-compat).
   — done when: `uv run pytest -q tests/test_recipes_promotion_review.py` passes AND `uv run mypy --strict src tests/test_recipes_promotion_review.py` passes.
 
 ## Permissions
@@ -80,6 +84,7 @@ Approving this spec approves all of them.
 |--------|-------|
 | Create | /Users/artemis-build/artemis/src/artemis/recipes/promotion.py, /Users/artemis-build/artemis/src/artemis/recipes/review.py, /Users/artemis-build/artemis/tests/test_recipes_promotion_review.py |
 | Modify | /Users/artemis-build/artemis/src/artemis/recipes/__init__.py (re-export promotion + review symbols) |
+| Modify | /Users/artemis-build/artemis/src/artemis/brain.py (additive `promoter` ctor param + `note_occurrence` call — Task 5) |
 | Delete | (none) |
 
 ### Commands
@@ -92,8 +97,8 @@ Approving this spec approves all of them.
 ### Git Operations
 | Operation | Scope |
 |-----------|-------|
-| `git add` | src/artemis/recipes/promotion.py, src/artemis/recipes/review.py, src/artemis/recipes/__init__.py, tests/test_recipes_promotion_review.py |
-| `git commit` | "feat: M7-b recipe promotion policy (#8) + owner review surface (recurrence/owner-command, auto-enable-safe vs gate, list/explain/approve/reject)" |
+| `git add` | src/artemis/recipes/promotion.py, src/artemis/recipes/review.py, src/artemis/recipes/__init__.py, src/artemis/brain.py, tests/test_recipes_promotion_review.py |
+| `git commit` | "feat: M7-b recipe promotion policy (#8) + owner review surface (recurrence/owner-command, auto-enable-safe vs gate, list/explain/approve/reject) + brain note_occurrence wiring" |
 
 ### Environment Access
 | Variable | Purpose |

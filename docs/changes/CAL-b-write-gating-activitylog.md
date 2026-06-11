@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 2, 3, 4) + cal-gate.md BLOCKs B1, B4, B5, B8, B9, B10, F12 -->
 
 # Spec: CAL-b — Calendar write/management tools + STRICT auto-vs-gated classifier + activity log + Review-staging integration
 
@@ -17,7 +18,7 @@ autonomy_level: L2
      invariant. Justified atomic exception, consistent with M8-a / M0-a / M1-a precedents. Flagged per rules. -->
 
 ## Assumptions
-- **CAL-a** is complete: `modules/calendar/client.py` (`CalendarClient` port + `FakeCalendarClient`), `modules/calendar/manifest.py` (module manifest with read tools), `modules/calendar/cache.py` (read-cache + `invalidate(event_id)`), `modules/calendar/prefs.py` (`CalendarPrefs` with `owner_email: str`, `default_write_calendar_id: str`). CAL-b modifies `manifest.py` and calls `CalendarClient` + `cache.invalidate`. → impact: Stop (these exact symbols are required; verify names match CAL-a before executing).
+- **CAL-a** is complete: `modules/calendar/client.py` (`CalendarClient` port + `GoogleCalendarClient` + `FakeCalendarClient` — all implementing the full read+write surface per Seam 4), `modules/calendar/manifest.py` (module manifest with read tools), `modules/calendar/cache.py` (read-cache + `EventCacheStore` + `EventCacheStore.invalidate(event_id, calendar_id)`), `modules/calendar/preferences.py` (`CalPrefs` with `owner_email: str | None` and `default_write_calendar: str`). **Canonical names (B4 / Seam 4):** class is `CalPrefs` (NOT `CalendarPrefs`), field is `default_write_calendar` (NOT `default_write_calendar_id`), store class is `EventCacheStore` (NOT `CalendarCache`), `invalidate` takes TWO args `(event_id, calendar_id)` (PK is compound). CAL-b adds write method bodies to `client.py` (B5 / Seam 4 — `client.py` IS in CAL-b's Files to Change for write method implementation). → impact: Stop.
 - **M8-a** is complete: `GoogleCredentialsFactory.authorized_credentials()`, `register_google_scopes`. CAL-b calls `register_google_scopes("calendar_write", {"https://www.googleapis.com/auth/calendar.events"})` at module import. → impact: Stop.
 - **M1-a** is complete: `ActionRisk` (`NO_DATA`, `READ`, `WRITE`, `HIGH_STAKES`), `ToolSpec`, `ModuleManifest`, `DataScope.OWNER_PRIVATE`. → impact: Stop.
 - **GATE-a** is complete: `PendingAction` model, `ActionStatus` enum, `PendingActionStore`, `ActionStagingService` with `stage(module, tool, args, summary, *, ttl) -> PendingAction` and `approve(id) -> PendingAction`. CAL-b's gated path calls `staging.stage(module="calendar", tool=f"calendar.{tool_name}", args=<bound args dict>, summary=<plain-language description>)` and returns WITHOUT executing the Google write. The owner later approves via the Review screen → GATE-b → `ActionStagingService.approve` re-dispatches the calendar write tool through `ToolRegistry`. → impact: Stop (GATE-a must be complete; these exact symbols are required).
@@ -40,6 +41,7 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 ## Files to Change
 | File | Operation | Notes |
 |------|-----------|-------|
+| /Users/artemis-build/artemis/src/artemis/modules/calendar/client.py | modify | add write method bodies to `GoogleCalendarClient` + `FakeCalendarClient` (B5 / Seam 4 — the 9 canonical write methods declared in CalendarClient Protocol by CAL-a; also register `_execute` twins per B1 / Seam 3 D1) |
 | /Users/artemis-build/artemis/src/artemis/modules/calendar/write_tools.py | create | §B ToolSpec definitions, typed args/return schemas, action_risk baselines |
 | /Users/artemis-build/artemis/src/artemis/modules/calendar/gating.py | create | runtime classifier `classify()`, stage-vs-execute dispatch `dispatch()`, `AUTO`/`GATED` enum |
 | /Users/artemis-build/artemis/src/artemis/modules/calendar/activity_log.py | create | SQLCipher append-only activity log of auto-actions |
@@ -98,36 +100,42 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 
   Rules (encode exactly, in order — this is the security boundary):
   1. `tool_name in {"respond_to_invite"}` → `GATED` (always; acts toward others)
-  2. `tool_name in {"block_focus_time", "set_reminders"}` → `AUTO` (always; self-only by design)
+  2. `tool_name in {"block_focus_time", "set_reminders", "quick_add"}` → `AUTO` (always; self-only by design — `quick_add` added per B10 / Seam 4: Google quickAdd cannot create attendees from text)
   3. `non_owner = [e for e in attendees if e.lower().strip() != owner_email.lower().strip()]` → if `len(non_owner) > 0` → `GATED`
   4. `else` → `AUTO`
 
   Failsafe: if `owner_email` is empty string → treat as having attendees → `GATED` (fail-safe; never auto-write when identity is unknown).
 
   ```python
-  def dispatch(
+  async def dispatch(
       tool_name: str,
       event_id: str | None,
       attendees: list[str],
       owner_email: str,
       *,
-      execute_fn: Callable[[], WriteResult],
-      stage_fn: Callable[[], StagedResult],
+      execute_fn: Callable[[], Awaitable[WriteResult]],
+      stage_fn: Callable[[], Awaitable[StagedResult]],
       log_fn: Callable[[WriteResult], None],
   ) -> WriteResult | StagedResult:
   ```
 
-  Logic: `decision = classify(tool_name, attendees, owner_email)`. If `AUTO`: result = `execute_fn()`; `log_fn(result)`; return result. If `GATED`: return `stage_fn()` (do NOT call `execute_fn`).
+  **ADR-016 (uniform async tool-dispatch):** `dispatch` is `async def` because it is called from inside an `async def` `CalendarWriteTools` tool method (a `callable_ref`), and `execute_fn`/`stage_fn` are the per-tool async closures it awaits. `classify()` stays a pure sync function (it is NOT a tool callable). `log_fn` stays **sync** — it is `activity_log.record`, a local SQLCipher write (ADR-016 keeps SQLCipher inside async bodies sync).
+
+  Logic: `decision = classify(tool_name, attendees, owner_email)`. If `AUTO`: `result = await execute_fn()`; `log_fn(result)`; return result. If `GATED`: return `await stage_fn()` (do NOT call `execute_fn`).
 
   Done when: `uv run mypy --strict src` passes; truth table verified in tests (Task 6).
 
 - [ ] Task 3: Implement the §B write tools — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/write_tools.py` (same file as Task 1, additive) —
 
-  `class CalendarWriteTools` constructed with `(client: CalendarClient, cache: CalendarCache, prefs: CalendarPrefs, staging: ActionStagingService, activity_log: "ActivityLog")`. One method per §B tool. Each method:
-  1. Resolves attendees from args or (for update/move/cancel) fetches the existing event via `client.get_event(event_id)` to read its `attendees` field.
-  2. Calls `dispatch(tool_name, event_id, attendees, prefs.owner_email, execute_fn=..., stage_fn=..., log_fn=activity_log.record)`.
-  3. The `execute_fn` calls the appropriate `CalendarClient` method (see below), then calls `cache.invalidate(event_id)` on success. On `CalendarClient` error, raises `CalendarWriteError`.
-  4. The `stage_fn` calls `staging.stage(module="calendar", tool=f"calendar.{tool_name}", args=args.model_dump(), summary=<plain-language description of the external effect>)`. The summary must be deterministic and human-readable (e.g. `"Cancel event 'Team sync' — has attendees Alice, Bob; pending owner approval"`). Returns `StagedResult(pending_action_id=action.id, summary=action.summary)` where `action` is the returned `PendingAction`. Does NOT execute the Google write — the action is now PENDING; the owner approves it via the Review screen → GATE-b → `ActionStagingService.approve` re-dispatches the calendar write tool via `ToolRegistry`.
+  `class CalendarWriteTools` constructed with `(client: CalendarClient, cache: EventCacheStore, prefs: CalPrefs, staging: ActionStagingService, activity_log: "ActivityLog")`. **Canonical names (B4 / Seam 4):** `cache` is `EventCacheStore` (NOT `CalendarCache`), `prefs` is `CalPrefs` (NOT `CalendarPrefs`), `prefs.default_write_calendar` (NOT `default_write_calendar_id`). One method per §B tool.
+
+  **ADR-016 (uniform async tool-dispatch):** every front-door tool method is `async def` (each is a `ToolSpec.callable_ref`); the method `await`s `dispatch(...)`. The `execute_fn`/`stage_fn` closures are `async def` (awaited by `dispatch`). The underlying `CalendarClient` write methods are sync per Seam 4, so `execute_fn`'s body calls them without `await`; `cache.invalidate` and `staging.stage` are also sync (local SQLCipher) — the `async def` on the closures is for the uniform-await dispatch contract.
+
+  Each method:
+  1. Resolves attendees from args or (for update/move/cancel) fetches the existing event via `client.get_event(event_id)` to read its `attendees` field (sync Seam 4 client — no `await`).
+  2. `return await dispatch(tool_name, event_id, attendees, prefs.owner_email, execute_fn=..., stage_fn=..., log_fn=activity_log.record)`.
+  3. The `async def execute_fn` calls the appropriate `CalendarClient` method (see below; sync Seam 4 call, no `await`), then calls `cache.invalidate(event_id, calendar_id)` on success (B4: two-arg signature). On `CalendarClient` error, raises `CalendarWriteError`.
+  4. The `async def stage_fn` calls `staging.stage(module="calendar", tool=f"calendar.{tool_name}", args=args.model_dump(), summary=<plain-language description of the external effect>)` (`stage` is sync per Seam 3 — no `await`). The summary must be deterministic and human-readable (e.g. `"Cancel event 'Team sync' — has attendees Alice, Bob; pending owner approval"`). Returns `StagedResult(pending_action_id=action.id, summary=action.summary)` where `action` is the returned `PendingAction`. Does NOT execute the Google write — the action is now PENDING; the owner approves it via the Review screen → GATE-b → `ActionStagingService.approve` dispatches the `_execute` twin via ToolRegistry (NOT the front-door tool — see B1 / Seam 3 D1).
 
   **CalendarClient method mapping** (one call per tool in `execute_fn`):
   - `create_event(args)` → `client.create_event(summary, start, end, description, location, attendees, calendar_id, recurrence, reminders, send_updates="all")`
@@ -138,7 +146,7 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
   - `add_attendees(args)` → `client.add_attendees(event_id, attendee_emails, send_updates="all")`
   - `remove_attendees(args)` → `client.remove_attendees(event_id, attendee_emails, send_updates="all")`
   - `create_recurring_event(args)` → `client.create_event(...)` with `recurrence=[args.rrule]`
-  - `quick_add(args)` → `client.quick_add(text, calendar_id)` then fetch the new event to resolve attendees for the classifier
+  - `quick_add(args)` → always-AUTO (B10 / Seam 4): Google `quickAdd` cannot create attendees from text, so this tool is always self-only; dispatch directly via `client.quick_add(text, calendar_id)` with no attendee-resolve step. The classifier is NOT called for `quick_add` — treat it like `block_focus_time` (same always-AUTO encoding in `classify()` rule 2).
   - `block_focus_time(args)` → `client.create_event(title, start, end, calendar_id=args.calendar_id)` (no attendees; always auto)
   - `set_reminders(args)` → `client.set_reminders(event_id, reminders)` (always auto)
 
@@ -196,31 +204,42 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 
   Done when: `uv run mypy --strict src` passes; `ActivityLog` with `FakeKeyProvider(owner_unlocked=False)` raises `ScopeLockedError` on `record` and `recent`; a round-trip `record` + `recent` returns the entry (Task 6).
 
-- [ ] Task 5: Add write ToolSpecs to the manifest — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/manifest.py` (modify, additive only) —
+- [ ] Task 5: Add write ToolSpecs to the manifest + register `_execute` twins — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/manifest.py` (modify, additive only), `/Users/artemis-build/artemis/src/artemis/modules/calendar/client.py` (modify, additive — write method bodies + execute-twin helpers) —
 
-  For each §B tool add a `ToolSpec` to the manifest's `tools` list. Exact `action_risk` baselines (the runtime classifier is the real gate; these are hint-only):
+  **B9 / F12 / Seam 2 — ToolSpec.name is BARE:** `ToolSpec.name` must be the bare tool name (e.g. `"create_event"`), NOT the qualified form (NOT `"calendar.create_event"`). The registry composes the fq id as `f"{manifest.name}.{tool.name}"` = `"calendar.create_event"`. `stage(tool=...)` and `get_tool(...)` use the fq id. A literal executor that writes `ToolSpec(name="calendar.create_event")` produces registry id `"calendar.calendar.create_event"` (double-prefix) and GATE-a approve raises `KeyError`. **`ToolSpec.name` is bare; `module.tool` is the registry id used by `stage()`/`get_tool()`.**
 
-  | tool_name | action_risk baseline |
+  For each §B tool add a `ToolSpec` to the manifest's `tools` list with bare names. Exact `action_risk` baselines (the runtime classifier is the real gate; these are hint-only):
+
+  | tool_name (BARE) | action_risk baseline |
   |---|---|
-  | `calendar.block_focus_time` | `ActionRisk.WRITE` |
-  | `calendar.create_event` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.update_event` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.move_event` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.cancel_event` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.respond_to_invite` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.add_attendees` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.remove_attendees` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.create_recurring_event` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.quick_add` | `ActionRisk.HIGH_STAKES` |
-  | `calendar.set_reminders` | `ActionRisk.WRITE` |
+  | `block_focus_time` | `ActionRisk.WRITE` |
+  | `create_event` | `ActionRisk.HIGH_STAKES` |
+  | `update_event` | `ActionRisk.HIGH_STAKES` |
+  | `move_event` | `ActionRisk.HIGH_STAKES` |
+  | `cancel_event` | `ActionRisk.HIGH_STAKES` |
+  | `respond_to_invite` | `ActionRisk.HIGH_STAKES` |
+  | `add_attendees` | `ActionRisk.HIGH_STAKES` |
+  | `remove_attendees` | `ActionRisk.HIGH_STAKES` |
+  | `create_recurring_event` | `ActionRisk.HIGH_STAKES` |
+  | `quick_add` | `ActionRisk.WRITE` |
+  | `set_reminders` | `ActionRisk.WRITE` |
 
-  Each `ToolSpec` uses the corresponding `Args` and `Return` schema from `write_tools.py`. The `callable_ref` points to the matching `CalendarWriteTools` method (bound method reference; the manifest is constructed with a `CalendarWriteTools` instance by the module factory). Register scopes at module import: `register_google_scopes("calendar_write", {"https://www.googleapis.com/auth/calendar.events"})`.
+  Each `ToolSpec` uses the corresponding `Args` and `Return` schema from `write_tools.py`. The `callable_ref` points to the matching `CalendarWriteTools` method (bound method reference; the manifest is constructed with a `CalendarWriteTools` instance by the module factory — `make_calendar_manifest(tools)` factory pattern from CAL-a).
 
-  Done when: `uv run mypy --strict src` passes; `from artemis.modules.calendar.manifest import CALENDAR_MANIFEST` shows 11 additional tools (verify count vs CAL-a read tools).
+  **B1 / Seam 3 D1 — Register `_execute` twins for each gated tool:** For every tool that can be GATED (`create_event`, `update_event`, `move_event`, `cancel_event`, `respond_to_invite`, `add_attendees`, `remove_attendees`, `create_recurring_event`), register a sibling `_execute` ToolSpec with bare name `f"{tool_name}_execute"` (e.g. `"create_event_execute"`). The `_execute` twin:
+  - `callable_ref` is **`async def`** (ADR-016 — every callable_ref is async; GATE-a's async `approve` dispatches it via `await get_tool(f"{action.tool}_execute").callable_ref(validated_args)`). It performs the raw Google write with **no classification** (calls the sync Seam-4 `CalendarClient` method directly — body has no extra `await`, no `dispatch()` call, no staging).
+  - `args_schema` is the SAME args model as the front-door tool (re-uses `CreateEventArgs`, etc.) so GATE-a's `model_validate(action.args)` works correctly.
+  - **NOT included in `retrieve_tools()`** — add `staging_dispatch_only=True` field to `ToolSpec` (or an equivalent exclude-from-brain flag), OR register twins in a separate internal registry keyed by the module that GATE-a uses but the brain's tool-selection surface does not expose. Whichever mechanism M1-a chooses, document it here; the constraint is that the brain model must never see or call `*_execute` tools directly.
+
+  Register scopes at module import: `register_google_scopes("calendar_write", {"https://www.googleapis.com/auth/calendar.events"})`.
+
+  **B8 — no import-time `CALENDAR_MANIFEST` constant:** CAL-a deliberately ships only `make_calendar_manifest(tools: CalendarTools) -> ModuleManifest`. Do NOT add a module-level `CALENDAR_MANIFEST` singleton. The acceptance check below must build the manifest via the factory with fakes (not import a constant).
+
+  Done when: `uv run mypy --strict src` passes; all ToolSpec names in the manifest are bare (no `calendar.` prefix); `_execute` twins are registered and accessible via `tool_registry.get_tool("calendar.create_event_execute")` but NOT returned by `retrieve_tools()`.
 
 - [ ] Task 6: Write tests (off-hardware, fakes only) — files: `/Users/artemis-build/artemis/tests/test_calendar_write.py` —
 
-  Typed pytest. Fixtures: `FakeCalendarClient` (from CAL-a), `FakeKeyProvider`, `FakeActionStagingService` (in-test spy; records all `stage(module, tool, args, summary, ...)` calls and returns a minimal `PendingAction(id="fake-id-...", module=module, tool=tool, args=args, summary=summary, action_class="takes-action", status=ActionStatus.PENDING, created_at=..., expires_at=...)`; also exposes `.staged: list[PendingAction]` for assertions), `ActivityLog` over `tmp_path` with unlocked `FakeKeyProvider`, `CalendarWriteTools` instance wiring all fakes.
+  Typed pytest. **ADR-016:** tests that invoke a `CalendarWriteTools` method or an `_execute` twin `callable_ref` must `await` it (they are `async def`); those tests are `async def` under `pytest.mark.asyncio`. `classify()` is called directly and stays a sync call (not a callable). `FakeActionStagingService.stage` stays a **sync** spy method (Seam 3 `stage` is sync). Fixtures: `FakeCalendarClient` (from CAL-a), `FakeKeyProvider`, `FakeActionStagingService` (in-test spy; records all `stage(module, tool, args, summary, ...)` calls and returns a minimal `PendingAction(id="fake-id-...", module=module, tool=tool, args=args, summary=summary, action_class="takes-action", status=ActionStatus.PENDING, created_at=..., expires_at=...)`; also exposes `.staged: list[PendingAction]` for assertions), `ActivityLog` over `tmp_path` with unlocked `FakeKeyProvider`, `CalendarWriteTools` instance wiring all fakes.
 
   **Classifier truth table** (call `classify()` directly):
   - `("block_focus_time", [], "me@x.com")` → `AUTO`
@@ -252,7 +271,10 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
   - `ActivityLog(settings, FakeKeyProvider(owner_unlocked=False)).record(...)` raises `ScopeLockedError`.
 
   **Cache invalidation:**
-  - After an AUTO `update_event`, `FakeCalendarCache.invalidate` was called with the event_id.
+  - After an AUTO `update_event`, `FakeEventCacheStore.invalidate` was called with `(event_id, calendar_id)` — two-arg signature (B4 / Seam 4).
+
+  **Manifest factory (tool count + bare names):**
+  - Build the manifest via `make_calendar_manifest(tools)` with the `CalendarWriteTools` instance wired to the fakes (the same `tools` fixture used above); assert `len(manifest.tools) == <CAL-a read tools> + 11 write tools` and `all("." not in t.name for t in manifest.tools)` (B9 — bare names, no double-prefix). (Replaces the former non-runnable `tools=None` `python -c` AC.)
 
   Done when: `uv run pytest -q tests/test_calendar_write.py` passes AND `uv run mypy --strict src tests/test_calendar_write.py` passes AND `uv run ruff check . && uv run ruff format --check .` both exit 0.
 
@@ -337,7 +359,7 @@ Auto-path write-through is synchronous (one Google API call + cache invalidate).
 - [ ] Run `uv run mypy --strict src tests/test_calendar_write.py` → verify: exit 0.
 - [ ] Run `uv run pytest -q tests/test_calendar_write.py` → verify: classifier truth table passes (all 9 cases); AUTO path calls FakeCalendarClient write method AND activity_log records entry AND FakeActionStagingService.staged is empty; GATED path does NOT call FakeCalendarClient AND FakeActionStagingService.staged has one entry with correct module/tool/args/non-empty summary AND PendingAction.status==PENDING; RSVP always gated; recurrence scope threaded correctly; CalendarWriteError raised on client failure; ScopeLockedError raised on locked ActivityLog; cache.invalidate called on AUTO success.
 - [ ] Run `uv run python -c "from artemis.modules.calendar.gating import classify, GateDecision; assert classify('respond_to_invite', [], 'me@x.com') == GateDecision.GATED; assert classify('block_focus_time', ['other@x.com'], 'me@x.com') == GateDecision.AUTO; print('classifier ok')"` → verify: prints `classifier ok`.
-- [ ] Run `uv run python -c "from artemis.modules.calendar.manifest import CALENDAR_MANIFEST; write_tools = [t for t in CALENDAR_MANIFEST.tools if 'focus' in t.name or 'create' in t.name or 'cancel' in t.name]; print(len(CALENDAR_MANIFEST.tools))"` → verify: total tool count equals CAL-a read tools + 11 write tools.
+- [ ] Run `uv run pytest -q tests/test_calendar_write.py -k manifest` → verify: the manifest-factory test (Task 5) passes — manifest built via `make_calendar_manifest(tools)` with the wired `CalendarWriteTools` fakes has tool count == CAL-a read tools + 11 write tools and all `ToolSpec.name`s are bare (no `.` — B9). (Replaces the former non-runnable `tools=None` `python -c` AC; B8 — manifest built via factory, no `CALENDAR_MANIFEST` constant.)
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 - [ ] (GATED, on Mini) Task 7: block_focus_time creates a real Google event + activity log entry; create_event with attendee stages a PendingAction to PendingActionStore + appears at GET /app/actions/pending + ActionStagingService.approve executes the write (PendingAction→APPROVED, Google event created); no event content in logs → verify recorded in handoff.
 

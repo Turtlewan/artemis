@@ -1,3 +1,4 @@
+<!-- amended 2026-06-11 per contracts.md (Seam 7) + m2-obs-dr-security.md BLOCKs B1, B5, F10; B1 subdomain egress-check + B5 circular-import fix; DR-b egress subdomain design noted as deferred per instructions -->
 ---
 spec: dr-b-web-access
 status: ready
@@ -28,17 +29,18 @@ Simplicity check: considered a single combined search+extract vendor (Tavily) as
 | File | Operation | Notes |
 |------|-----------|-------|
 | /Users/artemis-build/artemis/src/artemis/research/__init__.py | create | re-exports (`SearchProvider`, `SearchHit`, `BraveSearch`, `TavilySearch`, `Fetcher`, `FetchedContent`, `TrafilaturaFetcher`, `JinaFetcher`, `PlaywrightFetcher`, `EgressPolicy`, `EgressDenied`, `registrable_domain`) |
-| /Users/artemis-build/artemis/src/artemis/research/egress.py | create | `EgressPolicy` + `EgressDenied` |
+| /Users/artemis-build/artemis/src/artemis/research/egress.py | create | `EgressPolicy` + `EgressDenied` + `registrable_domain` **(B5: moved here from fetch.py to break the egress↔fetch circular import)** |
 | /Users/artemis-build/artemis/src/artemis/research/search.py | create | `SearchHit` + `SearchProvider` + `BraveSearch` + `TavilySearch` + `SearchError` |
-| /Users/artemis-build/artemis/src/artemis/research/fetch.py | create | `FetchedContent` + `Fetcher` + `TrafilaturaFetcher` + `JinaFetcher` + `PlaywrightFetcher` + `registrable_domain` + `FetchError` |
+| /Users/artemis-build/artemis/src/artemis/research/fetch.py | create | `FetchedContent` + `Fetcher` + `TrafilaturaFetcher` + `JinaFetcher` + `PlaywrightFetcher` + `FetchError` (imports `registrable_domain` FROM `egress.py` — one-way) |
 | /Users/artemis-build/artemis/tests/test_research_web.py | create | egress allow/deny + log, Brave/Tavily parse (mocked httpx), trafilatura extract + truncation, domain eTLD+1, fetch degrade |
 
 ## Tasks
 - [ ] Task 1: Controlled-egress allowlist + SSRF guard — files: `/Users/artemis-build/artemis/src/artemis/research/egress.py` —
   - `class EgressDenied(Exception)`.
+  - **`def registrable_domain(url: str) -> str` (B5 — defined HERE in egress.py, not fetch.py):** eTLD+1 of the URL's host (reuse M7-c's helper if it is importable with no cycle; else `tldextract.extract(url).registered_domain`). Exported from this module so `fetch.py` imports it one-way from `egress.py` (no circular dep).
   - `def block_private_ip(url: str) -> None` **(resolves BLOCK — SSRF):** reject non-`https` URLs; resolve the host via `socket.getaddrinfo`; for EVERY resolved address, `ipaddress.ip_address(...)` and raise `EgressDenied` if `.is_private or .is_loopback or .is_link_local or .is_reserved or .is_unspecified or .is_multicast` (blocks `169.254.169.254` cloud-metadata, RFC-1918, `::1`, `0.0.0.0`, etc.). Log a WARNING on block (host only, never the full URL).
-  - `class EgressPolicy` constructed with `(static_hosts: frozenset[str])`. `def permit(self, domain: str) -> None`: **validate (resolves FLAG)** `domain` is a bare registrable domain (no scheme/path/port — via `registrable_domain`); raise `ValueError` otherwise; then add to the per-instance dynamic allow set (just-in-time authorization for a domain from a trusted `SearchHit`). `def check(self, url: str) -> None`: parse host; if host in neither static nor dynamic set → WARNING (`extra={"host": host}`) + raise `EgressDenied`; **then call `block_private_ip(url)`** (allowlist AND IP-range must both pass). `def reset_dynamic(self) -> None` clears the dynamic set. **Caller contract (documented in the class docstring):** the engine (DR-c) MUST call `reset_dynamic()` at the start of each research cycle so a per-query permit does not persist across cycles.
-  — done when: `uv run mypy --strict src` passes; `check` on an unlisted host raises `EgressDenied`+logs; after `permit("example.com")`, `check("https://example.com/p")` passes a public IP but a host resolving to `169.254.169.254`/`127.0.0.1`/an RFC-1918 address raises `EgressDenied` even when permitted; `permit("https://x.com/p")` raises `ValueError`; a static host passes without `permit`.
+  - `class EgressPolicy` constructed with `(static_hosts: frozenset[str])`. `def permit(self, domain: str) -> None`: **validate (resolves FLAG)** `domain` is a bare registrable domain (no scheme/path/port — via `registrable_domain`); raise `ValueError` otherwise; then add to the per-instance dynamic allow set (just-in-time authorization for a domain from a trusted `SearchHit`). `def check(self, url: str) -> None`: parse the raw host from the URL; **(resolves B1)** compute `rd = registrable_domain(url)` and check `rd` against the dynamic set (not the raw host — this allows `www.example.com` when `example.com` was permitted); for the static set, check the **raw host** (API endpoints are exact-host, not eTLD+1). If neither check passes → WARNING (`extra={"host": host}`) + raise `EgressDenied`; **then call `block_private_ip(url)`** (allowlist AND IP-range must both pass). `def reset_dynamic(self) -> None` clears the dynamic set. **Caller contract (documented in the class docstring):** the engine (DR-c) MUST call `reset_dynamic()` at the start of each research cycle so a per-query permit does not persist across cycles.
+  — done when: `uv run mypy --strict src` passes; `check` on an unlisted host raises `EgressDenied`+logs; after `permit("example.com")`, `check("https://example.com/p")` passes AND `check("https://www.example.com/p")` also passes a public IP **(B1 subdomain case)**; a host resolving to `169.254.169.254`/`127.0.0.1`/an RFC-1918 address raises `EgressDenied` even when permitted; `permit("https://x.com/p")` raises `ValueError`; a static host passes without `permit`.
 
 - [ ] Task 2: Search providers — files: `/Users/artemis-build/artemis/src/artemis/research/search.py` —
   - frozen dataclass `SearchHit { title: str, url: str, snippet: str }`. `class SearchError(Exception)`.
@@ -48,8 +50,8 @@ Simplicity check: considered a single combined search+extract vendor (Tavily) as
   - Both call `egress.check` on their API host before the request. **Key hygiene (resolves FLAG):** construct the httpx client with no request/transport debug logging; the `research` obs logger is bounded to WARNING+; the key (Brave `X-Subscription-Token` header / Tavily `api_key` body field) is NEVER placed in a log call — add a request event hook that strips auth headers before any logging.
   — done when: `uv run mypy --strict src` passes; with a mocked httpx returning a canned Brave payload, `BraveSearch(...).search("q", count=3)` returns 3 `SearchHit`s; a 429 raises `SearchError`; with a 32-hex test key, the key string appears in NO captured log line at any level (`caplog`).
 
-- [ ] Task 3: Fetchers + registrable domain — files: `/Users/artemis-build/artemis/src/artemis/research/fetch.py` —
-  - `def registrable_domain(url: str) -> str`: eTLD+1 (reuse M7-c's helper if exposed; else `tldextract`). frozen dataclass `FetchedContent { url: str, domain: str, text: str }`. `class FetchError(Exception)`.
+- [ ] Task 3: Fetchers — files: `/Users/artemis-build/artemis/src/artemis/research/fetch.py` —
+  - `from artemis.research.egress import registrable_domain` **(B5 — import from egress.py, do NOT redefine here)**. frozen dataclass `FetchedContent { url: str, domain: str, text: str }`. `class FetchError(Exception)`.
   - `class Fetcher(Protocol)`: `async def fetch(self, url: str, *, max_chars: int = 20000) -> FetchedContent: ...`.
   - `class TrafilaturaFetcher` constructed with `(egress: EgressPolicy, *, http=None, timeout: float = 8.0, max_bytes: int = 5_000_000)`: `egress.check(url)`; lazy `httpx` client with `follow_redirects=False` **(resolves BLOCK — redirects)** and the fixed `timeout`; GET; **on a 3xx, extract `Location`, call `egress.check(location)` (allowlist + SSRF) and only then follow manually** (re-checking each hop). **Stream the body and read at most `max_bytes`** (resolves FLAG — response-size DoS); `trafilatura.extract(html)` → clean text; truncate to `max_chars`; `domain = registrable_domain(final_url)`; return `FetchedContent(final_url, domain, text)`. On any error/timeout/oversize/empty-extract → `FetchedContent(url, domain, text="")` + one WARNING (degrade-don't-crash).
   - `class JinaFetcher` constructed with `(egress, *, api_key=None, base="https://r.jina.ai/", http=None, timeout=10.0)`: **validate `url` is a well-formed `https://` absolute URL and run `egress.check(url)` (allowlist + SSRF on the target) BEFORE building the request** (resolves FLAG — URL construction); `egress.check(base)`; GET `f"{base}{quote(url, safe='')}"` (optional `Authorization: Bearer`); `follow_redirects=False`; truncated markdown text; same degrade contract.
@@ -59,7 +61,7 @@ Simplicity check: considered a single combined search+extract vendor (Tavily) as
 - [ ] Task 4: Package surface — files: `/Users/artemis-build/artemis/src/artemis/research/__init__.py` — re-export the names above with `__all__` (DR-c extends it). — done when: `uv run python -c "from artemis.research import SearchProvider, BraveSearch, TavilySearch, Fetcher, TrafilaturaFetcher, EgressPolicy, registrable_domain"` exits 0.
 
 - [ ] Task 5: Tests — files: `/Users/artemis-build/artemis/tests/test_research_web.py` — typed pytest with mocked `httpx` (`httpx.MockTransport`) + a real `EgressPolicy`:
-  - egress + SSRF: unlisted host → `EgressDenied`+WARNING; `permit` then allowed; a permitted host resolving (monkeypatched `getaddrinfo`) to `169.254.169.254`/`127.0.0.1`/`10.0.0.1` → `EgressDenied`; non-`https` → denied; `permit("https://x/p")` → `ValueError`; `reset_dynamic` re-denies.
+  - egress + SSRF: unlisted host → `EgressDenied`+WARNING; `permit("example.com")` then `check("https://example.com/p")` allowed AND `check("https://www.example.com/p")` allowed **(B1 subdomain case)**; `check("https://docs.python.org/3/")` allowed if `permit("python.org")` was called; a permitted host resolving (monkeypatched `getaddrinfo`) to `169.254.169.254`/`127.0.0.1`/`10.0.0.1` → `EgressDenied`; non-`https` → denied; `permit("https://x/p")` → `ValueError`; `reset_dynamic` re-denies.
   - search: Brave/Tavily canned payloads → hits; 429 → `SearchError`; a 32-hex test key appears in NO captured log line (`caplog`, all levels).
   - fetch: trafilatura over canned HTML → clean text ≤ `max_chars`; `domain` is eTLD+1 (two subdomains → same `domain`); a **302 to an internal IP → denied (not followed)**; a body over `max_bytes` → empty text, no raise; a timeout → empty text, no raise.
   — done when: `uv run pytest -q tests/test_research_web.py` passes AND `uv run mypy --strict src tests/test_research_web.py` passes.
@@ -80,7 +82,8 @@ Approving this spec approves all of them.
 | Command | Purpose |
 |---------|---------|
 | `uv add trafilatura` | New runtime dep (HTML→clean-text extraction); verify package name + maintainer before adding |
-| `uv run pip-audit` | Supply-chain gate on trafilatura + its transitive deps (lxml/courlan/htmldate); must exit 0 with no known vulns |
+| `uv add tldextract` | **(F10)** New runtime dep for `registrable_domain` in `egress.py` (if M7-c's helper is not reusable — check first; only add if needed) |
+| `uv run pip-audit` | Supply-chain gate on trafilatura + tldextract + their transitive deps; must exit 0 with no known vulns |
 | `uv run mypy --strict src tests/test_research_web.py` | Type gate |
 | `uv run ruff check . ; uv run ruff format --check .` | Lint + format gate |
 | `uv run pytest -q tests/test_research_web.py` | Test gate (egress, search parse, fetch extract — all mocked, no real network) |
@@ -130,7 +133,7 @@ Approving this spec approves all of them.
 ## Acceptance Criteria
 - [ ] Run `uv run mypy --strict src tests/test_research_web.py` → verify: exit 0 (incl. `SearchProvider`/`Fetcher` Protocol conformance of the adapters).
 - [ ] Run `uv run python -c "from artemis.research import BraveSearch, TavilySearch, TrafilaturaFetcher, EgressPolicy, registrable_domain"` → verify: exit 0.
-- [ ] Run `uv run pytest -q tests/test_research_web.py` → verify: egress denies unlisted hosts (+logs); a permitted host resolving to a private/metadata IP is still denied; non-https denied; `permit` rejects a non-domain; a 302 to an internal IP is not followed; over-`max_bytes` and timeout degrade to empty text; Brave/Tavily parse canned payloads and a 429 raises `SearchError`; trafilatura extracts/truncates + eTLD+1; no API key in any captured log.
+- [ ] Run `uv run pytest -q tests/test_research_web.py` → verify: egress denies unlisted hosts (+logs); **(B1)** after `permit("example.com")`, `check("https://www.example.com/p")` passes (subdomain allowed via registrable-domain match); a permitted host resolving to a private/metadata IP is still denied; non-https denied; `permit` rejects a non-domain; a 302 to an internal IP is not followed; over-`max_bytes` and timeout degrade to empty text; Brave/Tavily parse canned payloads and a 429 raises `SearchError`; trafilatura extracts/truncates + eTLD+1; no API key in any captured log.
 - [ ] Run `uv run pip-audit` → verify: exit 0, no known vulnerabilities in trafilatura's dependency tree.
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 

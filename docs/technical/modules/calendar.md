@@ -1,3 +1,4 @@
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md -->
 # Module design — Calendar (full / final)
 
 _Per-module design doc (first of the spoke-module design docs). The complete, intended-final function
@@ -51,9 +52,12 @@ surface for the Calendar spoke. Source-of-truth for the CAL-* specs. Created 202
 | `calendar.quick_add(text)` | Google natural-language add; gating by attendee presence |
 
 **Gating mechanism:** the `ActionRisk` on each `ToolSpec` + a runtime check of `event.attendees` decides
-auto-vs-gated. A gated action does not execute immediately — it becomes a **`TAKES_ACTION` recipe staged
-for the Review screen** (CLIENT-b / M7-b). Auto actions execute write-through and are recorded in an
-**activity log** (so the owner can see what Artemis did unattended).
+auto-vs-gated. A gated action does not execute immediately — it is staged as a **`PendingAction` instance
+via `ActionStagingService`** (ADR-012) and surfaced on the pending-actions tab of the CLIENT Review screen
+(GATE-b / CLIENT-e); `approve` executes it exactly once via the `_execute` twin (see contracts.md Seam 3).
+This is NOT a recipe — recipes model reusable learned behaviours; a `PendingAction` is a one-off bound
+instance (ADR-012 §Decision 1). Auto actions execute write-through and are recorded in an **activity log**
+(so the owner can see what Artemis did unattended).
 
 ## C. Proposal overlay — Artemis-native (ADR-011), promoted via Review
 `calendar.propose_reschedule(event_id, suggested_time, reason)` · `calendar.propose_event(draft)` ·

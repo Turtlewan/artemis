@@ -4,6 +4,15 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seams 3, 5, 6) + m8-productivity.md BLOCKs B1, F11 -->
+<!-- Seam 5: check_ref MUST be synchronous, zero-arg, returns HookResult — confirmed by spec (no async
+     in check_ref factories); pre_tick_steps async quarantine is M6-a concern, not needed here (no
+     untrusted content in productivity hooks). Payload = ids+counts only — already enforced. No change.
+     Seam 3: no gated tools here. Seam 6: no entity linking here.
+     B1 fix: manifest signature stated cumulatively (requires M8-d-b's write_tools + schedule_fn already
+     present); tool count assertion is relative: 30+1 from M8-d-b → this spec does NOT add tools, still 31.
+     F11 fix: remove misleading "M6-b fetches details by ID" comment — M6-b has no ProductivityStore
+     access; briefing is counts-only for v1. -->
 
 # Spec: M8-d-c1 — Productivity proactive hooks (Morning-plan / Overdue-nudge / Weekly-review)
 
@@ -34,7 +43,7 @@ Simplicity check: considered per-hook factory functions returning `(check_ref, H
 | File | Operation | Notes |
 |------|-----------|-------|
 | `src/artemis/modules/productivity/hooks.py` | create | three `make_*_check` factories + `HookSpec` declarations + `build_productivity_hooks(store) -> list[HookSpec]` + `register_productivity_templates(registry: TemplateRegistry) -> None` |
-| `src/artemis/modules/productivity/manifest.py` | modify | call `build_productivity_hooks(store)` + `register_productivity_templates(registry)` + pass the hook list into `ModuleManifest.proactive_hooks`; add `registry: TemplateRegistry` param to `productivity_manifest(store, registry)` |
+| `src/artemis/modules/productivity/manifest.py` | modify | call `build_productivity_hooks(store)` + `register_productivity_templates(registry)` + pass the hook list into `ModuleManifest.proactive_hooks`; add `registry: TemplateRegistry` param to `productivity_manifest(store, schedule_fn, write_tools, registry)` |
 | `src/artemis/modules/productivity/__init__.py` | modify | update re-export of `productivity_manifest` to reflect the new `registry` parameter |
 | `tests/test_productivity_hooks.py` | create | off-hardware hook check_ref tests + Tier-1 queueing smoke + template rendering |
 
@@ -135,13 +144,13 @@ All paths are under `/Users/artemis-build/artemis/`.
 
   `needs_llm=True` hooks (morning_plan, weekly_review) do not need a template — M6-b's batched LLM call renders them. Document this inline.
 
-  **Payload safety note (inline comment):** All `check_ref` payloads contain ONLY counts and task/project IDs (UUIDs). No titles, notes, or user-authored text ever enters a `check_ref` payload. This is the LLM injection boundary: task titles are owner-authored trusted content but they must not be forwarded raw to M6-b's batched LLM compositing prompt (the prompt-injection surface). The LLM call in M6-b must fetch full task details from `store` via the IDs in the payload if richer content is needed. Document: `# PAYLOAD: counts + IDs only — never raw task/project titles (LLM injection boundary; M6-b fetches details by ID)`.
+  **Payload safety note (inline comment):** All `check_ref` payloads contain ONLY counts and task/project IDs (UUIDs). No titles, notes, or user-authored text ever enters a `check_ref` payload. This is the LLM injection boundary: task titles are owner-authored trusted content but they must not be forwarded raw to M6-b's batched LLM compositing prompt (the prompt-injection surface). **F11 fix:** M6-b's `HitHandler` has no `ProductivityStore` access and no fetch-by-ID mechanism — the morning-plan and weekly-review briefings will therefore be counts-only for v1 (e.g. "3 tasks today, 1 overdue"). This is acceptable and intentional. Remove any inline comment claiming "M6-b fetches details by ID if richer content is needed" — that seam does not exist. Document instead: `# PAYLOAD: counts + IDs only — v1 briefing is counts-only (M6-b has no store access; ID-based enrichment is a future M6 upgrade)`.
 
   — done when: `uv run mypy --strict src` passes; `build_productivity_hooks(store)` returns a list of 3 `HookSpec`s; all have `tier=1`; exactly one has `needs_llm=False`; `weekly_review` has `interval_seconds=604800` (no `cron` field); `make_morning_plan_check(store)()` on a store with one overdue task returns `hit=True` with `overdue_count >= 1`; `make_overdue_nudge_check(store)()` on an empty store returns `hit=False`.
 
 - [ ] **Task 2: Modify `manifest.py` to wire hooks** — files: `/Users/artemis-build/artemis/src/artemis/modules/productivity/manifest.py` (SURGICAL modify) —
 
-  Change the signature of `productivity_manifest` from `(store: ProductivityStore) -> ModuleManifest` to `(store: ProductivityStore, registry: TemplateRegistry) -> ModuleManifest`.
+  **B1 fix — cumulative signature:** M8-d-b already changed the signature from `(store)` to `(store, schedule_fn, write_tools)`. This spec adds `registry` to that signature. The cumulative signature after this spec is: `productivity_manifest(store: ProductivityStore, schedule_fn: ..., write_tools: CalendarWriteTools, registry: TemplateRegistry) -> ModuleManifest`. This spec's task adds only the `registry` parameter; verify M8-d-b's `schedule_fn`/`write_tools` params are already present before editing. Tool count is unchanged by this spec: 31 (M8-d-a: 30 + M8-d-b: +1 = 31; this spec adds no tools — assert `len(tools) == 31`).
 
   Inside, add:
   ```python
@@ -157,7 +166,7 @@ All paths are under `/Users/artemis-build/artemis/`.
 
   SURGICAL: touch ONLY the `proactive_hooks` wiring and the function signature. Do NOT change tools list, manifest name, version, description, `data_scope`, or permissions.
 
-  — done when: `uv run mypy --strict src` passes; `productivity_manifest(store, registry).proactive_hooks` has length 3; the M6-a `ModuleManifest` validator does not raise (`OWNER_PRIVATE ⇒ tier==1` holds for all three hooks); `uv run python -c "from artemis.modules.productivity import productivity_manifest; print('ok')"` prints `ok`.
+  — done when: `uv run mypy --strict src` passes; `productivity_manifest(store, schedule_fn, write_tools, registry).proactive_hooks` has length 3; the M6-a `ModuleManifest` validator does not raise (`OWNER_PRIVATE ⇒ tier==1` holds for all three hooks); `uv run python -c "from artemis.modules.productivity import productivity_manifest; print('ok')"` prints `ok`.
 
 ### Phase 2 — Tests
 
@@ -188,9 +197,9 @@ All paths are under `/Users/artemis-build/artemis/`.
 
   **Manifest integration:**
 
-  - `productivity_manifest(store, registry).proactive_hooks` has length 3.
+  - `productivity_manifest(store, schedule_fn, write_tools, registry).proactive_hooks` has length 3.
   - No `ValidationError` raised (M6-a `OWNER_PRIVATE ⇒ tier==1` validator passes).
-  - `productivity_manifest(store, registry).tools` is unchanged (30 tools — the tools list is NOT modified by this spec; assert `len(tools) == 30`).
+  - `productivity_manifest(store, schedule_fn, write_tools, registry).tools` is unchanged by this spec (31 tools from M8-d-a + M8-d-b — this spec adds no tools; assert `len(tools) == 31`). (B1 fix: prior spec M8-d-b adds 1 tool `task.schedule`, so the base is 31 not 30.)
 
   **Template registration:**
 
@@ -199,7 +208,7 @@ All paths are under `/Users/artemis-build/artemis/`.
 
   **Tier-1 queueing:**
 
-  - Build a `ToolRegistry`, register the `productivity_manifest(store, registry)` manifest; build a `Heartbeat(registry, FakeKeyProvider(owner_unlocked=False))`.
+  - Build a `ToolRegistry`, register the `productivity_manifest(store, schedule_fn, write_tools, registry)` manifest; build a `Heartbeat(registry, FakeKeyProvider(owner_unlocked=False))`.
   - Call `tick()` → `productivity_morning_plan`'s `check_ref` is NOT called (hook is skipped); fq name `"productivity.productivity_morning_plan"` appears in `tick().tier1_skipped`.
   - With `FakeKeyProvider(owner_unlocked=True)` and a store seeded with a due task → `check_ref` IS called; hit appears in `tick().hits`.
 
@@ -279,7 +288,7 @@ Approving this spec approves all of them.
 
 - [ ] `uv run mypy --strict src tests/test_productivity_hooks.py` → verify: exit 0.
 - [ ] `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
-- [ ] `uv run pytest -q tests/test_productivity_hooks.py` → verify: all `check_ref` hit/miss scenarios pass; payload contains only counts + IDs (no title/notes strings); `build_productivity_hooks(store)` returns 3 `HookSpec`s all with `tier=1`; `weekly_review` has `interval_seconds=604800` (no cron); manifest validates without `ValidationError`; tools list remains 30; template registry registers only the `needs_llm=False` hook; Tier-1 queueing test: hook skipped when locked, runs when unlocked; `ScopeLockedError` degrades to miss — all pass.
+- [ ] `uv run pytest -q tests/test_productivity_hooks.py` → verify: all `check_ref` hit/miss scenarios pass; payload contains only counts + IDs (no title/notes strings); `build_productivity_hooks(store)` returns 3 `HookSpec`s all with `tier=1`; `weekly_review` has `interval_seconds=604800` (no cron); manifest validates without `ValidationError`; tools list remains 31; template registry registers only the `needs_llm=False` hook; Tier-1 queueing test: hook skipped when locked, runs when unlocked; `ScopeLockedError` degrades to miss — all pass.
 - [ ] `uv run python -c "from artemis.modules.productivity import productivity_manifest, ProductivityStore; from artemis.proactive.hit_handler import TemplateRegistry; print(len(productivity_manifest.__code__.co_varnames))"` → verify: exits 0 (import smoke; signature change accepted).
 - [ ] `uv run python -c "from artemis.modules.productivity.hooks import build_productivity_hooks; print('ok')"` → verify: prints `ok`.
 - [ ] (GATED, on Mini, vault unlocked) All three `check_ref`s fire via a real `Heartbeat.tick()` with a seeded task/project store; Tier-1 queueing confirmed under a locked vault → recorded in handoff.

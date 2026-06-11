@@ -1,3 +1,4 @@
+<!-- amended 2026-06-11 per m2-obs-dr-security.md FLAG F12 — ARTEMIS_BROKER_SKIP_CODESIGN=1 added to Task 8 -->
 ---
 spec: m2-c-broker-client-tier0-launchd
 status: ready
@@ -34,6 +35,7 @@ Simplicity check: considered having the brain talk XPC to the broker — rejecte
 |------|-----------|-------|
 | /Users/artemis-build/artemis/src/artemis/identity/broker_client.py | create | `BrokerClient` (Unix-socket IPC) + `BrokerKeyProvider` implementing the M2-b `KeyProvider` port; mlock'd DEK cache + zeroize |
 | /Users/artemis-build/artemis/src/artemis/data/sqlcipher.py | create | `sqlcipher_open(path, key_hex)` raw-hex-key + `cipher_memory_security` wrapper; fills `ScopedConnection`'s keyed open |
+| /Users/artemis-build/artemis/src/artemis/data/scoped_store.py | modify | add `ScopedConnection.open(self, key: SecretKey) -> Connection` (calls `sqlcipher_open(self.path, key.as_hex())`) to M2-b's `ScopedConnection` — Task 3 |
 | /Users/artemis-build/artemis/src/artemis/proactive/tier0_key.py | create | Tier-0 proactive-key provisioning (separate `.userPresence` device-bound key via the broker) |
 | /Users/artemis-build/artemis/deploy/launchd/com.artemis.broker.plist.template | create | LaunchAgent: the ArtemisBroker (owner-runtime user session) |
 | /Users/artemis-build/artemis/scripts/setup_autologin.sh | create | owner auto-login boot config (ADR-002 addition) — on-hardware gated |
@@ -63,7 +65,7 @@ Simplicity check: considered having the brain talk XPC to the broker — rejecte
   - the `mlock` helper is invoked (assert via a spy that `libc.mlock` was called; tolerate `mlock` EPERM by falling back + flagging — the real lock is Task 8).
   — done when: `uv run pytest -q` passes AND `uv run mypy --strict src tests/test_broker_client.py` passes.
 
-- [ ] Task 8 (GATED — on-hardware): Real mlock + auto-login + broker LaunchAgent boot — files: (uses Tasks 2/5) — on the Mini: (a) confirm `libc.mlock` on the DEK buffer succeeds (no EPERM) and the page is resident; (b) run `setup_autologin.sh`, reboot, and confirm the owner session comes up and the broker LaunchAgent loads (`launchctl print gui/$(id -u)/com.artemis.dev.broker`) AND that data is still LOCKED until a phone (Mock for bring-up) proof unlocks it AND that the per-scope encrypted volume at /opt/artemis/<slot>/<scope>/vault/ is NOT mounted until the proof verifies, and unmounts on lock/idle (ADR-007 mount-lifecycle spike, cross-ref M2-a Task 9); (c) confirm a full brain→broker→DEK→SQLCipher-open works end-to-end with the broker as a LaunchAgent. ADR-005 build-time spikes (mlock; auto-login+FileVault boot; macOS-26 daemon-restriction re-check). — done when: all three verified on the Mini and recorded in handoff.
+- [ ] Task 8 (GATED — on-hardware): Real mlock + auto-login + broker LaunchAgent boot — files: (uses Tasks 2/5) — on the Mini: **(F12)** run the end-to-end brain→broker round-trip with `ARTEMIS_BROKER_SKIP_CODESIGN=1` set in the brain process's environment (the broker rejects unsigned `uv run python` without this flag; peer-uid check is still enforced — only code-signing is bypassed for bring-up per M2-a Task 6). Then: (a) confirm `libc.mlock` on the DEK buffer succeeds (no EPERM) and the page is resident; (b) run `setup_autologin.sh`, reboot, and confirm the owner session comes up and the broker LaunchAgent loads (`launchctl print gui/$(id -u)/com.artemis.dev.broker`) AND that data is still LOCKED until a phone (Mock for bring-up) proof unlocks it AND that the per-scope encrypted volume at /opt/artemis/<slot>/<scope>/vault/ is NOT mounted until the proof verifies, and unmounts on lock/idle (ADR-007 mount-lifecycle spike, cross-ref M2-a Task 9); (c) confirm a full brain→broker→DEK→SQLCipher-open works end-to-end with the broker as a LaunchAgent. ADR-005 build-time spikes (mlock; auto-login+FileVault boot; macOS-26 daemon-restriction re-check). — done when: all three verified on the Mini and recorded in handoff.
 
 ## Permissions
 
@@ -74,7 +76,7 @@ Approving this spec approves all of them.
 | Action | Paths |
 |--------|-------|
 | Create | /Users/artemis-build/artemis/src/artemis/identity/broker_client.py, /Users/artemis-build/artemis/src/artemis/data/sqlcipher.py, /Users/artemis-build/artemis/src/artemis/proactive/__init__.py, /Users/artemis-build/artemis/src/artemis/proactive/tier0_key.py, /Users/artemis-build/artemis/deploy/launchd/com.artemis.broker.plist.template, /Users/artemis-build/artemis/scripts/setup_autologin.sh, /Users/artemis-build/artemis/tests/test_broker_client.py |
-| Modify | /Users/artemis-build/artemis/scripts/render_plists.py |
+| Modify | /Users/artemis-build/artemis/scripts/render_plists.py, /Users/artemis-build/artemis/src/artemis/data/scoped_store.py |
 | Delete | (none) |
 
 ### Commands

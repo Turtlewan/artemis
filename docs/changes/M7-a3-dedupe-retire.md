@@ -4,6 +4,7 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seam 1) + m7-cap-teacher-distill.md BLOCK B4 -->
 
 # Spec: M7-a3 — Rule-based recipe dedupe/retire (no LLM at library time)
 
@@ -31,10 +32,10 @@ Simplicity check: considered an LLM to judge duplicates — rejected (brain.md l
 
 ## Tasks
 - [ ] Task 1: Implement rule-based dedupe/retire — files: `/Users/artemis-build/artemis/src/artemis/recipes/dedupe.py` — `def dedupe_retire(store: RecipeStore, *, similarity_threshold: float = 0.92) -> list[str]` (NO LLM):
-  - **exact-dupe:** two recipes with the same `task_class_key` AND identical canonical instructions → retire the lower-version/older.
-  - **near-dupe:** two ENABLED recipes whose embedded descriptions have cosine ≥ `similarity_threshold` AND the same `action_class` → retire the one with the older `provenance["verified_at"]`.
-  - **superseded:** a recipe with the same `task_class_key` but a higher `version` retires the lower.
-  - **Deterministic tiebreaker (required):** when the retire-selection criterion ties (e.g. equal `verified_at`), break by `(lower version string, then lower name lexicographically)` so the outcome never depends on `store.list()` iteration order.
+  - **exact-dupe:** two recipes with the same `task_class_key` AND identical canonical instructions (whitespace-collapsed: `" ".join(instructions.split())`) → retire the lower-version one (parsed numeric tuple ordering: `tuple(int(x) for x in v.split("."))` — matches M7-a1's `get` ordering, so `0.10.0 > 0.9.0`).
+  - **near-dupe:** two ENABLED recipes whose embedded descriptions have cosine ≥ `similarity_threshold` AND the same `action_class` → retire the one with the older `provenance.get("verified_at", "")` (missing `verified_at` sorts oldest — treated as `""`; tiebreaker below applies when both are missing or equal).
+  - **superseded:** a recipe with the same `task_class_key` but a higher version (parsed numeric tuple) retires the lower. **Retire is performed via `store.set_status(name, RETIRED, version=lower_version)` — the `version=` param (added to M7-a1 Task 2) targets the specific version, not just the latest.**
+  - **Deterministic tiebreaker (required):** when the retire-selection criterion ties (e.g. equal or missing `verified_at`), break by `(lower parsed-numeric-tuple version, then lower name lexicographically)` so the outcome never depends on `store.list()` iteration order.
   - Returns the list of retired recipe names. Pure rules over stored metadata + the cosine index — never a model call. — done when: `uv run mypy --strict src` passes; given two recipes sharing a `task_class_key`, exactly one ends `RETIRED` and the other stays; two recipes with equal `verified_at` retire deterministically (same result across runs).
 
 - [ ] Task 2: Re-export — files: `/Users/artemis-build/artemis/src/artemis/recipes/__init__.py` — add `dedupe_retire` to the re-exports + `__all__`. — done when: `uv run python -c "from artemis.recipes import dedupe_retire"` exits 0.
@@ -42,7 +43,7 @@ Simplicity check: considered an LLM to judge duplicates — rejected (brain.md l
 - [ ] Task 3: Write the dedupe tests (off-hardware, fakes) — files: `/Users/artemis-build/artemis/tests/test_recipes_dedupe.py` — typed pytest reusing the M7-a1 `FakeEmbedder` + `FakeKeyProvider`, a real `RecipeStore` over `tmp_path`:
   - exact-dupe: two recipes sharing `task_class_key` + identical instructions → exactly one `RETIRED`, the survivor non-RETIRED.
   - near-dupe: two ENABLED recipes with near-identical descriptions (cosine ≥ threshold via the deterministic `FakeEmbedder`) + same `action_class` → the older-`verified_at` one is RETIRED.
-  - superseded: same `task_class_key`, `version` `0.2.0` retires `0.1.0`.
+  - superseded: same `task_class_key` AND same name, versions `0.2.0` and `0.1.0` written as `foo@0.2.0.skill.md` / `foo@0.1.0.skill.md` → `dedupe_retire` retires `foo` version `0.1.0` (the lower numeric-tuple version) via `set_status(name="foo", RETIRED, version="0.1.0")`; `foo` version `0.2.0` remains ENABLED.
   - deterministic tiebreaker: two recipes with equal `verified_at` → the SAME one is retired across repeated runs (and regardless of insertion order).
   — done when: `uv run pytest -q tests/test_recipes_dedupe.py` passes AND `uv run mypy --strict src tests/test_recipes_dedupe.py` passes.
 

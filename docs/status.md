@@ -8,7 +8,60 @@ specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults appli
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
 backends: planning=claude | coding=deepseek-v4-flash
 
-_Last updated by planning mode:_ 2026-06-10 (**Cross-module-links ADR — LOCKED → ADR-013.** Locked the 6
+_Last updated by planning mode:_ 2026-06-12 (**ADR-016 (uniform async tool-dispatch) DECIDED + CASCADED — CORPUS IS BATCH-HANDOFF-READY.**
+The last gate is cleared. Owner chose **option A (uniform async)** for the tool-dispatch surface: `ToolSpec.callable_ref`
+is `Callable[..., Awaitable[BaseModel]]` — **every** tool callable is `async def` (front-door, `_execute` twin, read-only,
+no-I/O alike), dispatched via `await` at the one uniform site in Brain (M1-b) + GATE (`approve` now `async def`). Rejected
+heterogeneous-B (sync|async union) because it forces `inspect.isawaitable` branching `mypy --strict` can't enforce — the very
+gate the spec-lint effort was built around. Wrote **ADR-016**; amended **contracts.md Seam 2 + Seam 3** (frozen rule). Ran the
+**async cascade** (4 parallel AFK agents, area-grouped) across M1-a/M1-b/GATE-a/GATE-b/M1-d (core), CAL-a/b/c/d, M8-b1/b2,
+M8-d-a/b/c2, M4-d-2 — every `callable_ref`→`async def`, every dispatch→`await`, test fakes→async; `HookSpec.check_ref` left
+**sync** (Seam 5, not a tool callable). **Cleared both parked markers:** M8-d-c2 `LINT-DEFER` (RecipeStore.write await) +
+M4-d-2 "resolve_entity stays sync" note. Verified corpus-wide: **zero stale `Callable[[BaseModel], BaseModel]` citations**
+remain. No remaining sync/async inconsistency across the port (ADR-015) + dispatch (ADR-016) surfaces. **The ~61-spec corpus
+is now fully batch-handoff-ready for DeepSeek when the Mini arrives.**)
+_Prior:_ 2026-06-12 (**FINAL SPEC-LINT PASS + FIX WAVE + ADR-015 async cascade — one decision from handoff-ready.**
+Ran the **final DeepSeek V4-Flash spec-lint** over all 60 specs (10 parallel reviewers, 5-check executor profile) →
+~32 BLOCK/18 specs, all amendment-drift residue + a few structural gaps; reports in `docs/findings/spec-lint-2026-06-11/`.
+Applied an **AFK fix wave** (9 agents) — all mechanical + determinate-structural BLOCKs fixed (M4-a `FactRow`/`EpisodeRow`
+defined, M3-c async, M3-d `IngestResult`, OBS-b usage→object, DR-c imperative-strip+canary, M7-a2 `DistillService`,
+M7-c eTLD+1, GATE-a AC, CAL-c `cancel_event`, M8-d-b/c1/c2 counts+signatures, CLIENT `require_session`/keychain/D6).
+Folded the `embedding_dimension` reconcile (it was a one-line doc-drift, no real Settings field). **Split M4-c** (owner)
+→ **M4-c-1** (recall+auto-inject) + **M4-c-2** (decay+owner-surface). Resolved the M3-c async-seam fork → **ADR-015
+(async port surface)**: owner chose **A2 (full)** — network-I/O ports (`ModelPort`/`EmbeddingModel`/`Reranker`/`Retriever`/
+`MemoryStore` embed methods) are `async`, local-disk/cached stay sync; cascade applied across M0-d/M1/M3/M4/M7-a1 +
+consumer sweep; contracts.md Seam 1 amended; `pytest-asyncio`+`asyncio_mode=auto` added to M0-a. Spec count 60 → 61.)
+_Prior:_ 2026-06-11 (**CORPUS REMEDIATION — sweep actioned; corpus near handoff-ready.**
+Calibrated the 2026-06-11 sweep (3/3 high-sev BLOCKs hand-verified real → B1 GATE-loop, B2/B5 interface fictions),
+wrote `docs/findings/sweep-2026-06-10/REMEDIATION-PLAN.md`, cleared **Decision Gate D1–D4**, froze
+**`docs/technical/contracts.md`** (10 cross-module seams; hardened with `EXECUTING`, `Usage`, Seam-6 GOAL, Seam-10
+storage). Ran **Wave 0B conformance** (pilot + 8 parallel agents → ~63/67 BLOCKs; Wave 1 design-bugs subsumed),
+**Wave 2 doc-drift** (ROADMAP 32→60, ADR-012 §3 EXECUTING, overview/brain/data-model/calendar aligned, skill→recipe),
+**Wave 3 research** (DeepSeek-executor · Docling 2.99 Granite-VLM · voice stack — 3 docs in `docs/research/`), and
+resolved + applied the **6-item decision queue D1–D6** (cloud-detect inject · Gmail {PRIMARY,UPDATES} · eager GOAL ·
+hybrid SQLCipher+vault storage · per-slot git worktrees · iOS URL at pairing). **REMAINING (fresh session): final
+DeepSeek spec-lint pass over all 60 specs + `embedding_dimension` reconcile = last gate to batch-handoff-ready.**
+See the `corpus-remediation` In-Flight row + REMEDIATION-PLAN.md.)
+_Prior:_ 2026-06-11 (**Camera/vision → vision build-assistant DESIGNED + deferred → ADR-014.**
+Dedicated discussion reframed the camera backlog item from a home-cameras spoke into an overhead **desk-vision HUD +
+voice-first guided-build assistant** (a vision *input*, sibling to voice; Mini-local, NOT an ACI edge box). apex-deep-dive
+(3 research agents) pinned the pipeline: Apple Vision detect/track/OCR + open-vocab YOLOE in a new Swift **vision sidecar**
+→ Qwen3-VL/MLX ID → M3/M4/web enrich; cloud-Claude escalation gated/opt-in/default-OFF. Honest verdict: the full
+autonomous/general/verify-from-loose-context version is past reliable 2026 tech → build via a capability **LADDER**
+(Rung 0 snapshot → 1 live HUD → 2 assisted-verify → 3 autonomous-watch). Locked DESIGNED-deferred (like Finance);
+**Rung 0/1 = first specs when M3/M4/M5/DR/Projects/CLIENT land.** Findings: `docs/findings/desk-vision-hud-deep-dive.md`
+(+ 2 widening-research agents FOLDED into ADR-014: alt-implementations + capability-menu). Also **DISCUSSED (not
+specced)** the relationship/personal-CRM backlog cluster → converged on an on-demand **Person Briefing** core
+(`docs/findings/person-briefing-discussion.md`; BACKLOG annotated, 4 facets reframed as opt-in extras). NB the
+corpus-sweep remediation is still pending — see In-Flight.)
+_Prior:_ 2026-06-11 (**FULL-CORPUS SWEEP (Fable 5, 11 parallel reviewers) —
+corpus NOT handoff-ready.** 67 BLOCK · 62 UPGRADE · 130 FLAG · 39 RESEARCH across all ~60 specs.
+Dominant failure = cross-spec interface fictions; worst bug = GATE-a approval re-dispatch loop;
+quarantine leaks in M8-b1/b2 + M6-c. Synthesis + remediation sequence:
+`docs/findings/sweep-2026-06-10/_SUMMARY.md` + 11 per-area reports. **Next session: review findings,
+then plan the remediation wave starting with the contracts-freeze pass.** Session ended before
+review — findings are unreviewed by owner.)
+_Prior:_ 2026-06-10 (**Cross-module-links ADR — LOCKED → ADR-013.** Locked the 6
 keystone decisions from `docs/research/cross-module-links.md` §Part 7: (1) canonical person pointer =
 M4 `person_fact_key` (not ad-hoc strings); (2) logical `{module, entity_id}` ref resolved via ToolRegistry,
 never cross-store joins; (3) lifecycle-sync (no orphans, generalizes M8-d-b auto-cancel); (4) hub views =
@@ -19,7 +72,9 @@ backbone build is now SPECCED:** `M4-d-1` (entity data layer — entities/aliase
 `EntityRepository`) + `M4-d-2` (write-path subject→PERSON wiring + `memory.resolve_entity` tool registered in
 the ToolRegistry) — both `status: ready` in `docs/changes/`, drafted AFK + 4-reviewer pass (security+data ×2;
 2 BLOCKs on `facts_for_entity` bitemporal predicate + index sargability resolved, all FLAGs folded). overview.md
-+ data-model.md reconciled. Flagged follow-up: shared `artemis.untrusted` helper refactor. ~58 specs ready.)
++ data-model.md reconciled. Flagged follow-up: shared `artemis.untrusted` helper refactor. **Also specced `M0-f`**
+(Keychain→`0600` slot `.env` injection — resolves SECRETS-INVENTORY P1/P5; persisted-`.env` mechanism; security
+review folded; RUNBOOK/INVENTORY updated). ~59 specs ready.)
 _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardware DECIDED: wait for M5 Mini
 → 64GB (ADR-001 §Refinement). 4 research docs in `docs/research/`. Homelab framed as **ACI**, phased+trigger-
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
@@ -34,23 +89,26 @@ _Last updated by coding mode:_ never
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
 | M8 first-spoke-wave | planning | ✅ COMPLETE · 0 parked | docs/changes/ | Gmail (M8-a/b1/b2) + Calendar (CAL-a/b/c/d) + Productivity (M8-d-a/b/c1/c2) + GATE (a/b) ALL READY. Module designs calendar/gmail/productivity.md complete. **M6-c was amended in place** (pre_tick_steps). Build-ready for batch handoff. | — |
-| SP0 core | planning | ✅ complete · build-ready | docs/changes/ (~56 ready specs) | Core spine M0–M7 + OBS + DR + CLIENT + M8 (Gmail/Calendar/Productivity) + GATE. Batch handoff to DeepSeek when the Mini arrives (`ROADMAP.md` §"Build handoff"). | — |
+| SP0 core | planning | ✅ COMPLETE — batch-handoff-ready (all sweeps + ADR-015/016 cascades done) | docs/changes/ (~61 ready specs) | Core spine M0–M7 + OBS + DR + CLIENT + M8 (Gmail/Calendar/Productivity) + GATE all specced; 2026-06-11 sweep + final spec-lint remediation COMPLETE; ADR-015 (port) + ADR-016 (dispatch) async cascades applied. No remaining handoff blockers. | — |
+| corpus-remediation | planning | ✅ COMPLETE — corpus batch-handoff-ready | docs/findings/spec-lint-2026-06-11/_SUMMARY.md | Sweep remediation (Waves 0–3 + D1–D6) + final spec-lint pass (10 agents) + fix wave (9 agents) + **ADR-015 async-port cascade** + **ADR-016 uniform-async-tool-dispatch cascade** ALL DONE. ADR-016 (owner: option A) cascaded across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents); contracts.md Seam 2+3 amended; both parked markers (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note) cleared; verified zero stale sync citations. **No remaining gate — the ~61-spec corpus is fully batch-handoff-ready for DeepSeek when the Mini arrives.** | M1-a/b · GATE-a/b · M1-d · CAL-a/b/c/d · M8-b1/b2 · M8-d-a/b/c2 · M4-d-2 · contracts.md · ADR-016 (new) |
 
 _(no build until the Mini arrives — planning/specs only)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~58 specs `status: ready` in `docs/changes/`. **Zero parked spec drafts.** Listed by milestone in
-dependency/build order. Batch handoff to DeepSeek when the Mini arrives._
+_~61 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12). **Zero parked spec
+drafts. Zero open gates** — ADR-015 (port async) + ADR-016 (dispatch async) cascades both applied 2026-06-12, so the
+corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. Listed by milestone in dependency/build order._
 
 | Milestone | Specs | Summary |
 |-----------|-------|---------|
 | M0 foundation | M0-a..e (5) | repo/package layout + data-root `/opt/artemis`, launchd + ntfy, mlx-openai-server, ports, build-agent isolation |
+| M0 secrets-injection | **M0-f (1, ready)** | `scripts/inject_env.py`: Keychain→`0600` slot `.env` (merge-not-clobber; ntfy preserve-not-rotate), wired into `deploy.sh` pre-bootstrap. Locks the Keychain item map (P1) + the injection mechanism (P5). `cross_model_review: true`. |
 | M1 thin brain | M1-a..d (4) | module-manifest + RAG-for-tools, semantic router + router-first Brain, gateway/CLI/SSE, time tool + heartbeat skeleton |
 | M2 security wall | M2-a..d (4) | SE key-broker, scope + crypto wall, brain broker-client + Tier-0 key, **M2-d security gate** |
 | M3 knowledge | M3-a..d (4) | ingestion (Docling→LanceDB), hybrid retriever, agentic multi-hop, visual-doc |
-| M4 memory | M4-a..c (3) | bitemporal schema, A.U.D.N. write path, auto-inject + decay + owner surface |
+| M4 memory | M4-a, M4-b, M4-c-1, M4-c-2 (4) | bitemporal schema; A.U.D.N. write path; **M4-c-1** recall + auto-inject; **M4-c-2** decay + owner view/edit/delete/purge (M4-c split per owner 2026-06-12; M4-c-2 depends on M4-c-1). All async per ADR-015. |
 | M4 entity backbone | **M4-d-1, M4-d-2 (2, ready)** | ADR-013 build. M4-d-1: `entities`/`entity_aliases` tables + `subject_entity_id` fact link + `EntityRepository` (resolve/alias/merge) + `person_fact_key` + `EntityRef`. M4-d-2: write-path auto-links fact subjects→PERSON entities + the `memory.resolve_entity` read-tool (ToolRegistry-registered cross-module resolver). Build M4-d-1→M4-d-2 (after M4-a/b/c + M1-a/c). Gate before Finance/Health/Comms/Travel. |
 | M5 voice | M5-a..d (4) | Swift audio sidecar, STT/TTS, speaker-ID + voice-Tier gate, voice-loop orchestrator |
 | M6 heartbeat | M6-a..c (3) | scheduler tick-loop + hooks, batched-LLM HIT handling, ntfy delivery + Tier-1 queue. **M6-c amended 2026-06-09: `pre_tick_steps` async seam on `attach_to_heartbeat`/`compose_proactive` (for M8-b2).** |
@@ -75,6 +133,11 @@ dependency/build order. Batch handoff to DeepSeek when the Mini arrives._
 
 ## Next step — first spoke wave COMPLETE; remaining items are housekeeping/external
 **RESUME HERE (next planning session):**
+0. ✅ **ALL HANDOFF GATES CLEARED 2026-06-12.** Full-corpus sweep + final spec-lint + fix wave + **ADR-015 (port async)**
+   + **ADR-016 (dispatch async)** cascades ALL DONE. The ~61-spec corpus is **fully batch-handoff-ready** for DeepSeek
+   when the Mini arrives — no remaining blockers. (Optional pre-handoff polish only: a final mypy-consistency read of the
+   async cascade once code exists; the agents flagged a couple of cosmetic import-line / closure-style judgment calls — see
+   below.) Next planning work is forward-looking (CAP build-drip, second-spoke-wave, camera Rung 0/1, or hardware re-look).
 1. ✅ **Bring-up artifacts DONE 2026-06-09** — `docs/bring-up/BRING-UP-RUNBOOK.md` + `SECRETS-INVENTORY.md`
    written (drafted via AFK agents, persisted by planning). Both carry a Parked table for build-time seams.
 2. ✅ **WWDC hardware re-decision DONE** — wait for M5 Mini → buy 64GB (ADR-001 §Refinement 2026-06-09).
@@ -92,6 +155,34 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **✅ TOOL-DISPATCH ASYNC — RESOLVED + CASCADED 2026-06-12 → ADR-016.** Owner chose **option A (uniform async)**:
+  `ToolSpec.callable_ref` is `Callable[..., Awaitable[BaseModel]]` — every tool callable is `async def`, dispatched via
+  `await` at the one uniform site in Brain (M1-b) + GATE (`approve` now `async def`). Rejected heterogeneous-B (sync|async
+  union) because its `inspect.isawaitable` branching defeats `mypy --strict`. contracts.md Seam 2+3 amended; cascade applied
+  across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents). Both parked
+  markers cleared (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note → now async). `HookSpec.check_ref` stays sync (Seam 5).
+  Verified zero stale sync citations. **This was the last gate — the corpus is now batch-handoff-ready.**
+- **✅ Corpus remediation (sweep 2026-06-11) + final spec-lint — DONE 2026-06-12.** Sweep Waves 0–3 + decision
+  queue D1–D6 complete; final DeepSeek spec-lint pass (10 agents) + AFK fix wave (9 agents) applied — all mechanical
+  + determinate BLOCKs resolved. M4-c split; ADR-015 async cascade applied. Reports: `docs/findings/spec-lint-2026-06-11/_SUMMARY.md`.
+  Only the tool-dispatch async decision (above) remains before handoff.
+- **⚠️ Hardware re-look flagged by research-currency agent:** M5 Mini now expected late Aug–Oct 2026
+  with prices rising — agent assessed this *strengthens buy-M4-Pro-64GB-now* over the locked WAIT
+  decision (ADR-001 §Refinement). Owner to re-confirm or flip when reviewing sweep findings.
+- **✅ Research refreshes DONE 2026-06-11** (all 3, build-impact order): (1) **DeepSeek V4-Flash** —
+  conditionally reliable; spec quality is the failure variable; 5-check spec-lint checklist → run a
+  spec-lint pass as the final pre-handoff gate (`2026-06-11-deepseek-v4flash-executor.md`); (2)
+  **Docling** — pin `docling==2.99.0`, Granite-Docling VLM pipeline (MLX export; resolves Seam 9
+  PageImage) (`2026-06-11-docling-pipeline.md`); (3) **Voice stack** — Parakeet MLX (STT) · Kokoro-82M
+  (TTS) · FluidAudio/Sortformer (diarization) · SmartTurn v3.2 (EOU) · Pipecat v1.3+
+  (`2026-06-11-voice-stack-refresh.md`).
+- **NEW (from voice research) — owner-voice enrollment/verification undesigned (pre-M5-c):** no
+  diarization lib ships owner enrollment/verification. Artemis must build a speaker-embedding store
+  (e.g. WeSpeaker cosine-sim vs an enrolled owner vector) spanning the Swift sidecar (enrollment flow)
+  + Python brain (comparison). Decide before M5 build.
+- **⚠️ contracts.md (Wave 0A) — PENDING OWNER SIGN-OFF.** `docs/technical/contracts.md` freezes 9
+  cross-module seams; it is the binding source-of-truth for the Wave 0B conformance amendments. Review
+  before fanning out conformance agents.
 - **✅ M8-d-c2 capture-recipe graduation — RESOLVED + built.** A recurring owner-approved capture becomes
   an **owner-behaviour-distilled CANDIDATE recipe** written directly via `RecipeStore.write` (M7-a1), then
   promoted through M7-b's `Promoter`/`RecurrenceStore`/`ReviewSurface` (TOUCHES_DATA → gated → PENDING →
@@ -130,9 +221,19 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 - **⚠️ Follow-ups spun out of ADR-013 (not locked there):** (a) shared `artemis.untrusted` boundary-helper
   refactor (currently re-implemented per-module); (b) ✅ `overview.md` updated 2026-06-10 — M4 named as the
   entity backbone + ADR-012/013 added to the ADR index; (c) first Tier-0 entity candidate still undecided.
-- **⚠️ NEW gap — launchd→Keychain `.env`-injection script unspecced** (SECRETS-INVENTORY §P5 / RUNBOOK §P8).
-  Referenced by M8-a/M0-b/DR-b/DR-c (Keychain → slot `.env` at service start) but the injection script itself
-  is never specced. Load-bearing for the secrets-loading step. → small M0-b follow-up spec needed.
+- **✅ Camera/vision — RESOLVED + LOCKED 2026-06-11 → ADR-014 (DESIGNED, deferred).** Reframed from a home-cameras
+  spoke into a **vision build-assistant** (overhead desk-vision HUD + voice-first guided builds; a vision *input*
+  sibling to voice, Mini-local — NOT an ACI edge box). Pipeline pinned (Apple Vision + open-vocab YOLOE in a Swift
+  vision sidecar → Qwen3-VL/MLX ID → M3/M4/web enrich; gated/opt-in cloud-Claude escalation). Built via a capability
+  **LADDER** (Rung 0 snapshot → 3 autonomous-watch); Rung 0/1 = first specs when M3/M4/M5/DR/Projects/CLIENT land.
+  Findings: `docs/findings/desk-vision-hud-deep-dive.md`. **Widening research FOLDED into ADR-014** (alt-implementations
+  + capability-menu): `desk-vision-alt-implementations.md` · `desk-vision-capability-menu.md`.
+- **✅ launchd→Keychain `.env`-injection — RESOLVED 2026-06-10 → spec `M0-f` (ready).** `scripts/inject_env.py`
+  reads the owner Keychain (6 Medium-tier secrets, item map locked = P1) and writes a `0600` slot `config/.env.<slot>`,
+  MERGING into the existing non-secret config (not clobbering), generating+preserving the ntfy topic secret;
+  wired into `deploy.sh` before `launchctl bootstrap`. Mechanism = persisted-`.env` (chosen over wrapper-exec to
+  avoid the launchd-keychain-at-boot footgun; Medium-tier-only at rest, behind FileVault+0600; HIGH-tier S3 stays
+  in SQLCipher). Security review folded (no BLOCKs); `cross_model_review: true`. RUNBOOK §P8 + INVENTORY P1/P5 updated.
 - **✅ repo-transfer — DONE 2026-06-09.** Local repo initialized + pushed to private GitHub
   **`Turtlewan/artemis`** (`main`, initial commit `8caa9b1`, 118 files = planning corpus only). `.gitignore`
   guards secrets/`.env`/`*.db`/keys + `.research/` + `.claude/settings.local.json`; `.gitattributes` = LF.

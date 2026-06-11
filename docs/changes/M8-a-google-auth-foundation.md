@@ -1,3 +1,4 @@
+<!-- amended 2026-06-11 per contracts.md (Seams 7,8) + m8-gmail.md BLOCKs: F1 (acceptance criterion shell seam) -->
 ---
 spec: m8-a-google-auth-foundation
 status: ready
@@ -161,7 +162,7 @@ The credentials factory does ONE `refresh()` to mint a live access token, then r
 - [ ] Run `uv run mypy --strict src tests/test_google_auth.py` → verify: exit 0.
 - [ ] Run `uv run pytest -q tests/test_google_auth.py` → verify: scope-registry union + validation, `StoredToken` redaction, `InMemoryTokenStore` round-trip, `SqlCipherTokenStore` locked→`ScopeLockedError`, consent-param assertions (offline/consent/include_granted_scopes + no hardcoded `redirect_uris`), `ConsentFailedError` on no-refresh-token, factory auto-refresh + `repr(creds)` non-leak + `invalid_grant`→chained `ReauthRequiredError` + non-`invalid_grant` `RefreshError` propagates unwrapped + empty-store→`ReauthRequiredError`, `load_oauth_config` missing→`MissingOAuthConfigError`, CLI status-ok / status-locked-no-traceback / revoke-locked / login-no-scopes — all pass.
 - [ ] Run `uv run python -c "from artemis.integrations.google import StoredToken; print('topsecret' not in repr(StoredToken(refresh_token='topsecret', scopes=('s',), token_uri='u', client_id='c', obtained_at_ms=0)))"` → verify: prints `True`.
-- [ ] Run `uv run artemis-google-auth status` (empty in-memory store via test seam) → verify: prints "no Google account paired" and exits 0.
+- [ ] Run `uv run pytest -q tests/test_google_auth.py -k test_cli_status` → verify: CLI status with an in-memory store prints "no Google account paired" and the test passes. (The shell invocation `uv run artemis-google-auth status` cannot use a pytest monkeypatch seam; the real `main` builds `SqlCipherTokenStore` + broker `KeyProvider`, which fail off-hardware. The runnable criterion is the pytest test — see Task 6 `main(["status"])` via the test seam.)
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 - [ ] (GATED, on Mini, owner-present) Real consent stores a refresh token in owner-private SQLCipher under the mounted vault; wrong key fails to open; an authorized `calendarList.list` succeeds; no token appears in any log → verify recorded in handoff.
 

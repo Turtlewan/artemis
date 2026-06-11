@@ -63,11 +63,11 @@ Short-lived opaque API-session tokens issued by the brain to the authenticated p
 
 | ID | Parked item | Why parked | Who resolves |
 |----|------------|-----------|-------------|
-| P1 | Exact Keychain service/account slot names for S1–S7 | Names above are proposed conventions; the launchd env-injection `security find-generic-password` invocation isn't confirmed on the Mini | Planning + M0-b follow-up or runbook |
+| P1 | ✅ RESOLVED 2026-06-10 → spec **M0-f** locks the canonical Keychain item map (`KEYCHAIN_ITEMS` in `inject_env.py`): `artemis.google.oauth`/`client_id`+`client_secret`, `artemis.search.{brave,tavily,jina}`/`api_key`, `artemis.deepseek`/`api_key`. | — (locked) |
 | P2 | `ARTEMIS_NTFY_TOPIC_SECRET` — slot `.env` vs separate Keychain slot | M6-c says "non-public Settings"; exact mechanism unspecced (listed as `.env`, S11) | Planning |
 | P3 | ntfy.sh topic token (if ntfy.sh chosen over self-hosted) | PRE-ARRIVAL-PREP §A6 offers both; ntfy.sh adds a secret; self-hosted (default) needs none beyond S11 | Owner at bring-up |
 | P4 | `ARTEMIS_BROKER_SKIP_CODESIGN` dev flag | M2-a dev bypass for the broker IPC peer code-signing check; not a secret but must be ABSENT in PROD | Runbook authoring |
-| P5 | **Launchd env-injection mechanism for secrets** | The Keychain → slot `.env` injection seam is referenced (M8-a, M0-b, DR-b/c) but the script that reads Keychain and writes the `.env` at service start is **not yet specced** | Planning ⚠️ (the biggest gap) |
+| P5 | ✅ RESOLVED 2026-06-10 → spec **M0-f** (`scripts/inject_env.py`): persisted-`.env` mechanism (read Keychain interactively at bring-up/deploy → `0600` slot `.env`; merge-not-clobber; ntfy preserve-not-rotate). Chosen over wrapper-exec to avoid the launchd-keychain-at-boot footgun. | — (resolved) |
 | P6 | DeepSeek `roles.toml` env-reference dereference | DR-c uses `api_key = { env = "DEEPSEEK_API_KEY" }`; the M0-a `ModelRole` pydantic model must dereference env at Settings-load (M0-a says "No secrets are read here") | Coding mode at DR-c build |
 | P7 | APNs / push credential (watch / future mobile push) | If a native push path is ever needed beyond ntfy→Tailscale | Park until CLIENT milestone |
 

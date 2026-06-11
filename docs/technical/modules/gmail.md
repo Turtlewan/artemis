@@ -1,3 +1,4 @@
+<!-- amended 2026-06-11 per Decision D2 -->
 # Module design — Gmail (read-only mirror)
 
 _Per-module design doc (second of the spoke-module design docs, after `calendar.md`). The complete
@@ -79,8 +80,8 @@ Friday"). Deduped/updated by the existing A.U.D.N. cardinality rubric. Promotion
 ## E. Proactive hook — "important unread", end-state 3-stage funnel (decided 2026-06-09), Tier-1
 A single `HookSpec` on the M6 Heartbeat (`check_ref → HookResult`), all **Tier-1** (queued while locked):
 
-1. **Stage 1 — cheap pre-filter:** unread in **Primary** **AND** Gmail's own **Important** marker →
-   a small candidate set. (Free signal; discards the bulk. No LLM.)
+1. **Stage 1 — cheap pre-filter:** unread in **Primary or Updates** (`URGENCY_CANDIDATES = {PRIMARY, UPDATES}`) **AND** Gmail's own **Important** marker →
+   a small candidate set. (Free signal; discards the bulk. No LLM. Forums is excluded — in `SIGNAL_CATEGORIES` for ingestion depth but not in `URGENCY_CANDIDATES` for urgency scoring. Decision D2 2026-06-11.)
 2. **Stage 2 — memory boost:** candidates whose **sender is known to memory** (key people — boss,
    family, recurring contacts via M4) are bumped up in priority.
 3. **Stage 3 — LLM urgency scoring:** ONLY the pre-filtered candidates are scored by the brain

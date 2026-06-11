@@ -4,6 +4,7 @@ status: ready
 token_profile: lean
 autonomy_level: L2
 ---
+<!-- amended 2026-06-11 per contracts.md (Seam 1) + m7-cap-teacher-distill.md BLOCKs B5; FLAGs F10, F11; UPGRADE U6 -->
 
 # Spec: Tier-2 distillation data-generation pipeline (offline, Windows PC, pre-Mac)
 
@@ -34,8 +35,7 @@ per call**, not one:
   category instead of `target_raw` calls — a ~10× reduction in fixed-overhead.
 - `_parse_trace` is preceded by a `_split_traces(raw) -> list[str]` that extracts each `<trace>` block;
   each block is then parsed by the existing `_parse_trace`. A malformed block is dropped + logged (never
-  raises). A call returning fewer than `k` parseable traces is acceptable (logged; the shortfall is not
-  retried — the next call covers the remaining target).
+  raises). A call returning fewer than `k` parseable traces is acceptable (logged; the shortfall is **not** retried — the pipeline issues a fixed `ceil(target_raw / batch_size)` calls, so final per-category counts may land slightly under target. This is intentional; the pilot validates whether the fixed count yields acceptable totals. "The next call covers the remaining target" is retracted — it contradicts the fixed-call rule.)
 - This changes Tasks 2, 3, 5 as noted inline below. `FakeTeacher` returns a batch of `k` `<trace>` blocks.
 
 ## Assumptions
@@ -54,6 +54,7 @@ Simplicity check: considered reusing `ClaudeCliModelPort` from M7-a2 — not pos
 
 | File | Operation | Notes |
 |------|-----------|-------|
+| `<repo-root>/.gitignore` | modify-or-create | add `!datasets/` if needed (P3/B5 — ensure datasets/ is Git-tracked) |
 | `tools/distill/pyproject.toml` | create | standalone uv project; deps: `httpx`, `tenacity`; dev: `ruff`, `mypy`, `pytest` |
 | `tools/distill/distill/__init__.py` | create | package marker |
 | `tools/distill/distill/categories.py` | create | 6 category definitions + prompt templates + `batch_size` |
@@ -62,6 +63,7 @@ Simplicity check: considered reusing `ClaudeCliModelPort` from M7-a2 — not pos
 | `tools/distill/distill/pipeline.py` | create | `DatagenPipeline.run()` — generate(batch)→split→judge→dedup→balance→write |
 | `tools/distill/distill/output.py` | create | JSONL writer + manifest + train/eval split |
 | `tools/distill/tests/test_pipeline.py` | create | end-to-end pipeline test with `FakeTeacher` + `FakeJudge` |
+| `docs/bring-up/SECRETS-INVENTORY.md` | modify | add `DEEPSEEK_API_KEY` entry (P2/F11) |
 
 ## Tasks
 
@@ -70,8 +72,10 @@ Simplicity check: considered reusing `ClaudeCliModelPort` from M7-a2 — not pos
 
 - `pyproject.toml`: `[project] name = "artemis-distill" version = "0.1.0" requires-python = ">=3.12"`. Runtime deps: `httpx>=0.27`, `tenacity>=8`. Dev deps: `ruff`, `mypy`, `pytest`. `[tool.mypy] strict = true`. `[tool.ruff.lint] select = ["E","F","I"]`. Entry point: `[project.scripts] distill = "distill.pipeline:main"`.
 - `distill/__init__.py`: empty package marker.
+- **P3 gitignore (B5):** check `<repo-root>/.gitignore`; if any pattern would exclude `datasets/`, add `!datasets/` to ensure the directory is Git-tracked. File: `<repo-root>/.gitignore` (create if absent; otherwise append). This task has no other owner.
+- **P2 doc edit (F11):** add to `docs/bring-up/SECRETS-INVENTORY.md` an entry for `DEEPSEEK_API_KEY` (required for judge) + `DEEPSEEK_BASE_URL` (default `https://api.deepseek.com/v1`) + `DEEPSEEK_JUDGE_MODEL` (default `deepseek-chat`). **No dotenv loading in the pipeline** — document usage as `$env:DEEPSEEK_API_KEY = "..."` (PowerShell) or set in the shell env before running. The pipeline reads env vars directly via `os.environ.get`.
 
-Done when: `uv sync` succeeds inside `tools/distill/` and `uv run python -c "import distill"` exits 0.
+Done when: `uv sync` succeeds inside `tools/distill/` and `uv run python -c "import distill"` exits 0; repo-root `.gitignore` does not suppress `datasets/`; `DEEPSEEK_API_KEY` documented in SECRETS-INVENTORY.md.
 
 ---
 
@@ -132,12 +136,21 @@ class TeacherPort(Protocol):
 class TeacherAdapter:
     """Calls `claude -p <prompt> --output-format json` as a subprocess.
     VERIFIED interface (planning 2026-06-09): JSON stdout; completion in .result; .is_error flags failure.
+    U6: resolves the executable via shutil.which (handles .cmd/.ps1 shims on Windows without shell=True).
     """
-    def __init__(self, *, timeout_s: int = 180) -> None: ...
+    def __init__(self, *, timeout_s: int = 600) -> None:
+        # U6: resolve at init; raise immediately if not found
+        import shutil
+        exe = shutil.which("claude")
+        if exe is None:
+            raise RuntimeError("claude CLI not found on PATH — install and log in first")
+        self._exe = exe
+        # timeout_s=600: sized for a batch of 10 full-CoT traces (180s was sized for one trace)
     def complete(self, system: str, user: str) -> str:
         # prompt = system + "\n\n" + user  (single string; no multi-turn)
-        # proc = subprocess.run(["claude", "-p", prompt, "--output-format", "json"],
+        # proc = subprocess.run([self._exe, "-p", prompt, "--output-format", "json"],
         #                       capture_output=True, text=True, timeout=timeout_s)
+        # U6: use self._exe (resolved at init) — handles .cmd/.ps1 shims on Windows
         # data = json.loads(proc.stdout); if data.get("is_error") or proc.returncode != 0:
         #     raise TeacherCallError(proc.stderr or data)
         # return str(data["result"])
@@ -183,7 +196,9 @@ class JudgeAdapter:
     def score(self, task: str, reasoning: str, answer: str) -> JudgeScore: ...
 
 class FakeJudge:
-    """Deterministic pass/fail by content hash vs pass_rate (default pass all)."""
+    """Deterministic pass/fail by content hash vs pass_rate (default pass all).
+    passed = (int(sha256((task+reasoning+answer).encode()).hexdigest(), 16) % 100) / 100 < pass_rate
+    (so pass_rate=0.0 → never passes, 1.0 → always passes, 0.5 → deterministic ~half by hash)."""
     def __init__(self, *, pass_rate: float = 1.0) -> None: ...
     def score(self, task: str, reasoning: str, answer: str) -> JudgeScore: ...
 ```
@@ -211,7 +226,9 @@ class PipelineConfig:
     dedup_threshold: float = 0.85      # SimHash similarity
     hold_out_fraction: float = 0.12    # 10–15%
     seed: int = 42
-    output_dir: Path = Path("datasets/distill")
+    output_dir: Path = Path(__file__).resolve().parents[3] / "datasets" / "distill"
+    # B5: default resolves to repo-root datasets/distill/ regardless of cwd (P3: Git-tracked).
+    # The --output-dir CLI arg overrides this; pass an absolute path.
     version: str = "v0.1"
 
 class DatagenPipeline:
@@ -295,29 +312,31 @@ Typed pytest, `FakeTeacher`+`FakeJudge`, no network:
 Done when: `uv run pytest -q tests/test_pipeline.py` passes AND `uv run mypy --strict distill/ tests/` passes.
 
 ## Acceptance Criteria
-- [ ] **Task 1** — `cd tools/distill && uv sync` exits 0; `uv run python -c "import distill"` exits 0.
+- [ ] **Task 1** — In PowerShell: `cd tools/distill; uv sync` exits 0; `uv run python -c "import distill"` exits 0. (F10: `&&` is a parser error in PowerShell 5.1; use `;` or separate commands.)
 - [ ] **Task 2** — `uv run python -c "from distill.categories import CATEGORIES; assert len(CATEGORIES)==6"` exits 0.
 - [ ] **Task 3** — `uv run mypy --strict distill/teacher.py` exits 0; `uv run python -c "from distill.teacher import FakeTeacher; assert '<trace>' in FakeTeacher().complete('s','u')"` exits 0.
 - [ ] **Task 4** — `uv run mypy --strict distill/judge.py` exits 0; `uv run python -c "from distill.judge import FakeJudge; s=FakeJudge().score('t','r','a'); assert hasattr(s,'passed')"` exits 0.
 - [ ] **Task 5** — `uv run mypy --strict distill/pipeline.py` exits 0.
 - [ ] **Task 6** — `uv run mypy --strict distill/output.py` exits 0.
 - [ ] **Task 7** — `uv run pytest -q tests/test_pipeline.py` passes; `uv run mypy --strict distill/ tests/` exits 0.
-- [ ] **Ruff gate** — `uv run ruff check distill/ tests/ && uv run ruff format --check distill/ tests/` both exit 0.
-- [ ] **Dry-run CLI smoke** — `uv run distill --dry-run --count-per-category 2 --version smoke --output-dir datasets/distill` creates `train.jsonl`/`eval.jsonl`/`manifest.json`; no exceptions.
+- [ ] **Ruff gate** — `uv run ruff check distill/ tests/` exits 0; `uv run ruff format --check distill/ tests/` exits 0. (Run as separate commands — F10.)
+- [ ] **Dry-run CLI smoke** — `uv run distill --dry-run --count-per-category 2 --version smoke --output-dir <absolute-repo-root-path>/datasets/distill` creates `train.jsonl`/`eval.jsonl`/`manifest.json` under repo-root `datasets/distill/smoke/`; no exceptions. (B5: pass an absolute path so output lands at the P3-tracked location regardless of cwd.)
 
 ## Commands to Run
-```bash
-# From tools/distill/
+<!-- F10: Windows PowerShell 5.1 — && is a parser error. Use separate lines or semicolons. Run from within tools/distill/ or use Set-Location first. -->
+```powershell
+# Run from the tools/distill/ directory (cd tools/distill first in PowerShell)
 uv sync
 uv run mypy --strict distill/ tests/
 uv run ruff check distill/ tests/
 uv run ruff format --check distill/ tests/
 uv run pytest -q tests/test_pipeline.py
 
-# Dry-run end-to-end (no API calls)
-uv run distill --dry-run --count-per-category 5 --version smoke --output-dir datasets/distill
+# Dry-run end-to-end (no API calls) — --output-dir MUST be absolute so output lands at the P3-tracked location regardless of cwd (B5)
+uv run distill --dry-run --count-per-category 5 --version smoke --output-dir <absolute-repo-root-path>/datasets/distill
 
-# Real pilot run (requires DEEPSEEK_API_KEY + `claude` CLI logged in)
+# Real pilot run (requires $env:DEEPSEEK_API_KEY set + claude CLI logged in)
+$env:DEEPSEEK_API_KEY = "sk-..."
 uv run distill --count-per-category 200 --version pilot --output-dir datasets/distill
 
 # v1 run (5k–10k traces; after pilot validates quality)
