@@ -19,7 +19,12 @@ M8-d-a/b/c2, M4-d-2 — every `callable_ref`→`async def`, every dispatch→`aw
 **sync** (Seam 5, not a tool callable). **Cleared both parked markers:** M8-d-c2 `LINT-DEFER` (RecipeStore.write await) +
 M4-d-2 "resolve_entity stays sync" note. Verified corpus-wide: **zero stale `Callable[[BaseModel], BaseModel]` citations**
 remain. No remaining sync/async inconsistency across the port (ADR-015) + dispatch (ADR-016) surfaces. **The ~61-spec corpus
-is now fully batch-handoff-ready for DeepSeek when the Mini arrives.**)
+is now fully batch-handoff-ready for DeepSeek when the Mini arrives.** **Also this session — macOS client surface decided
++ locked → ADR-017:** owner chose end-state **Mac + iPhone + iPad** (native, Athena-style, not a website). Research +
+spec-audit confirmed the base is already cross-platform (ArtemisKit platform-agnostic; screens adaptive), so it's additive:
+a separate native `ArtemisMac` target sharing ArtemisKit + an Athena-style scene (menu-bar + global-hotkey panel + window
++ Settings); Mac = another paired device. CLIENT-c amended (macOS auth path); CLIENT-f spec drafting AFK (then apex-swift +
+apex-security review). Additive — does NOT gate the existing corpus. Research: `docs/research/2026-06-12-multiplatform-swift-client.md`.)
 _Prior:_ 2026-06-12 (**FINAL SPEC-LINT PASS + FIX WAVE + ADR-015 async cascade — one decision from handoff-ready.**
 Ran the **final DeepSeek V4-Flash spec-lint** over all 60 specs (10 parallel reviewers, 5-check executor profile) →
 ~32 BLOCK/18 specs, all amendment-drift residue + a few structural gaps; reports in `docs/findings/spec-lint-2026-06-11/`.
@@ -91,6 +96,7 @@ _Last updated by coding mode:_ never
 | M8 first-spoke-wave | planning | ✅ COMPLETE · 0 parked | docs/changes/ | Gmail (M8-a/b1/b2) + Calendar (CAL-a/b/c/d) + Productivity (M8-d-a/b/c1/c2) + GATE (a/b) ALL READY. Module designs calendar/gmail/productivity.md complete. **M6-c was amended in place** (pre_tick_steps). Build-ready for batch handoff. | — |
 | SP0 core | planning | ✅ COMPLETE — batch-handoff-ready (all sweeps + ADR-015/016 cascades done) | docs/changes/ (~61 ready specs) | Core spine M0–M7 + OBS + DR + CLIENT + M8 (Gmail/Calendar/Productivity) + GATE all specced; 2026-06-11 sweep + final spec-lint remediation COMPLETE; ADR-015 (port) + ADR-016 (dispatch) async cascades applied. No remaining handoff blockers. | — |
 | corpus-remediation | planning | ✅ COMPLETE — corpus batch-handoff-ready | docs/findings/spec-lint-2026-06-11/_SUMMARY.md | Sweep remediation (Waves 0–3 + D1–D6) + final spec-lint pass (10 agents) + fix wave (9 agents) + **ADR-015 async-port cascade** + **ADR-016 uniform-async-tool-dispatch cascade** ALL DONE. ADR-016 (owner: option A) cascaded across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents); contracts.md Seam 2+3 amended; both parked markers (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note) cleared; verified zero stale sync citations. **No remaining gate — the ~61-spec corpus is fully batch-handoff-ready for DeepSeek when the Mini arrives.** | M1-a/b · GATE-a/b · M1-d · CAL-a/b/c/d · M8-b1/b2 · M8-d-a/b/c2 · M4-d-2 · contracts.md · ADR-016 (new) |
+| macos-client (CLIENT-f) | planning | ✅ COMPLETE — CLIENT-f `status: ready` (drafted + reviewed + fixes applied) | docs/changes/CLIENT-f-mac-app.md | Owner chose end-state Mac+iPhone+iPad (full Athena-style). **ADR-017 written**; research → `docs/research/2026-06-12-multiplatform-swift-client.md`. **CLIENT-c/d/e amended** (Authenticating→ArtemisKit; AppCoordinating screen-seam; macOS auth path). **CLIENT-f drafted AFK** + **apex-swift + apex-security review applied** — 4 BLOCKs resolved (@MainActor panel + hotkey hop · Authenticating/AppCoordinating seam · **App Sandbox ON** (reversed ADR-017 §6 per security review) · exact dep pin + Package.resolved); FLAGs folded (sharingType=.none, lastError redaction, pasteboard note, passcode posture, deploymentTarget→14). overview/ROADMAP/ADR-index updated. App-Sandbox-ON reversal ✅ owner-confirmed. 2 hardware-gated auth unknowns remain for first Mac build. | ADR-017 · CLIENT-c/d/e · CLIENT-f (new, ready) · overview.md · ROADMAP.md |
 
 _(no build until the Mini arrives — planning/specs only)_
 <!-- CODING:END -->
@@ -119,7 +125,7 @@ corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. List
 | M8 Gmail | **M8-a, M8-b1, M8-b2 (3, ready)** | M8-a Google auth; M8-b1 read-only connector (History-API sync, split-depth ingest, read-cache, quarantined memory, 5 tools); M8-b2 end-state 3-stage urgency hook (Stage-3 quarantined scoring via M6-c `pre_tick_steps`). All under `modules/gmail/`. |
 | M8 Calendar | **CAL-a, CAL-b, CAL-c, CAL-d (4, ready)** | Full Calendar module. CAL-a read/find_time/prefs/sync; CAL-b write + STRICT attendee gate → `ActionStagingService.stage` + activity log; CAL-c overlay + 7 Tier-1 hooks + tentative projection; CAL-d knowledge + A.U.D.N. memory + DR-a untrusted chokepoint. Build a→b→c→d. |
 | M8 Productivity | **M8-d-a, M8-d-b, M8-d-c1, M8-d-c2 (4, ready)** | M8-d-a Tasks+Projects+Areas core (owned SQLCipher, 30 auto tools, both recurrence modes); M8-d-b time-blocking seam (`task.schedule` + new `calendar.schedule_task` self-only focus-block + Task↔Event link + auto-cancel-old-block on reschedule); M8-d-c1 hooks (Morning-plan/Overdue/Weekly-review, payload=counts+IDs only); M8-d-c2 suggestion-inbox capture (quarantine-gated email detection → inert suggestion) + capture-recipe graduation (`RecipeStore.write` CANDIDATE → M7-b owner-gated promotion) + knowledge/memory push. |
-| CLIENT client app | CLIENT-a, b, broker, c, d, e (6) | Paired-device auth + recipe Review + chat/status client (ADR-010). GATE-b extends its Review screen + endpoints. |
+| CLIENT client app | CLIENT-a, b, broker, c, d, e + **CLIENT-f (macOS)** — 7 ready | Paired-device auth + recipe Review + chat/status client (ADR-010). GATE-b extends its Review screen + endpoints. **CLIENT-f (ADR-017): native macOS Athena-style target** (menu-bar + global-hotkey panel + window + Settings) sharing ArtemisKit; CLIENT-c/d/e amended (Authenticating→ArtemisKit, AppCoordinating seam, macOS auth path). `status: ready` — apex-swift + apex-security review applied (App Sandbox ON; 2 hardware-gated auth items remain). |
 | CAP capability/self-training | **distill-datagen-pipeline (1, ready)** | Offline Windows-PC pipeline (`tools/distill/`): Claude-subscription teacher → reasoning traces (6 categories) → DeepSeek-judge-filter → versioned training-ready JSONL + eval hold-out. P0 of the ACI capability lane (`docs/research/homelab-control-plane.md`). Runs pre-Mac to fill the M5 wait; output feeds a later Mac-side MLX training spec. |
 
 ## Module design docs (per-spoke source-of-truth)
@@ -162,6 +168,19 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents). Both parked
   markers cleared (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note → now async). `HookSpec.check_ref` stays sync (Seam 5).
   Verified zero stale sync citations. **This was the last gate — the corpus is now batch-handoff-ready.**
+- **✅ macOS client surface — DECIDED 2026-06-12 → ADR-017.** Owner wants end-state **Mac + iPhone + iPad** (one
+  SwiftUI codebase, three surfaces), native "like Athena," not a website. Research (`docs/research/2026-06-12-multiplatform-swift-client.md`)
+  + spec audit → the foundation is already cross-platform (ArtemisKit is platform-agnostic; screens already adaptive), so
+  Mac is **additive, not a rewrite**. Chose: a **separate native `ArtemisMac` target** (not Catalyst, not Designed-for-iPad)
+  sharing ArtemisKit; **Athena-style scene** (menu-bar popover + global-hotkey floating NSPanel + full window + Settings);
+  Mac = another paired device (own SE key); Developer-ID + notarization for personal-use distribution. **This is ADDITIVE —
+  it does NOT gate the existing ~61-spec corpus** (which stays batch-handoff-ready). **CLIENT-f is now `status: ready`** —
+  drafted AFK + apex-swift + apex-security review applied (4 BLOCKs resolved). **Open follow-ups:** (a) ✅ **App Sandbox ON — owner-confirmed 2026-06-12.**
+  ADR-017 §6 originally said *skip* sandbox (research's "personal appliance" call); the apex-security review BLOCKed that and it
+  was reversed to **App Sandbox ON** (compatible: data-protection keychain + KeyboardShortcuts' Carbon hotkeys both work
+  sandboxed) — owner confirmed. (b) **2 hardware-gated auth unknowns** for the first Mac build — the Touch-ID-less Mini's SE-key passcode fallback (an
+  accepted NIST-AAL1 downgrade for the single-owner appliance), and macOS 26's `.biometryCurrentSet .or .devicePasscode` prompt
+  behaviour.
 - **✅ Corpus remediation (sweep 2026-06-11) + final spec-lint — DONE 2026-06-12.** Sweep Waves 0–3 + decision
   queue D1–D6 complete; final DeepSeek spec-lint pass (10 agents) + AFK fix wave (9 agents) applied — all mechanical
   + determinate BLOCKs resolved. M4-c split; ADR-015 async cascade applied. Reports: `docs/findings/spec-lint-2026-06-11/_SUMMARY.md`.

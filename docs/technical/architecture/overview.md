@@ -186,9 +186,13 @@ The security envelope for everything the system reads from the outside world, an
 - **Voice (M5)** — Swift audio sidecar (VoiceProcessingIO AEC, openWakeWord, Silero barge-in) → STT
   (Parakeet + Whisper) → brain → streaming TTS (warm Kokoro-82M); speaker-ID (ECAPA) drives the voice Tier gate
   (**voice-ID = identity, not the key**). Instant-ack + latency budget. One room first → satellites later.
-- **Native iPhone/iPad client (CLIENT)** — universal, equal-polish, XcodeGen. Screens: **Review** (the
+- **Native Mac · iPhone · iPad client (CLIENT)** — universal, equal-polish, XcodeGen. Screens: **Review** (the
   owner-approval surface) · **Chat** · **Status**. Reaches the brain over the **Tailscale tunnel** via an
   **authenticated `/app/*` API** (extends the M1-c FastAPI app; `tailscale serve`).
+- **Mac surface (ADR-017, CLIENT-f): native SwiftUI, Athena-style.** A *separate* `ArtemisMac` target sharing the
+  `ArtemisKit` core (not Catalyst, not Designed-for-iPad). Scene = **menu-bar popover + global-hotkey floating panel +
+  full window + Settings**. The Mac is just another paired device (its own SE key) over Tailscale; the **Mini stays
+  headless**. Day-to-day Mac client = a MacBook/other Mac. Built via Developer-ID + notarization (personal use, no App Store).
 - **Client ↔ brain auth (ADR-010): paired-device key, one key / two authorities.** The phone holds **one SE
   P-256 keypair** registered with **both** the broker (vault-unlock authority) and the brain's app-auth registry
   (API-session authority). Opening the app = **one Face-ID gesture** driving two domain-separated handshakes:
@@ -283,6 +287,9 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [012](../adr/ADR-012-gated-action-staging.md) | Gated-action staging: owner-approval `PendingAction` for one-off external writes |
 | [013](../adr/ADR-013-cross-module-links.md) | Cross-module links: M4 entity backbone (Person/Place/Goal) + ToolRegistry-mediated logical refs |
 | [014](../adr/ADR-014-vision-build-assistant.md) | Vision build-assistant: overhead desk-vision *input* + guided-build subsystem (DESIGNED, deferred; capability ladder Rung 0→3) |
+| [015](../adr/ADR-015-async-port-surface.md) | Async port surface: network-I/O ports (LLM/embed/rerank/retrieve/memory) are `async`; local-disk/cached stay sync |
+| [016](../adr/ADR-016-async-tool-dispatch-surface.md) | Uniform async tool-dispatch: `ToolSpec.callable_ref` + GATE `approve` are `async` (every tool callable is `async def`) |
+| [017](../adr/ADR-017-macos-client-surface.md) | macOS client surface: native multiplatform `ArtemisMac` (Athena-style menu-bar + panel + window); Mac = another paired device |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·

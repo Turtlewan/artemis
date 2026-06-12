@@ -63,7 +63,7 @@ These were drafted pre-gate and are all READY. Build in this order:
 |------|-------|------------|
 | **OBS** Observability | OBS-a (JSON logging + redaction), OBS-b (SQLCipher telemetry + token/cost/latency) | M0–M2 |
 | **DR** Deep-Research | DR-a (untrusted/quarantine primitive), DR-b (SearchProvider + Fetcher + SSRF egress), DR-c (iterative dual-LLM researcher) | M1, M2, M7-c |
-| **CLIENT** Client app | CLIENT-a (paired-device auth), CLIENT-b + broker (recipe Review + IPC), CLIENT-c (ArtemisKit), CLIENT-d (app shell), CLIENT-e (screens) | M1–M7 |
+| **CLIENT** Client app | CLIENT-a (paired-device auth), CLIENT-b + broker (recipe Review + IPC), CLIENT-c (ArtemisKit; +macOS auth path per ADR-017), CLIENT-d (iOS app shell), CLIENT-e (screens), **CLIENT-f (macOS app — native Athena-style; ADR-017)** | M1–M7 |
 | **GATE** Action-staging | GATE-a (`PendingActionStore` + `ActionStagingService`: stage/approve→execute-once/reject/expire — ADR-012), GATE-b (client `/app/actions/*` + DTOs + "Pending actions" tab on the Review screen) | GATE-a after M1; GATE-b after CLIENT-b/c/e |
 
 > **ADR-012 note:** gated one-off external-effect writes are **`PendingAction` instances via `ActionStagingService`**
@@ -71,8 +71,9 @@ These were drafted pre-gate and are all READY. Build in this order:
 > §GATE). This is distinct from the recipe Review tab. Write-enabled spokes route their gated actions through
 > `ActionStagingService`, NOT through `TAKES_ACTION` recipes.
 
-_11 specs in this wave (OBS×2, DR×3, CLIENT×6 including broker). GATE×2 are technically part of the spoke
-prerequisite chain but spec'd here because they unblock the entire write-enabled spoke surface._
+_12 specs in this wave (OBS×2, DR×3, CLIENT×7 including broker + the macOS CLIENT-f). GATE×2 are technically
+part of the spoke prerequisite chain but spec'd here because they unblock the entire write-enabled spoke surface.
+(CLIENT-f is `status: ready` — apex-swift + apex-security review applied 2026-06-12; ADR-017.)_
 
 ## First spoke wave (M8 — all READY)
 
