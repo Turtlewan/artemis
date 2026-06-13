@@ -7,6 +7,7 @@ autonomy_level: L3
 specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults applied 2026-06-08
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
 backends: planning=claude | coding=deepseek-v4-flash
+coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
 _Last updated by planning mode:_ 2026-06-13 (**LOCAL-LLM HARDWARE/SOFTWARE EXPANSION PLAN — researched, decided, PARKED (complete).**
 Future-proofing the inference layer: run local DeepSeek-coding + Kimi-class-big-context with the M5 Mac Mini as orchestrator, heavy inference on a separate tailnet box. Research via 5 info-pull agents (4× Sonnet web + 1× Haiku corpus); synthesis + plan in `docs/research/2026-06-13-local-llm-expansion/` (`_SYNTHESIS-PLAN.md` + 5 source docs, every number cited). **All decisions resolved:** **A** model-flexible (ways-to-achieve menu + standing model-update process §7, not named models); **B** keep all buy paths open, trigger-gated T0–T3 (only certainty = buy the M5 Mini; box = live menu P-Apple/P-Xeon/P-Strix/P-RAG); **C** → C-2 extend trust boundary to the box under 5 binding controls (FDE · no-persistence serving · Tailscale-only · ADR+runbook+mini-security-review · fail-safe validator keeps sensitive inference Mini-local until verified). Key finding: **DeepSeek V4-Flash (284B, 1M ctx, ~128–192 GB Q4) may cover BOTH roles**, dropping the floor from 512 GB (Kimi-class). **APEX fit checked (§8 coding, §8b planning):** mode is set by the backend URL string (`*deepseek*`→coding, else→planning) → same weights can serve both via two LiteLLM aliases; coding endpoint MUST speak the Anthropic Messages API (Claude Code only speaks Anthropic). **D-plan-1 → "1 then 3"** (planning stays cloud-frontier now → fully-local distilled-from-Claude planner as end-state via CAP/M7); **D-plan-2 → research pullers local** (synth stays frontier). Software side is config-only (ModelPort already async/OpenAI-compat; LiteLLM gateway on Mini) — additive, does NOT touch the frozen ~61-spec corpus. Future specs **EXP-a** (remote routing) + **EXP-b** (box bring-up + C-2 review) drafted when a hardware trigger fires. 8 future-proofing items + 1 UI thread parked to BACKLOG.md.)
@@ -214,6 +215,22 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   stay cloud-frontier; web access stays the orchestrator's tool. EXP-a wires a `research-puller` local
   alias. **All expansion decisions (A/B/C + D-plan-1/2) now resolved — plan complete; EXP-a/EXP-b
   drafted when a hardware trigger fires.**
+  **Field validation folded in (`_SYNTHESIS-PLAN.md` §10):** a hands-on dual-GB10 (ASUS GX10 ×2) test
+  validated the agentic-coding quality ladder (small-active-MoE = workable-not-autonomous; ~230B-class
+  = materially cleaner — confirms the §8 worker-contract concern), the A1 topology (box = remote
+  inference, main machine stays workspace), A2 (vLLM), and A3 (AFK/background use). Corrections: **GB10
+  has no GPU-Direct RDMA** (cluster link ~130 not 200 Gbit/s, tuning-heavy); **ASUS GX10 = cheaper GB10
+  SKU** (~$3.5k ea → dual-256 GB ~$7.1k, available now, runs V4-Flash-class both-roles ~40 tok/s 4-bit).
+  New named ladder option **P-GB10** = Decision-A path (i) achievable NOW without waiting for M5 Ultra.
+  Also logged: OpenCode (OpenAI-native agent harness) as an EXP-a alternative to Claude-Code+Anthropic-
+  shim — but it abandons APEX, so it's a flagged option only.
+  **Intel Arc Pro B60 multi-GPU evaluated & DECLINED (`_SYNTHESIS-PLAN.md` §11; 3 Sonnet agents →
+  intel-b60-{hardware,software,benchmarks-fit}.md):** cheap-VRAM-density (4×B60=96 GB) fails Artemis's
+  targets on 3 axes — (1) Intel LLM-Scaler is a vLLM fork with a 4–8 wk model-lag and **can't run
+  V4-Flash/Kimi** (kills Decision-A flexibility); (2) V4-Flash doesn't fit 96 GB (needs 8×B60=192 GB ≈
+  $13–21k); (3) not home-livable (810–940 W, 50–54 dB) + worst single-stream speed (15–27 tok/s).
+  Dominated by P-Strix even in its best case (fixed 30–65B BF16 coding server). Re-check only if Intel
+  XPU lands first-class in upstream vLLM/SGLang (~H2 2026 trajectory). NOT added to the buy ladder.
 - **NEW (transcript provenance check 2026-06-13) — cross-store fact provenance unverified.** M4 within-memory
   provenance is solid (`source_turn_id` → episodic turn; `extractor_model`/`extracted_at`/`confidence`; bitemporal
   `history()`; owner view/edit "with provenance"). Open: does a fact extracted during **M3 document ingestion** carry a
