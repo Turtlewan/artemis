@@ -101,6 +101,9 @@ generally — buying decisions should not assume today's prices hold.
 - **Intel Arc Pro B60 multi-GPU (cheap-VRAM-density) — EVALUATED & DECLINED, see §11.** Software lag
   (can't run V4-Flash/Kimi; 4–8 wk per model) vs Decision A, V4-Flash doesn't fit 96 GB, and not
   home-livable (810–940 W, 50–54 dB). Dominated by P-Strix even in its best case.
+- **Prosumer CUDA multi-GPU (8× RTX 4000 Ada-class, 160 GB) — VIABLE but DOMINATED, see §12.** CUDA so
+  no model-lag (beats B60), fits V4-Flash tier; but ~$13–18k for less memory than dual-GB10/M5-Ultra,
+  plus build/bifurcation fragility. Named fallback pattern **P-CUDA-MultiGPU**, not a primary rung.
 
 ### Recommendation (synthesis) — owner direction 2026-06-13: keep ALL paths open
 
@@ -242,9 +245,11 @@ Same box, possibly same weights — **two protocols, two consumers.** LiteLLM fr
 2. **A2 — Wave-parallel fan-out vs single-box throughput (the main mismatch).** apex-code spawns
    N parallel `code-worker` agents per wave + up to 2× `apex-wave-reviewer` per high-risk domain +
    post-build `apex-reviewer`/docs agents — *all on the coding backend*. Cloud absorbs this for
-   free; a single local box does not. Resolution: **serve coding on vLLM/SGLang (continuous
-   batching)** so concurrent agents batch (throughput holds; per-request latency drops) — NOT
-   mlx_lm.server/llama.cpp (weak batching → agents serialize + contend for KV cache). Add a
+   free; a single local box does not. Resolution: **serve coding on vLLM/SGLang — or, on a Mac,
+   `vllm-mlx`** (all do continuous batching; §"orchestration-topologies" confirmed vllm-mlx batches
+   ~1,150 tok/s @32 concurrent on an M4 Pro) so concurrent agents batch (throughput holds; per-request
+   latency drops) — NOT plain mlx_lm.server/llama.cpp/Ollama (weak/serial batching → agents serialize +
+   contend for KV cache). Add a
    **max-concurrent-workers cap** matched to the box's batch+VRAM budget; on weak-batching servers,
    AFK/overnight mode absorbs the serialization. (Candidate new field: a per-backend worker-cap
    read at wave dispatch.)
@@ -529,3 +534,62 @@ B60/successors only if:** (a) upstream vLLM/SGLang ships first-class Intel XPU s
 build at the memory tier you need (≥192 GB) runs your *current* target model day-of-release. Until both
 hold, the path stays declined. (Note: this is the same lever as §7's "hardware trigger" — driven by
 software/model support, not calendar.)
+
+## 12. Prosumer CUDA multi-GPU (8× RTX 4000 Ada-class) — VIABLE but dominated (added 2026-06-13)
+
+_Source: hands-on build anecdote (PewDiePie "Odysseus"). Field-anecdote, single builder → Confidence
+Low–Medium; exact 2026 card specs/prices below are from base knowledge, NOT freshly cited — promote to
+a cited research pass if this path is ever seriously considered. Synthesis: Opus._
+
+The CUDA answer to §11's B60 pitch: stack many **low-power NVIDIA pro cards** for VRAM. The build:
+**8× RTX 4000 Ada** (20 GB GDDR6, ~70 W, single-slot each) = **160 GB VRAM**, on a Threadripper Pro
+(WRX90, 7 PCIe slots), TP8 working via **8×8 PCIe bifurcation** (needed a forum-sourced modded BIOS —
+ASUS didn't expose it). Open-air aluminium frame, staggered cards for airflow. Builder's verdict: low
+noise, idle ~150 W system (low-TDP cards), temps fine — "TP8 works without losing speed."
+
+### Why it matters / where it lands
+- **It clears the B60's fatal flaw: it's CUDA.** Mainline vLLM/SGLang, **day-0 model support, no
+  fork-lag** — so §11 disqualifier #1 does NOT apply. This is the honest "cheap-VRAM multi-GPU done on
+  NVIDIA" path.
+- **160 GB VRAM = comfortably fits V4-Flash-class** (284B, ~80 GB Q4 + KV) — even with big context or
+  two copies. Like the others, it does **NOT** reach full DeepSeek 671B (~376 GB) or Kimi 1T
+  (~350–630 GB). So it's a **V4-Flash-tier (path i) box**, between 4×B60 (96 GB) and dual-GB10 (256 GB).
+- **Low-TDP pro cards are the real insight:** RTX 4000 Ada at ~70 W ×8 ≈ 560 W GPU max + Threadripper
+  → friendlier power/noise than any 4090/5090 rig. The plan's earlier "multi-GPU = dead end" verdict
+  was about *gaming* cards (no NVLink, 671B needs 376 GB) — that still holds for full-size models, but
+  for the **V4-Flash tier on low-power pro cards, multi-GPU CUDA is genuinely viable.**
+
+### Why it's still dominated for Artemis (not added as a primary rung)
+- **Cost:** ~8× RTX 4000 Ada (~$1.2–1.5k ea) ≈ $10–12k GPUs + Threadripper Pro platform (~$3–5k) =
+  **~$13–18k** — *more* than dual-GB10 (256 GB, $7.1k) or an M5 Ultra, for *less* memory (160 vs
+  256–512 GB) and far more build complexity.
+- **Fragility unfit for an appliance:** 8×8 bifurcation via a **modded BIOS from a stranger** is a
+  no-go for a 24/7 personal-data box (supply-chain + stability risk — conflicts with C-2's posture).
+  A board that officially supports the lane layout is mandatory if this path is ever taken.
+- **Quiet/low-admin appliances already win:** for the V4-Flash tier, **dual-GB10 (§10)** or **M5 Ultra
+  (P-Apple)** deliver the same model class with less power, less noise, no bifurcation, and lower
+  admin — the same way P-Strix dominated the B60's best case.
+
+### Verdict + when it'd reconsider
+**Viable but dominated → not added to the buy ladder as a primary option.** Recognise it as a named
+fallback pattern **P-CUDA-MultiGPU** for one scenario: you specifically want a **CUDA-native,
+incrementally-expandable** box (start 4 cards/TP4 → grow to 8/TP8) and already run a Threadripper/EPYC
+workstation to host it. Reconsider if GPU pricing/availability shifts hard, or if a future low-power
+pro card (e.g. an RTX 4000-Blackwell-class) lands at a VRAM/$ that beats GB10/Apple at the tier you need.
+
+### Reusable build notes for EXP-b (regardless of which GPU path)
+- **Tensor-parallel needs power-of-2 GPUs** — plan for 2/4/8, never 6.
+- **Avoid modded-BIOS bifurcation** on the production box; pick a board whose official PCIe layout fits
+  the card count (Threadripper Pro WRX90 / EPYC server boards give the lanes natively).
+- **Low-TDP pro cards (RTX 4000 Ada-class)** are the power/noise-sane way to stack VRAM vs 4090/5090.
+- **Open-air + staggered GPUs** is a real cooling approach for a multi-GPU box, but dust/physical
+  exposure argues against it for an always-on personal-data appliance — pair with the C-2 disk-encryption
+  + physical-siting posture.
+
+> **Cross-ref — ADR-019 (`coder_tier_policy: split`, Flash↔Pro tiered coding):** the coding role is now
+> two tiers (V4-Flash routine / V4-Pro hard). Sizing impact: **V4-Flash fits a single ~160–256 GB box;
+> V4-Pro (1.6T) is multi-box-only (§1)** — so a fully-local Pro tier is not realistic on any single rung
+> here. The pragmatic split is **Flash local + Pro stays cloud** (or P-Xeon 1 TB for a CPU-offload Pro
+> at low tok/s). EXP-a should expose both tier aliases and fall the Pro tier back to cloud when the local
+> box can't host it. (This refines Decision A's "one model both roles" toward "Flash both-roles local,
+> Pro cloud-or-deferred.")

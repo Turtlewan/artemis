@@ -32,15 +32,7 @@ trail isn't lost.
 - Assistant persona/tone prior-art: Inflection Pi (empathetic personal assistant)  [assistant]  (2026-06-05)
 
 <!-- [2026-06-13] Future-proofing items surfaced by the local-LLM expansion research (detail: docs/research/2026-06-13-local-llm-expansion/_SYNTHESIS-PLAN.md §6) -->
-- Wired-network headroom for the inference box — Mini↔box Ethernet (WoL needs it), TB5 only if Mac-clustering ever  [hardware][aci]  (2026-06-13)
-- UPS + power monitoring for 24/7 inference box  [hardware][aci]  (2026-06-13)
-- Inference-box bring-up runbook + secrets/disk-encryption posture (pairs with the trust-boundary decision)  [security][aci]  (2026-06-13)
-- Capability-lane convergence: x86/GPU inference box doubles as the DPO/RLAIF training home (homelab-control-plane.md frames this)  [capability][aci]  (2026-06-13)
-- Model-weight storage management — hundreds of GB per model; versioning + eviction policy  [aci]  (2026-06-13)
-- Wake-on-demand power orchestration — Mini wakes inference box per queued job, sleeps it after  [aci]  (2026-06-13)
-- Re-check exo/TB5 RDMA Mac-clustering maturity in 2027 (would change the top-rung calculus)  [hardware][research]  (2026-06-13)
-- Reserve a **planning/spec-authoring generation category** in `distill-datagen-pipeline` (teacher = Claude producing real Artemis specs/ADRs) so the eventual local student can be evaluated as a PLANNER, not just a coder — supports the D-plan-1 "fully-local distilled planner" end-state  [capability][aci]  (2026-06-13)
-- **Coding-agent harness decision (EXP-a)** — keep Claude-Code + Anthropic-shim (preserves APEX, requirement R) vs OpenCode-native (talks vLLM's OpenAI API directly, simpler serving, but abandons the APEX/Claude-Code workflow). Weigh when a box exists. Context: `_SYNTHESIS-PLAN.md` §10  [aci][apex]  (2026-06-13)
+- **Home-lab / local-inference future-proofing (hardware + items) → lives in its own BANK**, not here. Build checklist, hardware items, path-specific accessories, and the EXP-a/EXP-b future specs are all in `docs/research/2026-06-13-local-llm-expansion/README.md` (§"Future hardware items & build checklist"). Activated when a hardware trigger fires.  [hardware][aci]  (2026-06-13)
 
 <!-- [2026-06-13] UI-polish thread parked back to backlog (was an In-Flight scoping row; no decisions taken). Functional client UI is already specced (CLIENT-a..f). Two genuine gaps below + an undecided discussion-mode (visual mockups vs words+wireframes vs mix). Scoping context: docs/technical/architecture/app-flow.md. -->
 - **Visual identity / design system** — no design tokens or concrete "Athena-style" aesthetic; client screens are stock SwiftUI. Define tokens (colour/type/spacing/material), dark mode, the menu-bar/hotkey panel look. Touches all surfaces — do before more screens.  [ui][design-system]  (2026-06-13)
