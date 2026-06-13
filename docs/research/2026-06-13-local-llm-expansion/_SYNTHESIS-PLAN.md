@@ -89,7 +89,8 @@ generally — buying decisions should not assume today's prices hold.
 |---|---|---|---|
 | **M5 Ultra Studio 256–512 GB** (Oct 2026, ~$5.5–6.5k+, availability risk) | 512 GB: full DeepSeek Q4 **and** Kimi Q2; 256 GB: V4-Flash comfortable + DeepSeek Q2 | est. ~25 tok/s on 671B (M3U measured 20–21 @ 819 GB/s; M5U +34% BW); Kimi Q2 8–15 | 9 W idle / 150–200 W load, silent, macOS, lowest admin |
 | **Intel Xeon (AMX) + 1 TB DDR5 + 1 GPU, ktransformers** ($8–14k) | Full DeepSeek Q4 AND Kimi Q4 (1 TB fits 585 GB) | 12–14 tok/s decode, **200–286 tok/s prefill** (best big-context prefill of any option) | tower 40 dB+, ~300–500 W load, highest admin; **must be Intel AMX — AMD EPYC loses the ktransformers speedup (5–8 tok/s)** |
-| **Dual DGX Spark** ($9.4k, 256 GB) | V4-Flash only — full DeepSeek/Kimi do NOT fit | bandwidth-poor (273 GB/s) for dense; OK for small-active MoE | near-silent, ~100–170 W, low admin |
+| **Dual GB10 — ASUS GX10 ×2** (~$7.1k inc. cable, 256 GB) — **field-validated, §10** | V4-Flash-class both-roles; full DeepSeek/Kimi do NOT fit | **~41 tok/s on a ~230B 4-bit MoE** (measured, after tuning) | near-silent, ≈50 W idle-loaded / ≈330 W load, NVIDIA/Linux, medium admin; **no GPU-Direct RDMA → ~130 Gbit/s cluster link, tuning-heavy** |
+| **Dual DGX Spark (NVIDIA-branded)** ($9.4k, 256 GB) | same as GX10 ×2 (pricier SKU) | as above | near-silent, ~100–170 W, low admin |
 
 ### Rung 3 — near-interactive on the biggest models ($20k+)
 - **2–4× Mac Studio exo cluster** (TB5 RDMA, macOS 26.2+): measured DeepSeek 671B ~25 tok/s,
@@ -97,6 +98,9 @@ generally — buying decisions should not assume today's prices hold.
   mode, M3+ only, 4-node max tested). Not a foundation to depend on yet — re-evaluate in 2027.
 - Multi-GPU consumer rigs: **dead end** for these model sizes (no NVLink pooling; 671B Q4 needs
   ~376 GB VRAM). The first native-VRAM fit is 8× RTX PRO 6000 (~$75k+, 4.8 kW, 70 dB) — no.
+- **Intel Arc Pro B60 multi-GPU (cheap-VRAM-density) — EVALUATED & DECLINED, see §11.** Software lag
+  (can't run V4-Flash/Kimi; 4–8 wk per model) vs Decision A, V4-Flash doesn't fit 96 GB, and not
+  home-livable (810–940 W, 50–54 dB). Dominated by P-Strix even in its best case.
 
 ### Recommendation (synthesis) — owner direction 2026-06-13: keep ALL paths open
 
@@ -109,6 +113,7 @@ box is future hardware; rather than commit to one box now, the plan keeps the la
 | **P-Apple** | M5 Ultra Studio, max memory (~Oct 2026, ~$5.5–6.5k+) | 512 GB → full DeepSeek Q4 **+** Kimi Q2 (path ii); 256 GB → V4-Flash-class (path i) | ★★★ silent, 9 W idle, macOS, lowest admin, MLX-native with the Mini | You want one quiet appliance, all-Apple, and can wait for Oct 2026 + accept availability/price risk |
 | **P-Xeon** | Xeon-AMX + 1 TB DDR5 + 1 GPU, ktransformers (~$8–14k) | Full DeepSeek Q4 **and** Kimi Q4 (1 TB fits ~585 GB); best big-ctx prefill (200–286 tok/s); also the training/distill box | ★ tower 40 dB+, 300–500 W, Linux admin | Kimi-at-quality and fast huge-document prefill matter most; you'll run a server |
 | **P-Strix** | Strix Halo 128 GB mini-PC (~$1.5–2.1k, available now) | V4-Flash Q4 (tight); overnight coding now | ★★★ near-silent, <100 W, low admin | Cheap bridge: start local coding immediately, demote to ACI edge node later |
+| **P-GB10** | ASUS GX10 ×2 (~$7.1k, 256 GB, available now) — **field-validated §10** | V4-Flash-class both-roles at ~40 tok/s 4-bit (path i) **today**, no waiting | ★★ near-silent + low power, but NVIDIA/Linux + cluster tuning burden + no full-Kimi | You want path (i) NOW on the NVIDIA ecosystem (future-migrates to bigger NVIDIA infra) and accept setup effort over Apple's zero-admin |
 | **P-RAG** | none (Mini only) | Big-context via M3 RAG brain + small model (already specced) | ★★★ free | Day-1 baseline for big-context until any box lands |
 
 **Default narrative if forced to one:** start at **P-RAG** (free, day-1) → add **P-Apple** at the
@@ -403,3 +408,124 @@ A model swap must never touch Artemis code.
 - Model-weight storage management (hundreds of GB per model; versioning + eviction).
 - Wake-on-demand power orchestration (Mini wakes the box per queued job).
 - Re-check exo/TB5 RDMA clustering maturity in 2027 (would change the Rung-3 calculus).
+
+## 10. Field validation — dual GB10 (ASUS GX10) hands-on test (added 2026-06-13)
+
+A real-world hands-on test (Techno Tim, ASUS Ascent GX10 ×2) of exactly the **GB10 / DGX-Spark
+dual-box path** the plan lists under Option Class 3. Source = video transcript (one practitioner,
+not a benchmark suite → treat as **directional field data**, Confidence Medium). It validates most
+of the plan and corrects two specifics. **No decision reopens** — it sharpens Decision B's menu and
+confirms A1/A2/A3.
+
+### What it confirms (plan was right)
+- **Agentic-coding quality ladder (the §8 worker-contract concern, validated).** 1 box running
+  **Qwen3.6-35B-A3B** (3B active MoE) built a working app but was **"not autonomous"** — got stuck
+  in tool-call loops, needed repeated "continue" nudges, struggled with tests. 2 boxes running a
+  **~230B-class model (MiniMax M2.7, AWQ 4-bit)** was **"a little bit smarter already"** — used the
+  scaffolding CLI correctly, followed the task more cleanly, made better choices, even did a
+  whole-app themed UI redesign. **Takeaway: small-active-MoE drifts on agentic loops; a larger
+  model is materially cleaner** — exactly why §7.3's APEX-shaped eval gate exists and why the coding
+  role wants a V4-Flash-class model, not a 3B-active one.
+- **A1 topology (Mini=orchestrator, box=pure inference) is the field-proven pattern.** He kept his
+  main machine as the workspace and made the GX10 "the machine doing the AI work in the background"
+  via SSH / VS Code Remote — explicitly "a remote AI development machine." Direct confirmation.
+- **A2 serving choice.** He used **vLLM** as the serving layer (continuous-batching backend other
+  tools talk to) — the plan's A2 recommendation.
+- **A3 use-case.** His stated real use: "point an agent at a project, let it work in the background"
+  for unglamorous tech-debt work — **the AFK/overnight mode**, not interactive. Confirms A3.
+- **KV-cache ≠ file size.** The full MiniMax model OOM-crashed on 256 GB; needed 4-bit AWQ because
+  "you also need room for the KV cache." Confirms §1's KV-as-a-sizing-factor note (heavier here —
+  MiniMax is not an MLA model, unlike DeepSeek/Kimi).
+- **Model-landscape churn** ("the right model this week might not be next week") + **honest cost**
+  ("not a cheaper way to avoid an LLM subscription") — both echo §7 and the plan's cost stance.
+- **Whole-stack burden** ("you're running the model, serving layer, agent, storage, network,
+  monitoring, and the app; when something breaks it's not obvious which layer"). Confirms the
+  not-plug-and-play honesty → reinforces keeping the box to pure inference (A1) to minimise layers,
+  and the value of the EXP-b bring-up runbook + monitoring.
+
+### What it corrects / adds (new field data)
+- **Cheaper GB10 SKU:** ASUS GX10 = **$3,500** each (+ ~$100 QSFP112 cable) vs the NVIDIA DGX Spark
+  ($4,699). A **dual-GX10 = 256 GB for ~$7,100** — a concrete, available-now Rung-1.5/2 option.
+- **GB10 clustering caveat (corrects the interconnect story):** **GPU-Direct RDMA is NOT supported
+  on GB10.** Despite ConnectX-7 + QSFP direct link with low RDMA latency, measured NCCL bandwidth
+  was **~130 Gbit/s, not the hoped ~200.** 2-node vLLM + Ray (head+worker) **works** but is
+  tuning-heavy — full speed needed the **vLLM container run privileged** (26–28 → ~41 tok/s) after
+  days of version-juggling. Lesson for EXP-b: budget real setup time; pin a known-good vLLM config.
+- **Concrete fit confirmation:** dual-256 GB ran a **~230B 4-bit MoE at ~41 tok/s** — consistent
+  with the §1 fit table (V4-Flash-class **284B fits** dual-256 GB; **full 671B / Kimi do NOT**).
+- **Real power numbers** (feed the UPS + wake-on-demand backlog items): 1 box **idle-with-model-
+  loaded ≈ 50 W** (~$4–5/mo just to hold a model resident 24/7); 2 boxes under load ≈ **330 W**
+  (~$20/mo). **Implication: 50 W to idle-hold a model is the argument for wake-on-demand /
+  unload-when-idle** — don't keep the box hot for a low-frequency AFK queue.
+
+### New angle worth flagging — the coding-agent harness
+He drove it with **OpenCode** (open-source, terminal + web app, talks to **OpenAI-compatible**
+endpoints directly — no Anthropic shim). APEX is built on **Claude Code** (ADR-018: APEX is the sole
+coding workflow), which forces requirement **R** (Anthropic-protocol endpoint for the coding role).
+OpenCode shows there's an **alternative agent harness** that would drop the Anthropic-shim entirely
+by talking vLLM's OpenAI API natively — but adopting it means leaving the APEX/Claude-Code workflow,
+a much bigger call than a model swap. **Logged as an option to weigh in EXP-a, not a recommendation:**
+keep Claude-Code+shim (preserves APEX) vs OpenCode-native (simpler serving, abandons APEX).
+
+### Net effect on the plan
+Promote **dual-GB10 (ASUS GX10)** from a generic "Option Class 3" line to a **named, field-validated
+Rung-1.5/2 option** in Decision B's menu: ~$7.1k, 256 GB, available now, near-silent, low power,
+runs **V4-Flash-class both-roles at ~40 tok/s 4-bit** — i.e. it satisfies Decision-A path (i) today
+**without** waiting for the M5 Ultra. Trade-off vs **P-Apple**: NVIDIA/Linux stack + tuning burden +
+the no-GPU-Direct-RDMA clustering ceiling, vs Apple's silent/low-admin/MLX-native single box. It does
+**not** reach full Kimi/671B (that stays P-Xeon 1 TB or M5 Ultra 512). Added to the §2 ladder as a
+new trigger-T3-now candidate alongside P-Strix.
+
+## 11. Intel Arc Pro B60 multi-GPU — evaluated & DECLINED (added 2026-06-13)
+
+_3 Sonnet info-pull agents (hardware / software / benchmarks-fit) → sources:
+`intel-b60-hardware.md` · `intel-b60-software.md` · `intel-b60-benchmarks-fit.md`. Synthesis: Opus
+(active orchestrator; owner's protocol names Fable for synth — flagged, as in §1/§10)._
+
+The "cheap-VRAM-density" pitch (4× Arc Pro B60 = 96 GB for the price of GPUs alone) is real, but
+researched against **Artemis's stated targets it fails on three independent axes** — any one of which
+is disqualifying, and they compound. **Verdict: do NOT add to the buy ladder.** Logged here so it
+isn't re-litigated; revisit only if the trajectory trigger below fires.
+
+### Why it's declined (the decisive reasons, in order)
+1. **Software lag directly contradicts Decision A (model-flexibility).** Intel's "LLM Scaler" is a
+   *patched fork* of vLLM, so every new model architecture is hand-ported — a structural **4–8 week
+   lag** per generation. As of June 2026 it runs Qwen3.x/Coder + DeepSeek-R1-distills + GLM-4.7-Flash
+   + Llama, but **does NOT run the plan's primary targets: DeepSeek V4 / V4-Flash, full DeepSeek 671B,
+   or Kimi K2.x** (no Intel port). The entire premise (§1/§7: run whatever's best, swap models cheaply)
+   is the one thing this stack cannot do. CUDA/Mac get day-0 weights; Intel makes you wait or do without.
+2. **96 GB doesn't even fit the primary model.** V4-Flash (~284B, ~80 GB Q4 + KV) **exhausts 4×B60's
+   96 GB** — you'd need **8×B60 = 192 GB** (~$13–21k full system, 50–54 dB, ~1 kW). At that spend you're
+   in P-Xeon / M5-Ultra-512 territory but with worse software and worse livability. And no realistic
+   B60 build reaches full DeepSeek 671B / Kimi 1T (376–630 GB).
+3. **Not home-livable + worst-in-class interactive speed.** 4×B60 draws **810–940 W** under load
+   (~$95–110/mo 24/7), runs **50–54 dB** ("dishwasher/open-office loud" — needs a closet), and does
+   only **15–27 tok/s single-stream** on a 30B model (8–15× slower interactive than an RTX Pro 6000;
+   far slower than the GB10/Mac options). It's purely an aggregate-throughput box.
+
+### What's genuinely good about it (for the record)
+- **VRAM/$ for 30–65B BF16 dense models** is unmatched: ~$3–4k of GPUs for 96 GB vs $8.5k for a single
+  RTX Pro 6000 96 GB. Runs Qwen3-Coder-30B / DeepSeek-R1-distill-32B at **native BF16, no quant**.
+- **Concurrent/agentic throughput** is decent: **~300–1,500 tok/s aggregate** at concurrency 32–100
+  (model-dependent) — which *would* suit APEX's wave-parallel fan-out **if** the model were adequate
+  and the stack stable (it has open burst-concurrency crash bugs; mitigate with DP instances behind a
+  load balancer, not one TP=4 server).
+- Newer SKUs improve the math: **B70** (32 GB/608 GB/s/$949, Mar 2026), **B65** (32 GB/608 GB/s/~$750),
+  **B60 Dual** (48 GB/$1.2k). VRAM scales to 192–768 GB on server boards (no NVLink → PCIe P2P overhead;
+  at low batch, more GPUs can be *worse*).
+
+### The one narrow scenario where it'd reconsider
+If Artemis ever **downscoped the coding role to a fixed 30–65B BF16 dense model** (Qwen3-Coder /
+DeepSeek-distill) as a pure **AFK agentic batch server** — accepting the model-lag, the noise, and a
+closet to put it in — 4×B60 is a cost-effective way to get 96 GB of native-BF16 throughput. But for
+that exact model class, **P-Strix (AMD Strix Halo 128 GB)** wins on power (~80 W), noise (silent),
+software maturity (mature llama.cpp/HIP), and single-stream speed (~75 tok/s) at lower system cost —
+so even in its best case, B60 is dominated by an option already on the ladder.
+
+### Trajectory re-check trigger
+Intel is upstreaming XPU kernels into mainline vLLM (W4A16 already merged); if that completes (~H2 2026)
+the fork-lag could shrink to ~2–3 weeks and first-class frontier-MoE support could land. **Re-evaluate
+B60/successors only if:** (a) upstream vLLM/SGLang ships first-class Intel XPU support AND (b) a B60-class
+build at the memory tier you need (≥192 GB) runs your *current* target model day-of-release. Until both
+hold, the path stays declined. (Note: this is the same lever as §7's "hardware trigger" — driven by
+software/model support, not calendar.)

@@ -40,6 +40,7 @@ trail isn't lost.
 - Wake-on-demand power orchestration — Mini wakes inference box per queued job, sleeps it after  [aci]  (2026-06-13)
 - Re-check exo/TB5 RDMA Mac-clustering maturity in 2027 (would change the top-rung calculus)  [hardware][research]  (2026-06-13)
 - Reserve a **planning/spec-authoring generation category** in `distill-datagen-pipeline` (teacher = Claude producing real Artemis specs/ADRs) so the eventual local student can be evaluated as a PLANNER, not just a coder — supports the D-plan-1 "fully-local distilled planner" end-state  [capability][aci]  (2026-06-13)
+- **Coding-agent harness decision (EXP-a)** — keep Claude-Code + Anthropic-shim (preserves APEX, requirement R) vs OpenCode-native (talks vLLM's OpenAI API directly, simpler serving, but abandons the APEX/Claude-Code workflow). Weigh when a box exists. Context: `_SYNTHESIS-PLAN.md` §10  [aci][apex]  (2026-06-13)
 
 <!-- [2026-06-13] UI-polish thread parked back to backlog (was an In-Flight scoping row; no decisions taken). Functional client UI is already specced (CLIENT-a..f). Two genuine gaps below + an undecided discussion-mode (visual mockups vs words+wireframes vs mix). Scoping context: docs/technical/architecture/app-flow.md. -->
 - **Visual identity / design system** — no design tokens or concrete "Athena-style" aesthetic; client screens are stock SwiftUI. Define tokens (colour/type/spacing/material), dark mode, the menu-bar/hotkey panel look. Touches all surfaces — do before more screens.  [ui][design-system]  (2026-06-13)
