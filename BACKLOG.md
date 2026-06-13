@@ -31,6 +31,20 @@ trail isn't lost.
 - Eval Artemis's own AI quality with withpi encoder-scorer (deterministic, Promptfoo type:pi)  [assistant][eval]  (2026-06-05)
 - Assistant persona/tone prior-art: Inflection Pi (empathetic personal assistant)  [assistant]  (2026-06-05)
 
+<!-- [2026-06-13] Future-proofing items surfaced by the local-LLM expansion research (detail: docs/research/2026-06-13-local-llm-expansion/_SYNTHESIS-PLAN.md §6) -->
+- Wired-network headroom for the inference box — Mini↔box Ethernet (WoL needs it), TB5 only if Mac-clustering ever  [hardware][aci]  (2026-06-13)
+- UPS + power monitoring for 24/7 inference box  [hardware][aci]  (2026-06-13)
+- Inference-box bring-up runbook + secrets/disk-encryption posture (pairs with the trust-boundary decision)  [security][aci]  (2026-06-13)
+- Capability-lane convergence: x86/GPU inference box doubles as the DPO/RLAIF training home (homelab-control-plane.md frames this)  [capability][aci]  (2026-06-13)
+- Model-weight storage management — hundreds of GB per model; versioning + eviction policy  [aci]  (2026-06-13)
+- Wake-on-demand power orchestration — Mini wakes inference box per queued job, sleeps it after  [aci]  (2026-06-13)
+- Re-check exo/TB5 RDMA Mac-clustering maturity in 2027 (would change the top-rung calculus)  [hardware][research]  (2026-06-13)
+- Reserve a **planning/spec-authoring generation category** in `distill-datagen-pipeline` (teacher = Claude producing real Artemis specs/ADRs) so the eventual local student can be evaluated as a PLANNER, not just a coder — supports the D-plan-1 "fully-local distilled planner" end-state  [capability][aci]  (2026-06-13)
+
+<!-- [2026-06-13] UI-polish thread parked back to backlog (was an In-Flight scoping row; no decisions taken). Functional client UI is already specced (CLIENT-a..f). Two genuine gaps below + an undecided discussion-mode (visual mockups vs words+wireframes vs mix). Scoping context: docs/technical/architecture/app-flow.md. -->
+- **Visual identity / design system** — no design tokens or concrete "Athena-style" aesthetic; client screens are stock SwiftUI. Define tokens (colour/type/spacing/material), dark mode, the menu-bar/hotkey panel look. Touches all surfaces — do before more screens.  [ui][design-system]  (2026-06-13)
+- **Domain-spoke screens** — Calendar/Tasks/Email/Finance have no dedicated client UI (chat-only by current design); give each domain a visual home. Larger surface; depends on the design-system tokens existing first.  [ui]  (2026-06-13)
+
 <!-- From the 2026-06-08 social-media RAG/voice filter pass (dedup'd against locked SP0 specs) -->
 - Spotlighting + CaMeL + delimiter discipline for untrusted web content → fold into the **Deep-Research engine spec** (still to draft; already an open question)  [rag][security]  (2026-06-08)
 - Versioned retrieval — tag ingest chunks `processing/verified/searchable`, expose only `verified` to retrieval → refines **M3-a** beyond plain idempotency (relates to the incremental-indexing item above)  [rag]  (2026-06-08)

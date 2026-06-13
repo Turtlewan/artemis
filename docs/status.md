@@ -8,7 +8,12 @@ specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults appli
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
 backends: planning=claude | coding=deepseek-v4-flash
 
-_Last updated by planning mode:_ 2026-06-12 (**ADR-016 (uniform async tool-dispatch) DECIDED + CASCADED — CORPUS IS BATCH-HANDOFF-READY.**
+_Last updated by planning mode:_ 2026-06-13 (**LOCAL-LLM HARDWARE/SOFTWARE EXPANSION PLAN — researched, decided, PARKED (complete).**
+Future-proofing the inference layer: run local DeepSeek-coding + Kimi-class-big-context with the M5 Mac Mini as orchestrator, heavy inference on a separate tailnet box. Research via 5 info-pull agents (4× Sonnet web + 1× Haiku corpus); synthesis + plan in `docs/research/2026-06-13-local-llm-expansion/` (`_SYNTHESIS-PLAN.md` + 5 source docs, every number cited). **All decisions resolved:** **A** model-flexible (ways-to-achieve menu + standing model-update process §7, not named models); **B** keep all buy paths open, trigger-gated T0–T3 (only certainty = buy the M5 Mini; box = live menu P-Apple/P-Xeon/P-Strix/P-RAG); **C** → C-2 extend trust boundary to the box under 5 binding controls (FDE · no-persistence serving · Tailscale-only · ADR+runbook+mini-security-review · fail-safe validator keeps sensitive inference Mini-local until verified). Key finding: **DeepSeek V4-Flash (284B, 1M ctx, ~128–192 GB Q4) may cover BOTH roles**, dropping the floor from 512 GB (Kimi-class). **APEX fit checked (§8 coding, §8b planning):** mode is set by the backend URL string (`*deepseek*`→coding, else→planning) → same weights can serve both via two LiteLLM aliases; coding endpoint MUST speak the Anthropic Messages API (Claude Code only speaks Anthropic). **D-plan-1 → "1 then 3"** (planning stays cloud-frontier now → fully-local distilled-from-Claude planner as end-state via CAP/M7); **D-plan-2 → research pullers local** (synth stays frontier). Software side is config-only (ModelPort already async/OpenAI-compat; LiteLLM gateway on Mini) — additive, does NOT touch the frozen ~61-spec corpus. Future specs **EXP-a** (remote routing) + **EXP-b** (box bring-up + C-2 review) drafted when a hardware trigger fires. 8 future-proofing items + 1 UI thread parked to BACKLOG.md.)
+_Prior:_ 2026-06-13 (**Transcript review ("personal AI computer" video) — validation pass, no corpus change.**
+The video's stack (Mac Mini · MLX/Ollama runtime · model portfolio · owned memory · MCP-with-permissions · scoped agents · local voice · cloud-as-visitor routing) maps ~1:1 onto locked Artemis decisions — nothing to change.
+Checked its one substantive prompt, **auditable provenance**, against M4: covered + ahead (`facts.source_turn_id`/`extractor_model`/`extracted_at`/`confidence` + bitemporal `history()` + owner `view/history` "with provenance" + owner-edit tagged `extractor_model="owner"` + dimension-lock re-index guard). One open thread logged below: cross-store provenance (memory fact → M3 source doc). Lift-worthy framings noted only (no spec): "many surfaces / one stack underneath" feeds the paused UI thread.)
+_Prior:_ 2026-06-12 (**ADR-016 (uniform async tool-dispatch) DECIDED + CASCADED — CORPUS IS BATCH-HANDOFF-READY.**
 The last gate is cleared. Owner chose **option A (uniform async)** for the tool-dispatch surface: `ToolSpec.callable_ref`
 is `Callable[..., Awaitable[BaseModel]]` — **every** tool callable is `async def` (front-door, `_execute` twin, read-only,
 no-I/O alike), dispatched via `await` at the one uniform site in Brain (M1-b) + GATE (`approve` now `async def`). Rejected
@@ -98,6 +103,8 @@ _Last updated by coding mode:_ never
 | corpus-remediation | planning | ✅ COMPLETE — corpus batch-handoff-ready | docs/findings/spec-lint-2026-06-11/_SUMMARY.md | Sweep remediation (Waves 0–3 + D1–D6) + final spec-lint pass (10 agents) + fix wave (9 agents) + **ADR-015 async-port cascade** + **ADR-016 uniform-async-tool-dispatch cascade** ALL DONE. ADR-016 (owner: option A) cascaded across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents); contracts.md Seam 2+3 amended; both parked markers (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note) cleared; verified zero stale sync citations. **No remaining gate — the ~61-spec corpus is fully batch-handoff-ready for DeepSeek when the Mini arrives.** | M1-a/b · GATE-a/b · M1-d · CAL-a/b/c/d · M8-b1/b2 · M8-d-a/b/c2 · M4-d-2 · contracts.md · ADR-016 (new) |
 | macos-client (CLIENT-f) | planning | ✅ COMPLETE — CLIENT-f `status: ready` (drafted + reviewed + fixes applied) | docs/changes/CLIENT-f-mac-app.md | Owner chose end-state Mac+iPhone+iPad (full Athena-style). **ADR-017 written**; research → `docs/research/2026-06-12-multiplatform-swift-client.md`. **CLIENT-c/d/e amended** (Authenticating→ArtemisKit; AppCoordinating screen-seam; macOS auth path). **CLIENT-f drafted AFK** + **apex-swift + apex-security review applied** — 4 BLOCKs resolved (@MainActor panel + hotkey hop · Authenticating/AppCoordinating seam · **App Sandbox ON** (reversed ADR-017 §6 per security review) · exact dep pin + Package.resolved); FLAGs folded (sharingType=.none, lastError redaction, pasteboard note, passcode posture, deploymentTarget→14). overview/ROADMAP/ADR-index updated. App-Sandbox-ON reversal ✅ owner-confirmed. 2 hardware-gated auth unknowns remain for first Mac build. | ADR-017 · CLIENT-c/d/e · CLIENT-f (new, ready) · overview.md · ROADMAP.md |
 
+| local-llm-expansion | planning | ✅ PARKED — plan complete, all decisions resolved | docs/research/2026-06-13-local-llm-expansion/_SYNTHESIS-PLAN.md | Future-proof inference layer (local DeepSeek-coding + Kimi-big-context; Mini=orchestrator, heavy inference→tailnet box). A/B/C + D-plan-1/2 all resolved. APEX fit checked (§8 + §8b). Software = config-only, does NOT touch frozen corpus. **Triggered follow-ups when a hardware trigger fires (T1 M5 Ultra ships / T2 Kimi-or-training need / T3 want local coding now):** draft EXP-a (remote-inference routing) + EXP-b (box bring-up + C-2 security review). | — |
+
 _(no build until the Mini arrives — planning/specs only)_
 <!-- CODING:END -->
 
@@ -161,6 +168,58 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **NEW (local-LLM expansion plan 2026-06-13) — hardware expansion PLANNED, two decisions open.**
+  Researched future-proofing the inference layer (run local DeepSeek-coding + Kimi-big-context;
+  Mini = orchestrator, heavy inference → separate tailnet box). Plan + full research:
+  `docs/research/2026-06-13-local-llm-expansion/` (`_SYNTHESIS-PLAN.md` + 5 source docs). **Resolved:**
+  Decision A (model-flexible — plan a ways-to-achieve menu + a standing model-update process §7, not
+  named models); Decision B (keep all buy paths open, trigger-gated T0–T3 — only certainty is buying
+  the M5 Mini; inference box = live menu P-Apple/P-Xeon/P-Strix/P-RAG). Key finding: **DeepSeek
+  V4-Flash (284B, 1M ctx, ~128–192 GB Q4) may cover BOTH roles**, dropping the floor from 512 GB
+  (Kimi-class) to ~192 GB. Software side is **config-only** (ModelPort already async/OpenAI-compat;
+  LiteLLM gateway on Mini; roles.toml alias swap) — additive, does NOT touch the frozen ~61-spec corpus.
+  Decision C (sensitive-data boundary) **resolved → C-2**: the box MAY process sensitive data under 5
+  binding controls (full-disk encryption · no-persistence serving config · Tailscale-only ingress ·
+  ADR + bring-up runbook + mini security review · fail-safe validator keeps sensitive inference
+  Mini-local until controls verified). **All three decisions A/B/C resolved — plan complete, no open
+  gates.** Next action is owner-triggered (T1 M5 Ultra ships / T2 Kimi-or-training need / T3 want
+  local coding now); then draft **EXP-a** (remote-inference routing) + **EXP-b** (inference-box
+  bring-up + C-2 security review) specs. 7 future-proofing items added to BACKLOG.md.
+  **APEX coding-system fit checked (`_SYNTHESIS-PLAN.md` §8):** fits — dual-backend design
+  anticipated this — with 1 hard req + 4 adjustments. Hard req: the local coding endpoint MUST
+  speak the **Anthropic Messages API** (Claude Code only speaks Anthropic; needs claude-code-router/
+  LiteLLM passthrough; route URL must contain "deepseek" so the detection + write-gate hooks fire).
+  Adjustments: A1 Claude Code runs on the Mini (box = pure inference, reinforces C-2); A2 serve
+  coding on vLLM/SGLang for continuous batching + a max-parallel-workers cap (wave fan-out vs
+  single-box throughput); A3 AFK build→big local model, Edit mode→fastest/cloud; A4 add OOM/
+  server-down pause triggers + supervise the server. Cross-model review, planning mode, autonomy,
+  hard blocks, and the frozen corpus all unchanged. A tiny future APEX-side tweak (per-backend
+  worker cap + pause trigger) touches `~/.claude/skills/apex-code/`, NOT the Artemis corpus.
+  **Planning-mode + research-models fit checked (`_SYNTHESIS-PLAN.md` §8b):** APEX mode is set by
+  the backend *URL string* (`*deepseek*`→coding, else→planning), so a route named "deepseek" can
+  only be coding; a non-"deepseek" local model is accepted as planning; the same weights can serve
+  both modes via two LiteLLM aliases. **Recommendation: planning stays cloud-frontier by default** —
+  it's low-volume, quality-critical (spec quality = the pipeline's failure variable), non-sensitive
+  (design docs, not C-2 personal data), and subscription-flat-cost; local planning is an optional
+  *resilience/independence* tier only (offline, de-correlated 2nd family, or a future distilled-from-
+  Claude planner). Research fan-out: **puller tier** (web-fetch+extract; web access is the
+  orchestrator's tool, model just summarises) is the best local target — saves the most cloud tokens
+  at near-zero quality risk; **synthesizer/planner tiers stay frontier**. **D-plan-1 resolved →
+  "1 then 3":** planning + research-synthesis stay **cloud-frontier** near/mid term (local-fallback
+  middle option skipped); **end-state goal = a fully-local planner distilled from Claude via the
+  CAP/M7 lane** (names spec-authoring as a distillation target, gated on a §7.3 spec-authoring eval
+  reaching frontier parity). Follow-on: `distill-datagen-pipeline` should reserve a planning/
+  spec-authoring generation category (→ BACKLOG). **D-plan-2 resolved → move pullers local:** research
+  puller tier (web-fetch+extract) runs on a cheap local model (Mini/box small model); planner+synth
+  stay cloud-frontier; web access stays the orchestrator's tool. EXP-a wires a `research-puller` local
+  alias. **All expansion decisions (A/B/C + D-plan-1/2) now resolved — plan complete; EXP-a/EXP-b
+  drafted when a hardware trigger fires.**
+- **NEW (transcript provenance check 2026-06-13) — cross-store fact provenance unverified.** M4 within-memory
+  provenance is solid (`source_turn_id` → episodic turn; `extractor_model`/`extracted_at`/`confidence`; bitemporal
+  `history()`; owner view/edit "with provenance"). Open: does a fact extracted during **M3 document ingestion** carry a
+  pointer back to its **source M3 chunk/document**, or does `source_turn_id` bottom out at a conversational turn only?
+  Lives in **M4-b** (write path) + the **M3↔M4 seam** — not checked this session. If the latter, it's a small provenance
+  gap. **Resume = read M4-b + M3↔M4 seam, decide whether document-sourced facts need a chunk pointer.**
 - **✅ TOOL-DISPATCH ASYNC — RESOLVED + CASCADED 2026-06-12 → ADR-016.** Owner chose **option A (uniform async)**:
   `ToolSpec.callable_ref` is `Callable[..., Awaitable[BaseModel]]` — every tool callable is `async def`, dispatched via
   `await` at the one uniform site in Brain (M1-b) + GATE (`approve` now `async def`). Rejected heterogeneous-B (sync|async
