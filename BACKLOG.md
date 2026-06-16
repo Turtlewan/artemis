@@ -20,6 +20,7 @@ trail isn't lost.
 -->
 
 - Quote of the day — user adds quotes, assistant serves/finds them (daily or on demand)  [second-brain][assistant]  (2026-06-02)
+- Acoustic-gesture activation — finger-snap + clap "turns Artemis full on" (wake/activate the assistant via a sound gesture, not a wake-word). Sits on the M5 audio sidecar; needs a sound-event classifier alongside STT/EOU. Decide: what "full on" means (wake from idle? full attention mode?) + false-trigger handling.  [voice][assistant]  (2026-06-16)
 
 <!-- From the 2026-06-05 repo-studies pass — detail + verified sources in docs/research/repo-studies-prior-art.md -->
 - Graph-RAG tier for the brain (symbol/entity knowledge-graph + multi-hop) alongside vector search — compare codegraph-ai/CodeGraph ONNX-memory vs current brain-architecture  [second-brain][rag]  (2026-06-05)
