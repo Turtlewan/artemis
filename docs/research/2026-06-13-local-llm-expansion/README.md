@@ -81,6 +81,10 @@ _(Full rationale for each: `_SYNTHESIS-PLAN.md` §6 + §10 + §12.)_
   notes (TP power-of-2, avoid modded-BIOS bifurcation, low-TDP pro cards). Confidence Low–Med (anecdote).
 - _"Personal AI computer" video_ — `../2026-06-12-...` / status prior-entry; stack maps ~1:1 onto
   locked Artemis decisions (validation pass, no change).
+- **MTPLX (native MTP / speculative-decoding MLX runtime)** — Joe Medalone video, 2026-06-16. A
+  quality-neutral speed-up for the Mac-side runtime; OpenAI-compatible → drop-in behind the M0-c seam.
+  **Benchmark candidate only** (brand-new, model-lock-in, single confounded ~23% claim). Park for
+  on-device A/B vs `mlx-openai-server`/`vllm-mlx` when the Mini lands. Detail: `serving-software.md` §1.5.
 
 ## Files in this bank
 | File | What |

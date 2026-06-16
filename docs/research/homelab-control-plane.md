@@ -50,6 +50,8 @@ a dual driver — 70B inference latency OR serious training need — which can p
 judge-filter) → +200–500/month active-learning. Hold out 10–15% for eval, never trained on. LoRA 1–3
 epochs; maximize cross-category diversity; dedup. `[COMMUNITY — LIMA (~1k aligns) / R1-distill (~800k SOTA) bracket the range]`
 
+**Tooling candidate for the TRAINING step (P1/P3) — Unsloth Studio** `[added 2026-06-16 from a field video — fit-eval, not adopted]`: free OSS local LoRA/QLoRA trainer (optimized kernels + dynamic-2.0 quant) — a strong default to evaluate for the deferred Mac-side training spec (the `mlx_lm.lora` run that `distill-datagen-pipeline` feeds). Scope it to the **training-execution** role only. NOT for dataset-gen: its "recipes" (PDF→Q&A via OpenRouter) lack our judge-filter / category-balance / eval hold-out, AND would send content to a cloud model — our P0 `distill-datagen-pipeline` is the better-designed, sensitivity-tiered front half and stays. Fit notes: (1) the field video hit an **MLX-on-Apple-Silicon training bug** (metal allocation, not RAM) → Unsloth's maturity + core value is **CUDA/Linux**, which favors the **P3 GPU box** over P1-on-MLX for serious runs; (2) it's a localhost GUI — use it as a spec-invoked engine, not the workflow; (3) terminology: Unsloth "recipes" ≠ Artemis recipes. **Status: evaluate when the Mac-side training spec is drafted (post-Mac).**
+
 ## Integration seams with locked Artemis architecture
 - **NAS:** TrueNAS SCALE + MinIO; RAG ingest writes to an S3 URI; respects `/opt/artemis` data-root + ADR-002 local-only-backup posture (NAS is on-LAN, not cloud).
 - **Home Assistant:** native **MCP Server** integration (HA 2026.5, agent-reported) is an exact fit for MCP-at-edges — no custom HA code.
