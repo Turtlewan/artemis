@@ -9,7 +9,19 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-13 (**Home-lab / local-inference expansion → standalone BANK (parked).**
+_Last updated by planning mode:_ 2026-06-16 (**Research / fit-eval session — NO spec-corpus change; corpus stays batch-handoff-ready.**
+Three external-content fit-evals + one deep-research doc, all committed (d91b7ee, c51b4ff) and parked in their homes. (1) **MTPLX**
+(native MTP / speculative-decoding MLX server) → benchmark candidate in the expansion BANK (`serving-software.md` §1.5 + README
+anecdote); drop-in behind the M0-c runtime seam, on-device A/B vs mlx-openai-server/vllm-mlx when the Mini lands. (2) **Unsloth Studio**
+→ candidate for the *deferred* Mac/box-side training step ONLY (NOT dataset-gen — our `distill-datagen-pipeline` front half is better-
+designed + sensitivity-tiered, stays); filed in `homelab-control-plane.md` capability lane (MLX-training bug → favors the P3 GPU box).
+(3) **Agent-loop reliability deep-research** (3 source-grounded agents) → `docs/research/2026-06-16-agent-loop-reliability.md`: the viral
+"geometric reliability decay / cascading state contamination" loop critique is a series-vs-parallel **topology error** (+ inverted Markov
+"absorption state"), but its kernel is real + measured — a loop is safe ⇔ **idempotent · bounded · clean-state · externally-verified**
+(independence = master variable). Doc carries a per-loop Artemis audit (M3-c / DR-c / M6) + a 6-point guardrail checklist. Durable-home
+decision (apex-system-design rule / ADR / status Open Question) deliberately **DEFERRED** — owner chose to keep it *referenceable* via
+memory instead. New standing routine in memory: external content = **fit-eval, not just capture**.)
+_Prior:_ 2026-06-13 (**Home-lab / local-inference expansion → standalone BANK (parked).**
 Future-proofing the inference layer (local DeepSeek-coding + Kimi-class big-context; M5 Mini = orchestrator, heavy inference on a separate tailnet box). All research + decisions moved into a self-contained bank — `docs/research/2026-06-13-local-llm-expansion/` (start at `README.md`) — kept **separate from the spec corpus**: trigger-activated when hardware is bought, otherwise an info bank of options + field anecdotes ("what people have done"). Decisions A/B/C + D-plan-1/2 resolved; APEX coding+planning fit checked; software is config-only and does **not** touch the frozen ~61-spec corpus; EXP-a/EXP-b specs drafted only when a trigger fires. Field anecdotes folded: dual-GB10/ASUS-GX10 (validated), Intel B60 (declined), 8× RTX 4000 Ada CUDA (viable-but-dominated). BACKLOG.md got the future-proofing + UI-thread items.)
 _Prior:_ 2026-06-13 (**Transcript review ("personal AI computer" video) — validation pass, no corpus change.**
 The video's stack (Mac Mini · MLX/Ollama runtime · model portfolio · owned memory · MCP-with-permissions · scoped agents · local voice · cloud-as-visitor routing) maps ~1:1 onto locked Artemis decisions — nothing to change.
