@@ -111,7 +111,7 @@ _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardwa
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
 **Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 gaps surfaced (env-injection script · repo-transfer,
 since resolved). Camera module → BACKLOG.)
-_Last updated by coding mode:_ never
+_Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 committed — 72cf9a6 · b234bac · b3d868a; slice-3a pending pro-tier)
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
@@ -125,9 +125,12 @@ _Last updated by coding mode:_ never
 | macos-client (CLIENT-f) | planning | ✅ COMPLETE — CLIENT-f `status: ready` (drafted + reviewed + fixes applied) | docs/changes/CLIENT-f-mac-app.md | Owner chose end-state Mac+iPhone+iPad (full Athena-style). **ADR-017 written**; research → `docs/research/2026-06-12-multiplatform-swift-client.md`. **CLIENT-c/d/e amended** (Authenticating→ArtemisKit; AppCoordinating screen-seam; macOS auth path). **CLIENT-f drafted AFK** + **apex-swift + apex-security review applied** — 4 BLOCKs resolved (@MainActor panel + hotkey hop · Authenticating/AppCoordinating seam · **App Sandbox ON** (reversed ADR-017 §6 per security review) · exact dep pin + Package.resolved); FLAGs folded (sharingType=.none, lastError redaction, pasteboard note, passcode posture, deploymentTarget→14). overview/ROADMAP/ADR-index updated. App-Sandbox-ON reversal ✅ owner-confirmed. 2 hardware-gated auth unknowns remain for first Mac build. | ADR-017 · CLIENT-c/d/e · CLIENT-f (new, ready) · overview.md · ROADMAP.md |
 
 | home-lab expansion (BANK) | planning | ✅ PARKED — standalone bank, not a spec | docs/research/2026-06-13-local-llm-expansion/README.md | Self-contained future-proofing bank (separate from spec corpus). All decisions resolved; trigger-activated. **Open the bank README when a hardware trigger fires** (T1 M5 Ultra / T2 Kimi-or-training / T3 want local coding now) → draft EXP-a/EXP-b. Otherwise info-bank only. Add new expansion research to the bank, not here. | — |
-| **validation slice — Python spine build (pre-Mini)** | coding | ✅ COMPLETE — 73 tests, mypy + ruff clean | `docs/findings/windows-buildable-spine-slice.md` | **All M1 done:** M1-d (time tool, heartbeat skeleton, e2e brain test — 14 tests), M1-c (Gateway + dev CLI + SSE streaming API — 8 tests). M0-b health stubs (main.py, 2 tests) built as M1-c prerequisite. **73/73 tests.** 12 new files. | 🟡 uncommitted (all new + ruff fixes in pre-existing) |
+| validation slice 1 — Python spine (M0-a→M1-c) | coding | ✅ COMPLETE — 73 tests, mypy + ruff clean | `docs/findings/windows-buildable-spine-slice.md` | M1-d (time tool, heartbeat skeleton, e2e brain test) + M1-c (Gateway + dev CLI + SSE streaming API) + M0-b health stubs. 73/73 tests, 12 new files. | ✅ 72cf9a6 |
+| validation slice 2a — M4-a bitemporal core | coding | ✅ COMPLETE — schema + repo + golden (Tasks 2/4/6) | docs/changes/done/ | sqlite-vec column-level cosine; Tasks 1/3/5 (encryption) Mini-gated. 33 golden tests, 0 real model calls. | ✅ b234bac |
+| validation slice 3 — dev enablers (flash) | coding | ✅ COMPLETE — 112/112 tests | docs/changes/done/dev-model-auth.md · dev-offline-compose.md | `ARTEMIS_MODEL_API_KEY`→Bearer on both adapters + `compose_brain(embedder=,model=)` overrides + `scripts/dev_chat.py` FakeEmbedder REPL. | ✅ b3d868a |
+| validation slice 3a — LanceDB vectorstore | coding | ⏸ PENDING — `coder_tier: pro`, NOT flash-buildable | docs/changes/slice-3a-lancedb-vectorstore.md | `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock). Last pre-Mini buildable spec — needs a Pro DeepSeek session. | — |
 
-_(no build until the Mini arrives — planning/specs only)_
+_(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
@@ -156,6 +159,7 @@ corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. List
 | M8 Productivity | **M8-d-a, M8-d-b, M8-d-c1, M8-d-c2 (4, ready)** | M8-d-a Tasks+Projects+Areas core (owned SQLCipher, 30 auto tools, both recurrence modes); M8-d-b time-blocking seam (`task.schedule` + new `calendar.schedule_task` self-only focus-block + Task↔Event link + auto-cancel-old-block on reschedule); M8-d-c1 hooks (Morning-plan/Overdue/Weekly-review, payload=counts+IDs only); M8-d-c2 suggestion-inbox capture (quarantine-gated email detection → inert suggestion) + capture-recipe graduation (`RecipeStore.write` CANDIDATE → M7-b owner-gated promotion) + knowledge/memory push. |
 | CLIENT client app | CLIENT-a, b, broker, c, d, e + **CLIENT-f (macOS)** — 7 ready | Paired-device auth + recipe Review + chat/status client (ADR-010). GATE-b extends its Review screen + endpoints. **CLIENT-f (ADR-017): native macOS Athena-style target** (menu-bar + global-hotkey panel + window + Settings) sharing ArtemisKit; CLIENT-c/d/e amended (Authenticating→ArtemisKit, AppCoordinating seam, macOS auth path). `status: ready` — apex-swift + apex-security review applied (App Sandbox ON; 2 hardware-gated auth items remain). |
 | CAP capability/self-training | **distill-datagen-pipeline (1, ready)** | Offline Windows-PC pipeline (`tools/distill/`): Claude-subscription teacher → reasoning traces (6 categories) → DeepSeek-judge-filter → versioned training-ready JSONL + eval hold-out. P0 of the ACI capability lane (`docs/research/homelab-control-plane.md`). Runs pre-Mac to fill the M5 wait; output feeds a later Mac-side MLX training spec. |
+| **Validation slices (pre-Mini, Windows-native)** | **slice-3a-lancedb-vectorstore (1, ready; `coder_tier: pro`)** | Last pre-Mini trial-build enabler. **slice-3a** (pro): `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock) on a plain dir — reduced M3-a storage core, mirrors slice 2a; full M3-a extends it on the Mini. NOT flash-buildable — needs a Pro DeepSeek session. _(dev-model-auth + dev-offline-compose DONE 2026-06-17 → `done/`, committed b3d868a.)_ |
 
 ## Module design docs (per-spoke source-of-truth)
 - `docs/technical/modules/calendar.md` — full/final Calendar surface (CAL-* source).

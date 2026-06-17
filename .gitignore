@@ -25,6 +25,7 @@ keys/
 # --- Python (forward-looking — code is built on the Mini) ---
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 .mypy_cache/
 .ruff_cache/
