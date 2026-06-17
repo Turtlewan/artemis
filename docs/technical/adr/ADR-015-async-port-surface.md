@@ -1,3 +1,4 @@
+<!-- amended 2026-06-17: EmbeddingModel.embed split into embed_documents/embed_query (embedding-layer decision; research/2026-06-17-embedding-implementation.md). See the Amendments note at the foot of this ADR — the async rule is unchanged; both new methods are async. -->
 # ADR-015 — Async port surface for network-I/O ports (embedding / rerank / retrieval / LLM)
 
 - **Status:** Accepted · **Date:** 2026-06-11 · **Deciders:** owner + planning
@@ -63,3 +64,17 @@ Options weighed (spec-lint discussion 2026-06-11):
 - **Tests:** retriever/memory/router/ingestion tests `await` the calls; `mypy --strict` enforces the
   coroutine typing, so a missed `await` fails the gate rather than silently returning a coroutine.
 - **Fixes the latent blocking** end-to-end: no model-server call blocks the event loop.
+
+## Amendments
+
+- **2026-06-17 — `EmbeddingModel.embed` split into `embed_documents` / `embed_query`** (embedding-layer
+  decision; ref `docs/research/2026-06-17-embedding-implementation.md` §6). Qwen3-Embedding is asymmetric —
+  a query needs an `"Instruct: {task}\nQuery:{q}"` instruction prefix, a document/fact does not — and the
+  symmetric `embed(texts)` port let a literal executor silently drop the prefix (a ~1–5% silent
+  retrieval-quality bug). The single `async def embed(texts) -> list[Vector]` is replaced by
+  `async def embed_documents(texts) -> list[Vector]` (stored/indexed text, NO prefix) and
+  `async def embed_query(query) -> Vector` (search text, single string in / single Vector out; the adapter
+  applies the query prefix). The async rule above is unchanged — **both** new methods are async (network I/O);
+  `dimension` stays sync. The "Concrete async set" wherever it names `EmbeddingModel.embed` now reads
+  `EmbeddingModel.embed_documents` / `EmbeddingModel.embed_query`. M0-d is the producer of record;
+  contracts.md Seam 1 amended alongside.

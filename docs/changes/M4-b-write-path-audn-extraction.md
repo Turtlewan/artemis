@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per contracts.md (Seam 6) + m3-m4-knowledge-memory.md FLAG F4 -->
+<!-- amended 2026-06-17: EmbeddingModel port split embed→embed_documents/embed_query (embedding-layer decision; research/2026-06-17-embedding-implementation.md) -->
 ---
 spec: m4-b-write-path-audn-extraction
 status: ready
@@ -49,7 +50,7 @@ Simplicity check: considered a validate-and-retry JSON loop instead of constrain
   1. `episode_id = repo.append_episode(text, turn_id=turn_id, role=role)` — **synchronous, first, never skipped** (the source history exists even if extraction fails; `repo.append_episode` is a SYNC local-DB write).
   2. `facts = await extractor.extract(text)` (the extractor is now async — awaits the ModelPort).
   3. for each `ef in facts` (wrap EACH in try/except → on error increment `errors`, continue — degrade-don't-crash, never abort the batch):
-     a. `emb = (await embedder.embed([f"{ef.subject} {ef.relation} {ef.object}"]))[0]` (the M0-d `EmbeddingModel.embed` is now async — await it).
+     a. `emb = (await embedder.embed_documents([f"{ef.subject} {ef.relation} {ef.object}"]))[0]` (the extracted fact triple is STORED text → `embed_documents`, NO query prefix; the same vector is the candidate-search probe AND the vector written by `repo.add`/`repo.update` below; M0-d split port — async, await it).
      b. `cand_pairs = repo.semantic_candidates(emb, candidate_k)` (SYNC local DB — not awaited); materialise into `Candidate`s: for each `(fact_id, distance)` pair, call `repo.get_fact(fact_id)` (SYNC; F4 fix: `BitemporalRepository.get_fact(fact_id) -> FactRow` is defined in M4-a Task 4's method list; use it here instead of `as_of`/ad-hoc lookup) to resolve each `fact_id` to its current triple.
      c. `decision = await decider.decide(ef, candidates)` (the decider is now async — awaits the ModelPort).
      d. **apply** (provenance = `source_turn_id=turn_id, extractor_model=self.extractor_model_id, extracted_at=now`):
@@ -63,7 +64,7 @@ Simplicity check: considered a validate-and-retry JSON loop instead of constrain
 
 - [ ] Task 4: Re-export + wire into the store seam — files: `/Users/artemis-build/artemis/src/artemis/memory/__init__.py` (modify) — re-export `FactExtractor`, `ExtractedFact`, `AudnDecider`, `AudnDecision`, `AudnOp`, `MemoryWritePath`, `MemoryWriteQueue`, `WritePathResult`. Add a factory `def build_write_path(store: SqliteMemoryStore, model: ModelPort) -> MemoryWritePath` that constructs the extractor/decider/write-path from a `SqliteMemoryStore`'s repository + embedder + the ModelPort (so M4-c gets a one-call constructor); pass the repository into `AudnDecider(model, repo)` for cardinality lookup. Do NOT change the M0-d `Fact` dataclass. — done when: `uv run mypy --strict src` passes; `from artemis.memory import build_write_path, MemoryWriteQueue` succeeds.
 
-- [ ] Task 5: Write the write-path tests — files: `/Users/artemis-build/artemis/tests/test_memory_write_path.py` — typed pytest using the M4-a memory-DB fixture (real keyed DB or plain-sqlite+sqlite-vec fallback), a `FakeEmbedder` (`async def embed`), `FakeExtractor`/`FakeDecider` (both with `async def extract`/`async def decide`). Tests calling the async pipeline (`extract`/`decide`/`process_turn`/the queue worker) are `async def` test fns under `@pytest.mark.asyncio` (the M4-a async-test convention) and `await` those calls:
+- [ ] Task 5: Write the write-path tests — files: `/Users/artemis-build/artemis/tests/test_memory_write_path.py` — typed pytest using the M4-a memory-DB fixture (real keyed DB or plain-sqlite+sqlite-vec fallback), a `FakeEmbedder` (implements BOTH `async def embed_documents` and `async def embed_query` per the split port — the write path calls `embed_documents`), `FakeExtractor`/`FakeDecider` (both with `async def extract`/`async def decide`). Tests calling the async pipeline (`extract`/`decide`/`process_turn`/the queue worker) are `async def` test fns under `@pytest.mark.asyncio` (the M4-a async-test convention) and `await` those calls:
   - extraction: `await FactExtractor(...).extract(...)` over a `FakeModelPort` returning the `EXTRACTION_SCHEMA` shape yields the expected `ExtractedFact`s.
   - **ADD:** `await process_turn("I live in London", turn_id="T1")` → `facts_added==1`; `repo.as_of(now)` has `("owner","lives_in","London")` with `source_turn_id=="T1"`, `extractor_model` set (provenance).
   - **UPDATE (close-interval+insert):** then `await process_turn("Actually I moved to Paris", turn_id="T2")` (FakeExtractor → lives_in Paris; FakeDecider sees the London candidate → UPDATE) → `facts_updated==1`; `as_of(now)` → "Paris"; `history(fact_key)` has 2 rows, the London row's `tx_to` CLOSED (never hard-deleted), `source_turn_id` of the Paris row =="T2".

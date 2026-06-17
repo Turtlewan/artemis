@@ -50,7 +50,7 @@ class ModelPort(Protocol):
 
 **Async port surface (ADR-015) — amended 2026-06-11.** Network-I/O port methods are `async`; local-disk/DB
 and cached-value methods stay sync. The full async set across `src/artemis/ports/`:
-- **Async:** `ModelPort.complete` (above) · `ModelPort.embed` · `EmbeddingModel.embed` · `Reranker.rerank` ·
+- **Async:** `ModelPort.complete` (above) · `ModelPort.embed` · `EmbeddingModel.embed_documents` · `EmbeddingModel.embed_query` · `Reranker.rerank` ·
   `Retriever.retrieve` · `MemoryStore.{recall, inject_context, add_fact, update_fact}` (all embed).
 - **Sync:** `VectorStore.*` (local LanceDB) · `EmbeddingModel.dimension` (cached int) ·
   `MemoryStore.delete_fact` (tombstone, no embed) · `Router.route` · all voice ports.

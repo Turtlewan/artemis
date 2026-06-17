@@ -9,7 +9,15 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-16 (**Research / fit-eval session — NO spec-corpus change; corpus stays batch-handoff-ready.**
+_Last updated by planning mode:_ 2026-06-17 (**Validation-slice brief added — NO spec-corpus change.** Cross-project APEX
+discussion surfaced that "build waits for the Mini" is an *inherited assumption*: the brain spine is pure Python (MLX = a
+swappable OpenAI-compatible endpoint, live-checked on M1-b + M0-a), so a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c)
+can be built **now** in a DeepSeek/WSL2 coding session to get the corpus's first execution signal. Decision-ready brief:
+`docs/findings/windows-buildable-spine-slice.md`; In-Flight + Open-Questions rows added. De-risks the batch; ADR-002 unchanged.
+**Updated same session: the brief's open sub-question is CLOSED → GO** — line-audited the four un-checked slice specs
+(M0-d/M1-a/M1-c/M1-d): no hidden Mac/MLX dep, only M1-b Task 5 (live-model) is gated = the swappable endpoint seam, all
+else fake-testable; two trivial frictions (cosmetic Mac paths · `/opt/artemis` mkdir). Slice is GO; owner go/no-go is the only remaining gate.)
+_Prior:_ 2026-06-16 (**Research / fit-eval session — NO spec-corpus change; corpus stays batch-handoff-ready.**
 Three external-content fit-evals + one deep-research doc, all committed (d91b7ee, c51b4ff) and parked in their homes. (1) **MTPLX**
 (native MTP / speculative-decoding MLX server) → benchmark candidate in the expansion BANK (`serving-software.md` §1.5 + README
 anecdote); drop-in behind the M0-c runtime seam, on-device A/B vs mlx-openai-server/vllm-mlx when the Mini lands. (2) **Unsloth Studio**
@@ -117,6 +125,7 @@ _Last updated by coding mode:_ never
 | macos-client (CLIENT-f) | planning | ✅ COMPLETE — CLIENT-f `status: ready` (drafted + reviewed + fixes applied) | docs/changes/CLIENT-f-mac-app.md | Owner chose end-state Mac+iPhone+iPad (full Athena-style). **ADR-017 written**; research → `docs/research/2026-06-12-multiplatform-swift-client.md`. **CLIENT-c/d/e amended** (Authenticating→ArtemisKit; AppCoordinating screen-seam; macOS auth path). **CLIENT-f drafted AFK** + **apex-swift + apex-security review applied** — 4 BLOCKs resolved (@MainActor panel + hotkey hop · Authenticating/AppCoordinating seam · **App Sandbox ON** (reversed ADR-017 §6 per security review) · exact dep pin + Package.resolved); FLAGs folded (sharingType=.none, lastError redaction, pasteboard note, passcode posture, deploymentTarget→14). overview/ROADMAP/ADR-index updated. App-Sandbox-ON reversal ✅ owner-confirmed. 2 hardware-gated auth unknowns remain for first Mac build. | ADR-017 · CLIENT-c/d/e · CLIENT-f (new, ready) · overview.md · ROADMAP.md |
 
 | home-lab expansion (BANK) | planning | ✅ PARKED — standalone bank, not a spec | docs/research/2026-06-13-local-llm-expansion/README.md | Self-contained future-proofing bank (separate from spec corpus). All decisions resolved; trigger-activated. **Open the bank README when a hardware trigger fires** (T1 M5 Ultra / T2 Kimi-or-training / T3 want local coding now) → draft EXP-a/EXP-b. Otherwise info-bank only. Add new expansion research to the bank, not here. | — |
+| **validation slice — build the Python spine NOW (pre-Mini)** | planning→coding | 🟢 AUDITED → GO — owner to pick up (build = DeepSeek session) | `docs/findings/windows-buildable-spine-slice.md` | **"Build waits for the Mini" was an INHERITED ASSUMPTION, not a constraint (owner-confirmed 2026-06-17).** The brain spine (M0-a, M0-d, M1-*, M3 logic, M4 schema) is pure Python — MLX is only a swappable OpenAI-compatible endpoint (live-checked M1-b + M0-a). Only infra/serving/clients are truly Mac-gated. **Opportunity:** build a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c) in a **DeepSeek coding session on WSL2** with the model-port pointed at a cloud endpoint (test-only) → the FIRST execution signal the ~61-spec corpus has ever had (validates contracts.md seams + ADR-016 dispatch + router). De-risks the batch; does NOT replace ADR-002 (Mini = prod). **✅ Open sub-question CLOSED 2026-06-17:** full line-audit of M0-d/M1-a/M1-c/M1-d found no hidden Mac/MLX dep — one gated step (M1-b Task 5 live-model, the endpoint seam), all else fake-testable; two trivial frictions (cosmetic Mac paths · `/opt/artemis` data-dir mkdir). **Next:** owner go/no-go (audit = GO) → switch backend → build. | — |
 
 _(no build until the Mini arrives — planning/specs only)_
 <!-- CODING:END -->
@@ -181,6 +190,41 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **🟢 NEW (2026-06-17) — validation slice: build the Python spine pre-Mini. AUDITED → GO.** The "build waits for
+  the Mini" rule is an **inherited assumption** (owner-confirmed), not a constraint — the brain spine is pure Python
+  and MLX is a swappable OpenAI-compatible endpoint. Build a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c) in a
+  DeepSeek coding session on WSL2 (cloud model-port, test-only) to get the corpus's first execution signal. Full brief +
+  proposed slice + caveats + how-to: **`docs/findings/windows-buildable-spine-slice.md`**. De-risks the batch;
+  ADR-002 (Mini = prod) unchanged. **✅ Open sub-question CLOSED 2026-06-17** — line-audited M0-d/M1-a/M1-c/M1-d:
+  no hidden Mac/MLX dep (only M1-b Task 5 live-model is gated = the endpoint seam; all else fake-testable; two trivial
+  frictions = cosmetic Mac paths + `/opt/artemis` mkdir). **Endpoint config decided:** LLM → DeepSeek native
+  OpenAI-compatible endpoint (`api.deepseek.com`, NOT the Anthropic proxy Claude Code uses); embeddings → keep the spec's
+  `FakeEmbedder` (DeepSeek has no `/embeddings`; fine — 1–2 tools, prod embeddings are local-MLX anyway). **Build = a
+  QUEUED coding task** (no context-switch yet). **Slice 2 on-deck = M4-a bitemporal core** (storage/data-model risk; sequenced
+  not bundled). **🟡 M4-a pre-audit done = YELLOW:** M4-a also needs M2-b+M2-c (security wall) + a hardware-GATED Task 1
+  (sqlite-vec-under-SQLCipher spike, Mini-only). Recommended **slice 2a = reduced bitemporal core** (schema/repo/golden
+  tests on the plain-sqlite+sqlite-vec fallback, Tasks 2/4/6; stub M2-dependent store + skip encryption) — high signal,
+  no M2 wall, no Mini, WSL2-buildable. Full M4-a (slice 2b) defers to the Mini.
+  **Resume = owner spins up the DeepSeek/WSL2 coding session → build slice 1 → handoff steers slice 2.**
+- **🟢 NEW (2026-06-17) — embedding layer DECIDED (de-parks "embedding tier").** Research:
+  `docs/research/2026-06-17-embedding-implementation.md` (confidence: high — mostly confirms locked defaults).
+  **DECIDED:** Qwen3-Embedding-0.6B @ **1024 dims**, **ONE model across BOTH stores** (M3 LanceDB docs + M4 sqlite-vec
+  memory), **no MRL truncation** (saving invisible at personal scale, measurably hurts recall, dimension is locked per
+  store), paired with **Qwen3-Reranker-0.6B**, served via mlx-openai-server `/v1/embeddings`. 0.6B = default; 4B only
+  behind an on-hardware eval gate. **Owner decision (2026-06-17): SPLIT the `EmbeddingModel` port → `embed_query` /
+  `embed_documents`** (least error-prone: encodes Qwen3's query-prefix asymmetry in the type system vs prose discipline a
+  literal executor can silently drop — the ~1–5% silent-degradation footgun). **✅ AMENDMENT WAVE DONE 2026-06-17** (AFK agent; spec edits
+  only, no code exists). `EmbeddingModel.embed(texts)` split → `async embed_documents(texts) -> list[Vector]` (stored text,
+  no prefix) + `async embed_query(query) -> Vector` (single in/out; adapter applies the Qwen3 `Instruct:…\nQuery:…` prefix).
+  Applied across (broader than first scoped — agent grep-found all call sites): **M0-d** (port split; `ModelPort.embed` +
+  `dimension` untouched) · **M1-a** (descs→docs, lookup→query) · **M1-b** (`OpenAIEmbeddingModel` impls both; prefix in
+  adapter) · **M3-a** (chunks→docs) · **M3-b** (query→query; reranker reframed fallback→**PRIMARY** chat-completions, no
+  `/v1/rerank`) · **M3-d** (OCR chunks→docs; `VisualRetriever.embed_page` untouched) · **M4-a** (recall→query,
+  add/update_fact→docs) · **M4-b** (fact-triple→docs) · **M4-c-1** (recall→query) · **M4-c-2** (edit_fact→docs) · **M7-a1**
+  (recipe write→docs, retrieve→query) · **contracts.md Seam 1** · **ADR-015** (dated amendment note). Every `FakeEmbedder`
+  test-double updated to both methods; consistency grep = 0 live stale call-sites. Resolves all 4 research-doc open
+  questions (split = #1; #2/#3/#4 = recommended-yes, accepted). **Verify at M0-c gated probe:** Qwen3-Embedding actually loads on mlx-openai-server (RAM for 3 resident
+  models: responder + embedder + reranker; named fallback `mlx-embeddings`).
 - **Home-lab / local-inference expansion — PARKED in a separate BANK (not a spec).** All research +
   decisions live in `docs/research/2026-06-13-local-llm-expansion/` — **start at `README.md`** (bank
   index) → `_SYNTHESIS-PLAN.md`. Self-contained and trigger-activated: open it when a hardware trigger
@@ -303,7 +347,7 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 - **Build strategy = front-load ALL specs → batch handoff (2026-06-04).** Plan now (PC), accumulate in `docs/changes/`, hand the queue to DeepSeek when the Mini lands.
 - **Stack LOCKED (ADR-001).** Teacher = Claude Opus via subscription (non-sensitive, bootstrapping). DeepSeek = optional fallback.
 - **Deployment LOCKED (ADR-002).** Native + launchd · build-on-Mini · isolated build agent · Tailscale · dev→UAT→PROD · expand/contract migrations · local-only backups · native clients.
-- **Parked (build phase):** Graphiti vs Mem0 · embedding tier · local teacher 30B-A3B vs 32B · macOS 26 ·
+- **Parked (build phase):** Graphiti vs Mem0 · local teacher 30B-A3B vs 32B · macOS 26 ·
   Swift-vs-Python AEC · mic XMOS · Pipecat vs Wyoming · local LoRA · backup device + offsite · Headscale swap ·
   2nd build box · watch LAN TLS · Litestream vs VACUUM · Tailscale ACLs · Maps connector (Calendar travel-time) ·
   Habits/Goals (Productivity deferred sub-domains, time-blocking rail reserved).
