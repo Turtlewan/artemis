@@ -1,0 +1,27 @@
+# Logical model-port roles — physical endpoint is the swap seam
+# Each role maps to an OpenAI-compatible endpoint or the claude-cli teacher adapter.
+
+[responder]
+endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
+model_id = "Qwen3-4B-Instruct-2507"
+adapter = "openai"
+
+[teacher]
+endpoint = "claude-cli"                     # claude CLI teacher adapter
+model_id = "claude-opus"
+adapter = "claude-cli"
+
+[embedder]
+endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
+model_id = "Qwen3-Embedding-0.6B"
+adapter = "openai"
+
+[reranker]
+endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
+model_id = "Qwen3-Reranker-0.6B"
+adapter = "openai"
+
+[sensitive_reasoner]
+endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server, lazy
+model_id = "Qwen3.6-27B"
+adapter = "openai"
