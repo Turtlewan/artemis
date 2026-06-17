@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.28",
     "tzdata>=2026.2",
     "sqlite-vec>=0.1",
+    "lancedb>=0.33.0",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +33,10 @@ exclude = [
     ".venv/",
     "scripts/",
 ]
+
+[[tool.mypy.overrides]]
+module = "lancedb"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 markers = [
