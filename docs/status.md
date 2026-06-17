@@ -129,6 +129,7 @@ _Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a com
 | validation slice 2a — M4-a bitemporal core | coding | ✅ COMPLETE — schema + repo + golden (Tasks 2/4/6) | docs/changes/done/ | sqlite-vec column-level cosine; Tasks 1/3/5 (encryption) Mini-gated. 33 golden tests, 0 real model calls. | ✅ b234bac |
 | validation slice 3 — dev enablers (flash) | coding | ✅ COMPLETE — 112/112 tests | docs/changes/done/dev-model-auth.md · dev-offline-compose.md | `ARTEMIS_MODEL_API_KEY`→Bearer on both adapters + `compose_brain(embedder=,model=)` overrides + `scripts/dev_chat.py` FakeEmbedder REPL. | ✅ b3d868a |
 | validation slice 3a — LanceDB vectorstore | coding | ✅ COMPLETE — 9 tests, mypy + ruff clean | docs/changes/done/slice-3a-lancedb-vectorstore.md | `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock). 3 files created: `knowledge/__init__.py`, `knowledge/vector_store.py`, `tests/test_vector_store.py`. | ✅ 5975b30 |
+| prebuild test-review walkthrough | planning | 🔄 in-progress — section 0/12 reviewed | docs/drafts/prebuild-test-review.md | Section-by-section owner review of the 121-test validation suite. Live re-verify done: 121 pass · ruff clean · **mypy NOT clean (14 errors in 2 test files — `mypy src` was run, not `mypy src tests`)**. Resume at first unticked section. | — |
 
 _(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
