@@ -102,7 +102,7 @@ This is **load-bearing and silent-on-failure.** If the adapter prefixes document
 **Where this must live (build guidance):** the asymmetry is an **`OpenAIEmbeddingModel` adapter responsibility**, not a store concern. But the M0-d port is symmetric — `async def embed(texts) -> list[Vector]` — it doesn't distinguish query from document. **This is a real gap to resolve at build time.** Options (for a future M1-b/M3/M4 amendment, NOT changing the locked port lightly):
 - (a) Add an `embed_query` vs `embed_documents` distinction at the adapter (sentence-transformers convention), OR
 - (b) Keep one `embed()` but have **callers** pass already-prefixed text (the retriever prefixes the query string before calling `embed`; ingestion/memory-write pass raw text). Option (b) preserves the locked symmetric port and pushes the asymmetry to the two call sites that already know whether they hold a query or a document (M3-b `retrieve` embeds the query; M3-a/M4 embed documents/facts).
-- **Recommended: (b)** — smallest blast radius, no port change, the prefix becomes a documented convention at the two embed-call sites. Flag for the owner (open question below).
+- **Research recommended (b)**, but **owner chose (a) — the `embed_query`/`embed_documents` port split — ✅ DECIDED + APPLIED 2026-06-17.** Rationale for overriding: a literal executor (DeepSeek) can silently drop a prose convention, so the safer design encodes the query/document asymmetry in the type system rather than leaving it to caller discipline. The 2026-06-17 amendment wave applied the split across M0-d + every consumer + contracts.md Seam 1 + ADR-015; the Qwen3 query prefix lives in the `OpenAIEmbeddingModel` adapter's `embed_query`. See § Open questions (resolved).
 
 **Per-store task instruction (the free specialization from §3):** M3 doc queries use a "retrieve relevant passages" instruction; M4 memory recall can use a "retrieve facts about the owner relevant to…" instruction — same model, different `{task_description}`. This is where one-model still gets store-aware retrieval.
 
@@ -119,14 +119,14 @@ Both stores **lock `{embedder_model_id, dimension}` in metadata at creation** an
 
 ---
 
-## Open questions for the owner
+## Open questions for the owner — ✅ ALL RESOLVED (owner, 2026-06-17)
 
-1. **Asymmetric-prefix wiring (the only real build gap).** The locked `EmbeddingModel.embed(texts)` port is symmetric; Qwen3-Embedding needs queries prefixed and documents not. Recommended fix = **option (b)**: keep the port, make callers (M3-b retriever vs M3-a/M4 writers) responsible for query-prefixing, documented as a convention. **Confirm this, or prefer an explicit `embed_query`/`embed_documents` adapter split?** This wants a small targeted amendment to M1-b/M3-b/M4 at build time (not now).
-2. **Per-store task instructions.** Adopt store-specific `{task_description}` strings (docs vs memory) to get free retrieval specialization from one model? (Recommended yes; trivial.)
-3. **4B eval gate.** brain.md already flags "0.6B vs 4B (eval-gated)." Keep 0.6B as the locked default and only revisit 4B if an on-hardware RAGAS/recall eval shows a gap? (Recommended: yes — 0.6B default, 4B is a same-family re-index if ever needed.)
-4. **Reranker transport.** Accept that "constrained-decoded score via `/v1/chat/completions`" is the **primary** reranker path (no native `/v1/rerank` on mlx-openai-server), and have M3-b document it as primary rather than fallback? (Recommended yes.)
+1. **Asymmetric-prefix wiring.** **RESOLVED → option (a): the `embed_query`/`embed_documents` port split** (owner overrode the research's recommended (b) — encoding the asymmetry in the type system beats a prose convention a literal executor can silently drop). **Applied** via the 2026-06-17 amendment wave across M0-d, M1-a, M1-b, M3-a, M3-b, M3-d, M4-a, M4-b, M4-c-1, M4-c-2, M7-a1 + contracts.md Seam 1 + ADR-015; the Qwen3 query prefix lives in `OpenAIEmbeddingModel.embed_query`.
+2. **Per-store task instructions.** **RESOLVED → yes** — adopt store-specific `{task_description}` strings (docs vs memory) for free specialization from the one model.
+3. **4B eval gate.** **RESOLVED → yes** — 0.6B is the locked default; 4B only behind an on-hardware eval gate (same-family re-index if ever needed).
+4. **Reranker transport.** **RESOLVED → yes** — chat-completions constrained-decode is the **primary** reranker path (no native `/v1/rerank`); M3-b reworded primary, not fallback.
 
-_None of these contradict a locked decision; #1 is the only one that touches spec text, and only at build time._
+_All four recorded in `docs/status.md`; spec amendments committed in `5058e36`. None contradicted a locked decision._
 
 ---
 
