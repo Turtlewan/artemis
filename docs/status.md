@@ -111,7 +111,7 @@ _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardwa
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
 **Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 gaps surfaced (env-injection script · repo-transfer,
 since resolved). Camera module → BACKLOG.)
-_Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a committed — 72cf9a6 · b234bac · b3d868a; slice-3a pending commit)
+_Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a committed — 72cf9a6 · b234bac · b3d868a · 5975b30)
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
@@ -128,7 +128,7 @@ _Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a com
 | validation slice 1 — Python spine (M0-a→M1-c) | coding | ✅ COMPLETE — 73 tests, mypy + ruff clean | `docs/findings/windows-buildable-spine-slice.md` | M1-d (time tool, heartbeat skeleton, e2e brain test) + M1-c (Gateway + dev CLI + SSE streaming API) + M0-b health stubs. 73/73 tests, 12 new files. | ✅ 72cf9a6 |
 | validation slice 2a — M4-a bitemporal core | coding | ✅ COMPLETE — schema + repo + golden (Tasks 2/4/6) | docs/changes/done/ | sqlite-vec column-level cosine; Tasks 1/3/5 (encryption) Mini-gated. 33 golden tests, 0 real model calls. | ✅ b234bac |
 | validation slice 3 — dev enablers (flash) | coding | ✅ COMPLETE — 112/112 tests | docs/changes/done/dev-model-auth.md · dev-offline-compose.md | `ARTEMIS_MODEL_API_KEY`→Bearer on both adapters + `compose_brain(embedder=,model=)` overrides + `scripts/dev_chat.py` FakeEmbedder REPL. | ✅ b3d868a |
-| validation slice 3a — LanceDB vectorstore | coding | ✅ COMPLETE — 9 tests, mypy + ruff clean | docs/changes/done/slice-3a-lancedb-vectorstore.md | `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock). 3 files created: `knowledge/__init__.py`, `knowledge/vector_store.py`, `tests/test_vector_store.py`. | 🟡 uncommitted |
+| validation slice 3a — LanceDB vectorstore | coding | ✅ COMPLETE — 9 tests, mypy + ruff clean | docs/changes/done/slice-3a-lancedb-vectorstore.md | `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock). 3 files created: `knowledge/__init__.py`, `knowledge/vector_store.py`, `tests/test_vector_store.py`. | ✅ 5975b30 |
 
 _(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
