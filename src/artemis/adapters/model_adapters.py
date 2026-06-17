@@ -18,6 +18,15 @@ from artemis.ports.model import ModelResponse
 from artemis.ports.types import Message, Usage, Vector
 
 
+def _auth_headers(settings: Any) -> dict[str, str]:
+    """Bearer auth header for authed OpenAI-compatible endpoints.
+
+    Empty dict for local no-auth servers (MLX/Ollama) — no key configured.
+    """
+    key = getattr(settings, "model_api_key", None)
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 class OpenAIModelPort:
     """ModelPort adapter for OpenAI-compatible endpoints.
 
@@ -27,7 +36,11 @@ class OpenAIModelPort:
 
     def __init__(self, settings: Any | None = None) -> None:
         self._settings = settings or get_settings()
-        self._client = httpx.AsyncClient(base_url="http://127.0.0.1", timeout=60.0)
+        self._client = httpx.AsyncClient(
+            base_url="http://127.0.0.1",
+            timeout=60.0,
+            headers=_auth_headers(self._settings),
+        )
 
     def _role_config(self, role: str) -> tuple[str, str]:
         """Resolve (base_url, model_id) for a logical role."""
@@ -104,7 +117,11 @@ class OpenAIModelPort:
                 "stream": True,
             }
 
-            async with httpx.AsyncClient(base_url="http://127.0.0.1", timeout=120.0) as client:
+            async with httpx.AsyncClient(
+                base_url="http://127.0.0.1",
+                timeout=120.0,
+                headers=_auth_headers(self._settings),
+            ) as client:
                 async with client.stream(
                     "POST", f"{base_url}/chat/completions", json=body
                 ) as response:
@@ -155,7 +172,11 @@ class OpenAIEmbeddingModel:
 
     def __init__(self, settings: Any | None = None) -> None:
         self._settings = settings or get_settings()
-        self._client = httpx.AsyncClient(base_url="http://127.0.0.1", timeout=30.0)
+        self._client = httpx.AsyncClient(
+            base_url="http://127.0.0.1",
+            timeout=30.0,
+            headers=_auth_headers(self._settings),
+        )
 
     @property
     def dimension(self) -> int:

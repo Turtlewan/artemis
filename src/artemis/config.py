@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Embedding model dimension (Qwen3-Embedding-0.6B → 1024)
     embedding_dimension: int = Field(default=1024, ge=128, le=4096)
 
+    # Optional API key for authed OpenAI-compatible endpoints (dev: DeepSeek/OpenAI
+    # cloud). Local MLX/Ollama servers need none. Sent as `Authorization: Bearer`.
+    # Secret: read from ARTEMIS_MODEL_API_KEY, excluded from serialisation.
+    model_api_key: str | None = Field(default=None, exclude=True)
+
     # Per-role model-port map, populated by a validator
     roles: dict[str, ModelRole] = Field(default_factory=dict, exclude=True)
 

@@ -15,6 +15,8 @@ from artemis.config import Settings, get_settings
 from artemis.ports.types import PersonId, Scope
 
 if TYPE_CHECKING:
+    from artemis.ports.model import ModelPort
+    from artemis.ports.retrieval import EmbeddingModel
     from artemis.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -56,22 +58,30 @@ class Gateway:
         return await self._brain.pre_route(request_text, OWNER_SCOPE)
 
 
-def compose_brain(settings: Settings | None = None) -> Brain:
+def compose_brain(
+    settings: Settings | None = None,
+    *,
+    embedder: EmbeddingModel | None = None,
+    model: ModelPort | None = None,
+) -> Brain:
     """Build a wired Brain from settings.
 
-    Constructs the real adapters (``OpenAIEmbeddingModel``, ``OpenAIModelPort``),
-    a ``ToolRegistry``, registers available module manifests (silently skips
-    modules not yet built), builds a ``SemanticRouter``, and returns the ``Brain``.
-
-    Uses lazy ``ToolRegistry.register()`` — no network at construction time.
+    By default constructs the real adapters (``OpenAIEmbeddingModel``,
+    ``OpenAIModelPort``). Pass ``embedder`` and/or ``model`` to inject doubles
+    (e.g. a dev ``FakeEmbedder`` for an endpoint with no ``/embeddings``, or a
+    fully offline smoke run). Uses lazy ``ToolRegistry.register()`` — no network
+    at construction time.
     """
     if settings is None:
         settings = get_settings()
 
     from artemis.adapters.model_adapters import OpenAIEmbeddingModel, OpenAIModelPort
 
-    embedder = OpenAIEmbeddingModel(settings)
-    model = OpenAIModelPort(settings)
+    if embedder is None:
+        embedder = OpenAIEmbeddingModel(settings)
+    if model is None:
+        model = OpenAIModelPort(settings)
+
     registry = _register_modules(embedder)
     from artemis.router import SemanticRouter
 
