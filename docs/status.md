@@ -9,7 +9,15 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-17 (**Validation-slice brief added — NO spec-corpus change.** Cross-project APEX
+_Last updated by planning mode:_ 2026-06-19 (**Coding handoff drained → new ready spec `tooling-cleanup`.** Drained the
+2026-06-18 coding handoff to inbox-zero. The InMemoryToolIndex/VectorStore **protocol gap** [owner chose: *widen the index*
+to the protocol's already-`Sequence`/`Mapping` signature — NOT narrow the protocol, which would couple the port to concrete
+types] + the 5-file **ruff format drift** → `docs/changes/tooling-cleanup.md` (`status: ready`, Flash, 2 tasks, zero
+behaviour change). Flaky-test handoff item discarded (coder-confirmed semantically equivalent). The **`uv` dev-deps
+migration** (`[project.optional-dependencies]`→`[dependency-groups]` so `uv sync` alone installs dev deps) is **DEFERRED as
+an Open Question** — the `--all-extras` flow works today and migrating ripples into the documented verify recipe across ~61
+specs + RUNBOOK, so it's its own deliberate spec, not a bundled cleanup.)
+_Prior:_ 2026-06-17 (**Validation-slice brief added — NO spec-corpus change.** Cross-project APEX
 discussion surfaced that "build waits for the Mini" is an *inherited assumption*: the brain spine is pure Python (MLX = a
 swappable OpenAI-compatible endpoint, live-checked on M1-b + M0-a), so a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c)
 can be built **now** in a DeepSeek/WSL2 coding session to get the corpus's first execution signal. Decision-ready brief:
@@ -111,7 +119,7 @@ _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardwa
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
 **Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 gaps surfaced (env-injection script · repo-transfer,
 since resolved). Camera module → BACKLOG.)
-_Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a committed — 72cf9a6 · b234bac · b3d868a · 5975b30)
+_Last updated by coding mode:_ 2026-06-18 (fix-validation-test-quality built, archived to done/)
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
@@ -129,14 +137,15 @@ _Last updated by coding mode:_ 2026-06-17 (validation slices 1 / 2a / 3 / 3a com
 | validation slice 2a — M4-a bitemporal core | coding | ✅ COMPLETE — schema + repo + golden (Tasks 2/4/6) | docs/changes/done/ | sqlite-vec column-level cosine; Tasks 1/3/5 (encryption) Mini-gated. 33 golden tests, 0 real model calls. | ✅ b234bac |
 | validation slice 3 — dev enablers (flash) | coding | ✅ COMPLETE — 112/112 tests | docs/changes/done/dev-model-auth.md · dev-offline-compose.md | `ARTEMIS_MODEL_API_KEY`→Bearer on both adapters + `compose_brain(embedder=,model=)` overrides + `scripts/dev_chat.py` FakeEmbedder REPL. | ✅ b3d868a |
 | validation slice 3a — LanceDB vectorstore | coding | ✅ COMPLETE — 9 tests, mypy + ruff clean | docs/changes/done/slice-3a-lancedb-vectorstore.md | `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock). 3 files created: `knowledge/__init__.py`, `knowledge/vector_store.py`, `tests/test_vector_store.py`. | ✅ 5975b30 |
-| prebuild test-review walkthrough | planning | 🔄 in-progress — section 0/12 reviewed | docs/drafts/prebuild-test-review.md | Section-by-section owner review of the 121-test validation suite. Live re-verify done: 121 pass · ruff clean · **mypy NOT clean (14 errors in 2 test files — `mypy src` was run, not `mypy src tests`)**. Resume at first unticked section. | — |
+| prebuild test-review walkthrough | planning | ✅ COMPLETE — all 12 sections reviewed + synthesised 2026-06-18 | docs/findings/prebuild-test-review-findings.md | Section-by-section owner review of the 121-test validation suite DONE. Synthesis → `docs/findings/prebuild-test-review-findings.md` (3 buckets): **(1) fix-queue** ~15-min DeepSeek (mypy-scope root `mypy src tests` + F6-a flaky FakeEmbedder→hashlib + F11-a/F12-a annotations + F3-a/F6-b hollow asserts + cosmetics) — promotable to `docs/changes/fix-validation-test-quality.md`; **(2) Mini-verification checklist** (ranking quality · FTS-live · SQLCipher+crash-safety · **F8-c power-loss posture** · /readyz · token streaming); **(3) design follow-ups** F2-a/F2-b/F9-a/F8-a + video keepers **V-1 whole-doc/aggregate** + **V-2 grill-me elicitation** → BACKLOG. Live @5975b30: 121 pass · ruff clean · mypy clean on `src`, 14 errs under `src tests`. | — |
+| fix-validation-test-quality | coding | ✅ COMPLETE — 121 tests, mypy+ruff clean, 0 flaky | docs/changes/done/fix-validation-test-quality.md | Mypy-scope root fixed (pyproject `files = ["src", "tests"]`); FakeEmbedder de-flaked (hashlib); annotation/tightening cosmetics. 7 files changed, archived to done/. | ✅ fff0a5f |
 
 _(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~61 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12). **Zero parked spec
+_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated). **Zero parked spec
 drafts. Zero open gates** — ADR-015 (port async) + ADR-016 (dispatch async) cascades both applied 2026-06-12, so the
 corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. Listed by milestone in dependency/build order._
 
@@ -160,7 +169,6 @@ corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. List
 | M8 Productivity | **M8-d-a, M8-d-b, M8-d-c1, M8-d-c2 (4, ready)** | M8-d-a Tasks+Projects+Areas core (owned SQLCipher, 30 auto tools, both recurrence modes); M8-d-b time-blocking seam (`task.schedule` + new `calendar.schedule_task` self-only focus-block + Task↔Event link + auto-cancel-old-block on reschedule); M8-d-c1 hooks (Morning-plan/Overdue/Weekly-review, payload=counts+IDs only); M8-d-c2 suggestion-inbox capture (quarantine-gated email detection → inert suggestion) + capture-recipe graduation (`RecipeStore.write` CANDIDATE → M7-b owner-gated promotion) + knowledge/memory push. |
 | CLIENT client app | CLIENT-a, b, broker, c, d, e + **CLIENT-f (macOS)** — 7 ready | Paired-device auth + recipe Review + chat/status client (ADR-010). GATE-b extends its Review screen + endpoints. **CLIENT-f (ADR-017): native macOS Athena-style target** (menu-bar + global-hotkey panel + window + Settings) sharing ArtemisKit; CLIENT-c/d/e amended (Authenticating→ArtemisKit, AppCoordinating seam, macOS auth path). `status: ready` — apex-swift + apex-security review applied (App Sandbox ON; 2 hardware-gated auth items remain). |
 | CAP capability/self-training | **distill-datagen-pipeline (1, ready)** | Offline Windows-PC pipeline (`tools/distill/`): Claude-subscription teacher → reasoning traces (6 categories) → DeepSeek-judge-filter → versioned training-ready JSONL + eval hold-out. P0 of the ACI capability lane (`docs/research/homelab-control-plane.md`). Runs pre-Mac to fill the M5 wait; output feeds a later Mac-side MLX training spec. |
-| **Validation slices (pre-Mini, Windows-native)** | **slice-3a-lancedb-vectorstore (1, ready; `coder_tier: pro`)** | Last pre-Mini trial-build enabler. **slice-3a** (pro): `LanceDBVectorStore` (dense cosine KNN + FTS + dimension-lock) on a plain dir — reduced M3-a storage core, mirrors slice 2a; full M3-a extends it on the Mini. NOT flash-buildable — needs a Pro DeepSeek session. _(dev-model-auth + dev-offline-compose DONE 2026-06-17 → `done/`, committed b3d868a.)_ |
 
 ## Module design docs (per-spoke source-of-truth)
 - `docs/technical/modules/calendar.md` — full/final Calendar surface (CAL-* source).
@@ -195,6 +203,14 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **🟢 NEW (2026-06-19) — `uv` dev-deps migration DEFERRED (decision pending, low priority).** Dev tooling
+  (mypy/pytest/ruff/anyio) lives under `[project.optional-dependencies] dev` (older form), so plain `uv sync` skips it —
+  only `uv sync --all-extras`/`--dev` installs it (the footgun the 2026-06-18 coding session hit). PEP 735
+  `[dependency-groups] dev` would make bare `uv sync` install dev deps + is semantically correct (dev tools aren't
+  consumer-facing extras). **Owner rec = defer:** `--all-extras` works today; migrating turns that flag into a no-op and
+  leaves ~61 specs + the apex-python Verification Recipe + RUNBOOK referencing a stale command, so it warrants its own
+  one-task sweep spec (migrate + update recipe/RUNBOOK), not a bundled cleanup. **Resume = decide migrate-now vs leave;
+  if migrate, spec the recipe/doc sweep alongside.**
 - **🟢 NEW (2026-06-17) — validation slice: build the Python spine pre-Mini. AUDITED → GO.** The "build waits for
   the Mini" rule is an **inherited assumption** (owner-confirmed), not a constraint — the brain spine is pure Python
   and MLX is a swappable OpenAI-compatible endpoint. Build a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c) in a
