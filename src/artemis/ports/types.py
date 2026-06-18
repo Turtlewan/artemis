@@ -17,7 +17,6 @@ Vector = Sequence[float]
 
 Mode = str
 """Retrieval mode: ``hybrid``, ``agentic``, or ``graph``."""
-"""Engine-agnostic embedding vector."""
 
 
 class AsOf:

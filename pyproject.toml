@@ -29,6 +29,7 @@ packages = ["src/artemis"]
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
 exclude = [
     ".venv/",
     "scripts/",

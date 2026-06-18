@@ -232,8 +232,9 @@ async def test_brain_degrade_on_tool_error() -> None:
     reg.register(fail_manifest)
     rtr = SemanticRouter(reg, embedder)
     brain = Brain(rtr, reg, FakeModelPort())
-    # "fail" appears in both the query and the tool description, so the
-    # FakeEmbedder's bag-of-words hash will match, and the tool dispatches.
+    # This file's FakeEmbedder returns a constant unit vector, so every query
+    # matches every registered tool (cosine = 1.0); the fail tool therefore
+    # dispatches and raises, exercising the degrade path.
     response = await brain.respond("fail on purpose", "owner-private")
     assert response.text == "TOOL_ERROR"
 

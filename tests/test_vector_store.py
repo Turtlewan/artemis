@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 
@@ -16,11 +17,11 @@ def _unit(values: list[float]) -> list[float]:
     return [x / norm for x in values]
 
 
-def _store(tmp_path, dim: int = _DIM) -> LanceDBVectorStore:
+def _store(tmp_path: Path, dim: int = _DIM) -> LanceDBVectorStore:
     return LanceDBVectorStore(tmp_path / "kb", dimension=dim)
 
 
-def test_dense_round_trip(tmp_path) -> None:
+def test_dense_round_trip(tmp_path: Path) -> None:
     store = _store(tmp_path)
     texts = ["alpha doc", "beta doc", "gamma doc"]
     vecs = [
@@ -39,7 +40,7 @@ def test_dense_round_trip(tmp_path) -> None:
     assert results[0].score == pytest.approx(1.0, abs=1e-4)
 
 
-def test_cosine_metric_contract(tmp_path) -> None:
+def test_cosine_metric_contract(tmp_path: Path) -> None:
     """Pin the distance->score contract: identical~1, orthogonal~0, opposite~-1."""
     store = _store(tmp_path)
     base = _unit([1, 0, 0, 0, 0, 0, 0, 0])
@@ -57,7 +58,7 @@ def test_cosine_metric_contract(tmp_path) -> None:
     assert by_id["opp"] == pytest.approx(-1.0, abs=1e-3)
 
 
-def test_fts_round_trip(tmp_path) -> None:
+def test_fts_round_trip(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.add(
         "owner-private",
@@ -71,7 +72,7 @@ def test_fts_round_trip(tmp_path) -> None:
     assert [r.chunk.text for r in results] == ["a recipe for sourdough bread"]
 
 
-def test_fts_incremental_add_is_searchable(tmp_path) -> None:
+def test_fts_incremental_add_is_searchable(tmp_path: Path) -> None:
     """Rows added in a SECOND add() must be findable via FTS (index refreshed)."""
     store = _store(tmp_path)
     store.add(
@@ -92,7 +93,7 @@ def test_fts_incremental_add_is_searchable(tmp_path) -> None:
     assert [r.chunk.chunk_id for r in results] == ["c1"]
 
 
-def test_scope_isolation_dense_and_fts(tmp_path) -> None:
+def test_scope_isolation_dense_and_fts(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.add(
         "owner-private",
@@ -113,13 +114,13 @@ def test_scope_isolation_dense_and_fts(tmp_path) -> None:
         assert {r.chunk.chunk_id for r in fts} == {"c0"}  # no cross-scope FTS leak
 
 
-def test_dimension_lock_on_write(tmp_path) -> None:
+def test_dimension_lock_on_write(tmp_path: Path) -> None:
     store = _store(tmp_path)
     with pytest.raises(DimensionMismatchError):
         store.add("owner-private", ["c0"], [[0.1, 0.2, 0.3]], [{"text": "wrong dim"}])
 
 
-def test_dimension_lock_on_reopen(tmp_path) -> None:
+def test_dimension_lock_on_reopen(tmp_path: Path) -> None:
     store = _store(tmp_path, dim=8)
     store.add(
         "owner-private", ["c0"], [_unit([1, 0, 0, 0, 0, 0, 0, 0])], [{"text": "x"}]
@@ -128,13 +129,13 @@ def test_dimension_lock_on_reopen(tmp_path) -> None:
         LanceDBVectorStore(tmp_path / "kb", dimension=4)  # same path, wrong dim
 
 
-def test_invalid_scope_rejected(tmp_path) -> None:
+def test_invalid_scope_rejected(tmp_path: Path) -> None:
     store = _store(tmp_path)
     with pytest.raises(ValueError):
         store.search("owner' OR '1'='1", _unit([1, 0, 0, 0, 0, 0, 0, 0]), k=5)
 
 
-def test_empty_store_returns_nothing(tmp_path) -> None:
+def test_empty_store_returns_nothing(tmp_path: Path) -> None:
     store = _store(tmp_path)
     assert store.search("owner-private", _unit([1, 0, 0, 0, 0, 0, 0, 0]), k=5) == []
     assert store.search_text("owner-private", "anything", k=5) == []

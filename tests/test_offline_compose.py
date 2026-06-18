@@ -8,7 +8,7 @@ from typing import Any
 from artemis.config import Settings
 from artemis.gateway import Gateway, compose_brain
 from artemis.ports.model import ModelResponse
-from artemis.ports.types import Usage
+from artemis.ports.types import Usage, Vector
 
 
 class _FakeEmbedder:
@@ -19,10 +19,10 @@ class _FakeEmbedder:
     def dimension(self) -> int:
         return self._dim
 
-    async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_documents(self, texts: Sequence[str]) -> list[Vector]:
         return [[0.1] * self._dim for _ in texts]
 
-    async def embed_query(self, query: str) -> list[float]:
+    async def embed_query(self, query: str) -> Vector:
         return [0.1] * self._dim
 
 
@@ -42,7 +42,7 @@ class _FakeModel:
 
         return _gen()
 
-    async def embed(self, role: str, texts: Sequence[str]) -> list[list[float]]:
+    async def embed(self, role: str, texts: Sequence[str]) -> list[Vector]:
         return [[0.1] * 8 for _ in texts]
 
 

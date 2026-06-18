@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from artemis.adapters.model_adapters import OpenAIModelPort, _auth_headers
 from artemis.config import Settings
@@ -24,6 +25,7 @@ def test_model_port_client_carries_bearer() -> None:
     assert port._client.headers["authorization"] == "Bearer sk-test"
 
 
+@pytest.mark.asyncio
 async def test_complete_sends_bearer_on_wire() -> None:
     captured: dict[str, str | None] = {}
 
