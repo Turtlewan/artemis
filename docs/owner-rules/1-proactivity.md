@@ -26,11 +26,12 @@ These become `ProactivePolicy` (designed as an owner-editable `policy.json`), ea
 _All proactive hooks across all modules. Fill the time/cadence you actually want._
 | Hook | Module | Default schedule | Urgency | Your value |
 |------|--------|------------------|---------|------------|
-| Daily briefing | M6-b | `07:30` daily | normal | **ON** — ⚠️ overlaps morning plan (see flag) |
+| **Morning digest** (briefing + morning plan, MERGED) | M6-b + M8-d-c1 | **WAKE-triggered** — owner says "good morning" / first interaction of day; **NOT a clock time** | normal | **ON — fires when owner actually gets up, any time.** One ping: overnight/urgent + today's calendar + today's tasks. |
 | Gmail urgency scan | M8-b2 | every `5 min`, notify once/day | high | **ON** — notify gated by S3 rubric (legal/payment only) |
-| Morning plan | M8-d-c1 | `08:00` daily | normal | **ON** — ⚠️ overlaps daily briefing (see flag) |
-| Overdue-task nudge | M8-d-c1 | hourly | normal | **ON but reduce cadence** — hourly too naggy for "gentle"; propose 1–2×/day |
-| Weekly review | M8-d-c1 | weekly (+ which day?) | low | **ON** — pick day/time (Sun evening?) → |
+| ↳ Morning plan | M8-d-c1 | — | — | **folded into Morning digest above** (no separate 08:00 ping) |
+| Overdue-task nudge | M8-d-c1 | hourly | normal | **ON, ~once daily** — reduced from hourly per owner; folded into Morning digest (+ optional midday check) |
+| Weekend review | M8-d-c1 | **Saturday WAKE-triggered** (on owner's "good morning", Sat only) — preview the weekend: personal/leisure | low | **ON** — reuses wake-trigger (gap #6), day-gated to Saturday; rides Saturday's Morning digest. |
+| Week-ahead review | M8-d-c1 | **Sunday evening (~19:00, clock)** — plan Mon–Fri: work tasks/projects/calendar | low | **ON** — fixed time; exact hour tunable. |
 | Calendar upcoming reminder | CAL-c | `15 min` before, polled 5 min | — | **ON** |
 | Calendar prep nudge | CAL-c | `18h` lookahead, hourly | — | **ON** |
 | Calendar free-gap focus-protect | CAL-c | min gap `30 min`, hourly, 1/day | — | **ON** |
@@ -39,12 +40,26 @@ _All proactive hooks across all modules. Fill the time/cadence you actually want
 
 _Which modules feed the daily briefing? (default: all summarisers injected.)_ →
 
-**⚠️ Two tuning flags:**
-1. **Briefing (07:30) + Morning plan (08:00) overlap** — two pings ~30 min apart at wake. Options:
-   merge into one morning digest, OR space them (briefing 07:30 = overnight/world; morning plan
-   08:30 = today's tasks/calendar). → decide on-Mini or now.
-2. **Overdue nudge hourly is too frequent for "gentle"** — propose once or twice daily (e.g. folded
-   into morning plan + one mid-afternoon check) instead of every hour.
+**✅ RESOLVED — merged + wake-triggered (2026-06-19).** Briefing + morning plan merge into ONE
+**Morning digest**, fired **when the owner wakes** (says "good morning" / first interaction), not at a
+fixed time. See design gap #6 below.
+
+**⚠️ Remaining tuning flag:**
+- **Overdue nudge hourly is too frequent for "gentle"** — propose once or twice daily (e.g. folded
+  into the Morning digest + one mid-afternoon check) instead of every hour.
+
+## ⚠️ Design gap #6 — WAKE-triggered hook type (new, 2026-06-19)
+The heartbeat today fires hooks on **cron / interval** only. The owner wants the Morning digest to
+fire on a **wake event**, not a clock. Needs (carry to planning, M6 + M8-d-c1):
+- A **"good morning" / wake intent** the router recognizes → triggers `compose_morning_digest`.
+- Optional backup: **first-interaction-of-day detection** — first owner interaction after the
+  overnight idle gap (reuses M7-c `last_interaction_at`) auto-fires the digest if no explicit signal.
+- The digest is **wake-gated** (fires once per day, on rise, any time). Time-sensitive items
+  (imminent-meeting reminders) keep their own logic and are NOT wake-gated.
+- New hook trigger class beyond `interval_seconds`/`cron`: an **event/intent trigger**.
+- **Day-gating required:** wake-triggered hooks must support per-day-of-week gating — the Morning
+  digest fires on *every* wake; the **Weekend review** fires only on **Saturday's** wake (rides that
+  day's digest). So the trigger spec = `event=wake` + optional `days=[Sat]`.
 
 ## Prompt text (your voice)
 **HIT batched-scoring prompt** (M6-b) — how Artemis writes each owner-facing alert line. Default is

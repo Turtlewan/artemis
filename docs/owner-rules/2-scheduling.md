@@ -20,7 +20,8 @@ These become `CalPrefs` (one config object, `CAL-a/preferences.py`) + the time-b
 | Default reminder lead | `10 min` | `CalPrefs.default_reminder_minutes` | |
 | Sync window (past / future) | `12 / 12 months` (perf knob) | `CalPrefs.sync_window_months_past/future` | |
 | Time-block default search window (when unset) | `now → now+7d` | M8-d-b primitive default | |
-| Time-block slot pick policy | earliest free slot | M8-d-b primitive | |
+| Time-block slot pick policy | earliest free slot | M8-d-b primitive | **Prefer MORNING for focus/deep-work blocks** (~09:00–12:00); fall back to earliest if no morning slot. |
+| Preferred focus window (NEW pref) | — (not modelled) | CalPrefs add `preferred_focus_window` | **09:00–12:00** (mornings) |
 
 ## Notes / open
 - **⚠️ Weekend = off (Mon–Fri only), but `CalPrefs` has no "working days" field today.** `find_time`
@@ -29,8 +30,9 @@ These become `CalPrefs` (one config object, `CAL-a/preferences.py`) + the time-b
 - Secondary knobs left at default unless changed: buffer `15m`, focus-block `90m`, reminder lead
   `10m`. Say the word to retune any.
 - `owner_email` is derived from the `primary` calendar on first sync — not captured here.
-- M8-d-b currently picks **earliest** slot; do you prefer a **time-of-day** preference (e.g. focus
-  blocks in mornings)? The spec doesn't model this yet — flag if wanted. →
+- ✅ **Slot pref RESOLVED: mornings for deep work** (owner 2026-06-19). Spec gap: CalPrefs/M8-d-b
+  don't model a time-of-day block preference — add `preferred_focus_window` (~09:00–12:00) and bias
+  the free-gap focus-protect hook to defend morning gaps first.
 
 ## 🔒 Frozen invariants (not owner-tunable)
 - `find_time` algorithm (available band = `max(working_start, no_meeting_before) → min(working_end,

@@ -13,12 +13,12 @@ move-in is "unpack and go" instead of configuring ~40 knobs from scratch against
 ## The six surfaces
 | # | File | Feeds specs | Capture status |
 |---|------|-------------|----------------|
-| 1 | `1-proactivity.md` | M6-a/b/c + **all hook schedules** (CAL-c, M8-b2, M8-d-c1) | 🟡 quiet+posture+hooks |
-| 2 | `2-scheduling.md` | CAL-a, M8-d-b | 🟡 tz + work hours |
+| 1 | `1-proactivity.md` | M6-a/b/c + **all hook schedules** (CAL-c, M8-b2, M8-d-c1) | ✅ quiet+posture+full schedule |
+| 2 | `2-scheduling.md` | CAL-a, M8-d-b | ✅ tz + hours + morning focus |
 | 3 | `3-email-triage.md` | M8-b1, M8-b2 | 🟡 VIPs + rubric |
-| 4 | `4-memory.md` | M4-a/b/c-1/c-2 | 🟡 remember + A.U.D.N. + floor |
-| 5 | `5-safety-policy.md` | M7-a2/b/c, GATE-a, DR-b | 🟡 idle + auto-tagging |
-| 6 | `6-productivity.md` | M8-d-a/b/c1/c2 | ⬜ not started |
+| 4 | `4-memory.md` | M4-a/b/c-1/c-2 | ✅ remember + A.U.D.N. + floor (decay→Mini) |
+| 5 | `5-safety-policy.md` | M7-a2/b/c, GATE-a, DR-b | ✅ boundary + tagging + cloud (caps→M7-c) |
+| 6 | `6-productivity.md` | M8-d-a/b/c1/c2 | ✅ defaults accepted |
 
 ## How to read each file
 - **Tunable rules** table — `Rule | Default | Lands in | Your value`. Fill the last column
@@ -38,6 +38,31 @@ Some knobs are shared across modules and captured **once**:
 Whether these captured values become a real **externalized runtime-config layer** (owner-editable
 without code edits) or stay as **code constants the coder transcribes** is an open decision — see
 status.md Open Questions. Capture works either way; this just changes how rules are re-tuned later.
+
+## ⚠️ Spec gaps surfaced (for planning) — the real prize
+These are owner-requirements the current specs don't yet support. Apply as spec amendments when each
+module is built (most are Mini-gated). Each cites its target spec(s).
+
+1. **`working_days` field** (CAL-a `CalPrefs`) — "weekends off." `find_time` + free-gap hook must
+   respect days, not just hours (today they'd offer Saturday slots).
+2. **Gmail Stage-1 gate widen** (M8-b2) — admit topic/keyword (legal / fraud / payment-warning) +
+   VIP-sender (Ashley/Debby) signals **regardless of Gmail's IMPORTANT marker**, which first-contact
+   legal/fraud mail often lacks → today they'd be dropped before scoring.
+3. **Bank-email → Finance routing** (M8-b2 + Finance) — exclude UOB/SCB/DBS transaction senders from
+   urgency candidates (never alert); route to Finance ingest.
+4. **Finance reconciliation** (FIN-*) — `transaction.type` (purchase/refund/transfer/settlement) +
+   exclude transfers/settlements from spend totals (else CC-bill-payment double-counts). ✅ already
+   written into `finance.md`.
+5. **`needs_review` state + confidence floor on ALL auto-taggers** (M4-b, Gmail categories, M3
+   ingestion, Productivity areas, Finance categorization) — precision-first: below floor → no tag +
+   "needs review", never mis-tag. Resolves M4-b's missing confidence cutoff.
+6. **`classify_safety` internal-reversible tier** (M7-b) — auto-enable internal/reversible data
+   actions (tagging/filing), not only READ_ONLY/NO_DATA; gate external-effect (send/book/pay) only.
+7. **Wake / event-triggered hook type** (M6-a/b + M8-d-c1) — new trigger class beyond cron/interval:
+   a "good morning" wake intent → merged Morning digest; optional first-interaction-of-day detection
+   (reuse M7-c `last_interaction_at`); **per-day-of-week gating** (Weekend review = Saturday wake only).
+8. **`preferred_focus_window`** (CAL-a + M8-d-b) — morning deep-work bias for time-block slot pick +
+   free-gap focus-protect (defend morning gaps first), replacing earliest-slot.
 
 ## Elicitation log
 _Surface-by-surface; updated as values are captured._
@@ -76,3 +101,10 @@ _Surface-by-surface; updated as values are captured._
   Finance double-count: owner case (CC bill payment vs purchase) → expanded `finance.md` with a
   `transaction.type` + transfers/settlements excluded from spend; receipt-vs-card-alert dedup already
   covered (L0–L4). Local model classifies; deterministic ledger reconciles; ambiguous → owner.
+- **2026-06-19 — morning digest = WAKE-triggered (design gap #6).** Briefing + morning plan MERGE
+  into one Morning digest, fired when the owner gets up (says "good morning" / first interaction),
+  **not a clock time**. New requirement: M6 needs an **event/intent hook trigger** (today cron/interval
+  only) + a "good morning" wake intent + optional first-interaction-of-day detection (reuse M7-c
+  `last_interaction_at`). Overdue-nudge → ~daily (folded into digest). Reviews SPLIT: **Weekend
+  review = Saturday wake** (day-gated, rides Sat digest); **Week-ahead = Sunday evening (~19:00)**.
+  Wake-trigger (gap #6) must support per-day-of-week gating. Surface 1 ✅ complete.
