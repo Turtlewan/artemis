@@ -32,7 +32,7 @@ extraction + manual entry, never bidirectionally synced to any external system.
 
 ## Data model (owned, owner-private encrypted scope)
 - `account` — name, type, currency (manual; for grouping + net-worth).
-- `transaction` — date, amount, original_currency, amount_original, merchant, category, **source** (`email`/`manual`/`csv`), `raw_ref` (→ the quarantined email Extract id), confidence.
+- `transaction` — date, amount, original_currency, amount_original, merchant, category, **source** (`email`/`manual`/`csv`), **type** (`purchase`/`refund`/`transfer`/`settlement` — only `purchase`/`refund` count toward spend), `raw_ref` (→ the quarantined email Extract id), confidence.
 - `subscription` — merchant, cadence, amount, next_renewal, last_seen_price (**derived** from recurring transactions).
 - `bill` — payee, due_date, amount, status (**derived** from email; reminder-only).
 - **Currency:** S$ primary; every transaction stores its original currency + amount (multi-currency aware, for travel spend).
@@ -67,6 +67,18 @@ email/manual/CSV overlap. Layered defense:
 - **L4 — recipe-learned:** repeated merge/keep decisions graduate into a learned rule via the recipe loop.
 - **NB:** a subscription's monthly charge is **not** a duplicate — dedup keys on `raw_ref`/economic-event, so
   identical amounts in *different months* stay separate; the recurring-detector reads them as a series.
+
+## Transfers & settlements — NOT expenses (owner case 2026-06-19)
+A **second** double-count source, distinct from the dedup above (which collapses *multiple
+notifications of the same purchase*): counting money that only *moves* or *settles* spend already booked.
+- **Credit-card bill payment** ("you paid your UOB card bill $1,200") = settling individual charges
+  already booked as purchases → **not a new expense.** Counting it double-counts the whole statement.
+- **Inter-account transfer** (DBS → UOB, top-ups, savings moves) = own-money movement → **not spend.**
+- **Rule:** classify each extract's `type`; **only `purchase`/`refund` count toward spending totals.**
+  `transfer`/`settlement` are recorded (awareness/completeness) but **excluded from spend**; map a
+  settlement to the statement period it clears where possible.
+- **Ambiguous** (purchase vs card-bill payment vs transfer) → **L3 owner-review**, never silently counted
+  (precision-first — same posture as auto-tagging).
 
 ## Cross-module links
 Finance relates to **Productivity (Tasks)** and **Calendar** — handled via the **M8-d-b precedent**
@@ -121,6 +133,7 @@ drafted (AFK) when the core is closer.
 
 ## Open items (resolve at spec-drafting time, not owner forks)
 - Exact `TransactionExtract` schema + which email senders/categories trigger extraction (derive from M8-b).
+- Transaction `type` inference (purchase / refund / transfer / settlement) from email language + amount/merchant patterns; settlement→statement-period mapping; bank-specific phrasings (UOB/SCB/DBS).
 - Recurring-detection thresholds (amount tolerance, cadence window).
 - CSV/statement import format coverage (which banks' export formats to parse first).
 - End-state net-worth/investment data-entry UX (manual surface).
