@@ -4,7 +4,16 @@ _The connective tissue: one module reacting to another. CANDIDATES below are see
 `docs/findings/cross-module-io-map.md` for owner triage — keep / drop / add. Legend:
 **✅** already in specs · **◑** partially in specs · **🆕** new (needs the reaction layer)._
 
-Status: 🟡 triage in progress — **Cluster A (email) DONE** 2026-06-19; clusters B–E pending.
+Status: 🟡 triage in progress (2026-06-19).
+- **Cluster A (email) DONE** — triaged; A5/A7/A8 expanded into playbooks.
+- **Clusters B / C / E — all permutations enumerated; owner triage of the ⭐ items PENDING.**
+- **Cluster D (calendar) — NOT yet triaged** (simple menu only).
+- **Approach** (learned-first vs declared vs built-in) — discussed, **not yet locked**.
+
+**▶ RESUME HERE:** (1) owner triages B/C/E ⭐ rows (keep/drop) + flagged deep-dives **B4c** (charge↔receipt
++ fraud signal) and **E8** ("what's due this week" hub view); (2) triage cluster D; (3) lock the reaction
+approach → write the cross-module-reaction **ADR** (the 3 missing pieces: emit events · rule store ·
+reaction dispatcher — see `docs/findings/cross-module-io-map.md`). Then specs at Mini-build time.
 
 ## A. Triggered by EMAIL (Gmail) — the richest source
 | # | When (X) | Then (Y) | In specs? | Keep? |
@@ -123,20 +132,39 @@ This is an instance of the **Person Briefing / personal-CRM** concept (see
 - **Generalizable** to other key people's dates, but Ashley is the primary case.
 - All local (Memory facts + conversations) — never cloud, per the privacy line.
 
-## B. Triggered by FINANCE
-| # | When (X) | Then (Y) | In specs? | Keep? |
-|---|----------|----------|-----------|-------|
-| B1 | **bill due** | Tasks: create "pay X" task | ✅ | |
-| B2 | **subscription renewal** soon | Calendar marker / notify | ✅ | |
-| B3 | **new recurring charge** detected | Memory: "owner subscribes to X" | ✅ | |
-| B4 | **unusual spend** flagged | notify owner | ✅ | |
+## B. Triggered by FINANCE — all permutations (deep dive 2026-06-19)
+_Legend: ✅ already in specs/menu · ⭐ new high-value · ◽ plausible (owner judge) · ⚠️ end-state/careful._
+| # | When Finance emits… | Then (reaction) | Class | Keep? |
+|---|----|----|----|----|
+| B1 | bill due | Tasks: "pay X" task | ✅ | |
+| B1b | bill due | Calendar: due-date marker | ◽ | |
+| B2 | subscription renewal soon | Calendar marker + notify | ✅ | |
+| B2b | renewal / **price increase** | Tasks: "decide keep/cancel before renewal" | ⭐ | |
+| B3 | new recurring charge | Memory: "subscribes to X" + price history | ✅ | |
+| B4 | unusual spend | notify | ✅ | |
+| B4b | unusual spend | Tasks: "review / dispute this charge?" | ⭐ | |
+| B4c | **any charge** | Gmail: find the source receipt email (charge↔email link); **no matching email → higher fraud suspicion** | ⭐ | |
+| B5 | **purchase matches a "buy X" task** | Tasks: complete it (**Buy-it loop**) | ⭐ | |
+| B6 | **purchase = a travel booking** (flight/hotel paid) | → trigger the A5 travel playbook | ⭐ | |
+| B7 | category spend over a threshold | budget awareness / notify | ⚠️ end-state (budget envelopes) | |
+| B8 | finance facts / patterns | Memory + Knowledge | ✅ | |
 
-## C. Triggered by TASKS / PRODUCTIVITY
-| # | When (X) | Then (Y) | In specs? | Keep? |
-|---|----------|----------|-----------|-------|
-| C1 | task **scheduled** | Calendar: focus block | ✅ | |
-| C2 | "**pay bill**" task **completed** | Finance: mark the bill paid | 🆕 | |
-| C3 | **project completed** | Knowledge summary + Memory fact | ✅ | |
+## C. Triggered by TASKS / PRODUCTIVITY — all permutations (deep dive 2026-06-19)
+| # | When Tasks emits… | Then (reaction) | Class | Keep? |
+|---|----|----|----|----|
+| C1 | task scheduled | Calendar: focus block | ✅ | |
+| C2 | "pay bill" task completed | Finance: mark bill paid (**reverse of A9**) | ✅ | |
+| C3 | project completed | Knowledge summary + Memory fact | ✅ | |
+| C3b | project completed | Tasks: archive child tasks | ◽ | |
+| C3c | task/project completed **linked to a Goal** | Goal: update progress (**Goal-progress loop**) | ⭐ | |
+| C4 | task completed | Calendar: clear linked focus block | ✅ | |
+| C4b | task completed | Memory: note completion / accomplishment pattern | ◽ | |
+| C5 | task overdue | notify nudge | ✅ | |
+| C5b | task overdue | Calendar: auto-find time / propose reschedule | ⭐ | |
+| C5c | task overdue **repeatedly** | escalate priority / flag "stuck" | ◽ | |
+| C6 | commitment/suggestion captured | Recipe graduation (M7) | ✅ | |
+| C6b | commitment captured | Memory: commitment as a fact | ◽ | |
+| C7 | GOAL entity created | surface in week-ahead review; entity link | ◽ | |
 
 ## D. Triggered by CALENDAR
 | # | When (X) | Then (Y) | In specs? | Keep? |
@@ -146,11 +174,28 @@ This is an instance of the **Person Briefing / personal-CRM** concept (see
 | D3 | **free gap** found | schedule a pending task into it | ◑ | |
 | D4 | meeting **with a person** | surface Memory facts (person briefing) | 🆕 | |
 
-## E. Cross-cutting (entity / enrichment)
-| # | When (X) | Then (Y) | In specs? | Keep? |
-|---|----------|----------|-----------|-------|
-| E1 | email/event mentions a **known person** | link to that person's entity (auto-tag) | 🆕 | |
-| E2 | booking / receipt email | add to Knowledge corpus | ✅ | |
+## E. Cross-cutting (entity / knowledge / enrichment) — all permutations (deep dive 2026-06-19)
+| # | When… | Then (reaction) | Class | Keep? |
+|---|----|----|----|----|
+| E1 | **any** module mentions a known person/place/goal | resolve + link to entity (auto-tag); unsure → ask | ⭐ universal | |
+| E2 | booking / receipt email | add to Knowledge | ✅ | |
+| E3 | entity gains/changes info (new email/phone) | propagate via entity refs (live, no copies); name→email merge = lifecycle-sync | ✅ | |
+| E4 | a **key date** learned about a person (birthday) | Calendar + advance gift/plan nudge (A8 pattern) | ⭐ | |
+| E5 | document ingested (Knowledge) | Memory: extract facts | ⭐ | |
+| E5b | document = **statement / receipt** (OCR) | Finance: transaction extract | ⭐ | |
+| E5c | document ingested | link to relevant entities (person/project) | ◽ | |
+| E6 | fact added to Memory that **is a date** | Calendar marker | ⭐ | |
+| E6b | fact added = **gift-signal** | wishlist (A8) | ✅ | |
+| E7 | (hub) **before meeting a person** | person briefing — entity facts + recent interactions (= D4) | ⭐ | |
+| E8 | (hub) "**what's due this week**" | synthesize Finance bills + Tasks + Calendar | ⭐ | |
+
+## Emergent loops & patterns (across A–E)
+1. **Bill lifecycle loop** — A6 (email→bill) → B1 (bill→task) → A9 (payment→mark paid+complete) ↔ C2 (manual task-done→mark paid). ✅
+2. **Buy-it loop** — "buy X" task → B5 purchase detected → complete the task. ⭐
+3. **Charge↔receipt linking** — B4c: every charge ties to its source email; a charge with **no** email = fraud signal (feeds the legal/fraud notify rule). ⭐
+4. **Goal-progress loop** — C3c: completing tasks/projects advances a linked Goal. ⭐
+5. **Entity enrichment → person briefing** — E1/E3/E4 build the person graph; E7/D4 spend it (know who you're meeting). ⭐
+6. **Document → facts + ledger** — E5/E5b: ingested docs feed Memory facts and (if statements/receipts) the Finance ledger. ⭐
 
 ## Owner-added reactions
 _(to be filled during triage)_
