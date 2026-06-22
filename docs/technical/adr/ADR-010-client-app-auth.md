@@ -5,6 +5,8 @@
 - **Deciders:** owner + planning
 - **Relates:** ADR-005 (owner key broker — the phone `UnlockProof` P-256 SE-signed-keypair primitive + `RegisteredDeviceStore` + counter this reuses); M2-a (broker `pair`/verify side + `MockProver` this replaces with the real phone prover); M1-c (the FastAPI Gateway/API this extends — loopback-only, hard-coded owner scope today); ADR-002 (deployment — Tailscale private tunnel; native clients, no web UI); M7-b (`ReviewSurface` — the first authenticated consumer); overview.md §"Interaction surfaces" (chat app, biometric lock, remote via private tunnel).
 
+> **Cross-ref 2026-06-22 — CLIENT prover re-expressed for Tauri → ADR-025.** This ADR was written for a native iPhone/iPad SwiftUI client (ADR-017, since superseded by ADR-023 → Tauri). **Still in force, unchanged:** the two-authority model (§1), the challenge-response API-session model + opaque session token (§2), scope-from-session (§3), the session ≠ data-access / DEK-is-the-gate model (§6), the strictly-increasing counter discipline, and the **brain-side `SignedKeypairVerifier`** (M2-a). **Changed by ADR-025:** the *prover* is no longer an iPhone Secure-Enclave + Face-ID relay — it is a hardware-backed, biometric-gated **P-256 key on any paired Tauri device** (Windows TPM/Hello via CNG; macOS SE/Touch ID), and the "one Face-ID gesture" (§4) becomes "one Windows-Hello/Touch-ID gesture." In **co-located dev** (brain + client on one Windows PC) the relay collapses to a local prompt. Read ADR-025 for the re-rooted prover/host-key details.
+
 ## Context
 
 The iPhone/iPad client reaches the brain over the **Tailscale private tunnel** (home = LAN). Three
