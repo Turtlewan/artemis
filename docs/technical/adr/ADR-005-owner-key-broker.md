@@ -22,6 +22,24 @@ A **remote-attested key-broker** (Pattern B + a slice of C):
 | **Boot/headless** | Broker is a LaunchAgent → Mini uses **owner auto-login at boot** so the agent loads after a power cut. Auto-login does NOT unlock data (still needs the phone proof). Re-check macOS 26.x for lifting the daemon restriction → would drop auto-login. |
 | **Brain** | Stays a LaunchDaemon (per ADR-002); receives only a transient DEK. Never touches the SE key. |
 
+### Refinement (2026-06-22, phone-less unlock) — recovery passphrase (break-glass escrow)
+Resolves the standing consequence "**phone loss = key compromise; need enrol/de-enrol/rotate/escrow
+flows**" (below). The phone is the *everyday* key; this adds the **only** phone-less path: a single owner
+**recovery passphrase**, used when the phone is unavailable (lost / dead / stolen / forgotten). Owner chose
+this over a routine override-PIN (a standing knowledge-factor hole — the AAL1 downgrade) and over
+second-device attestation (more machinery; deferrable and non-breaking since each paired device already
+enrols its own SE key, so a second attesting device can be added later without touching this decision).
+
+| Element | Decision |
+|---------|----------|
+| **Factor** | One owner **recovery passphrase** captured at pairing. **Passphrase, not a PIN** — a min-length / min-entropy gate is enforced at enrolment (diceware-style). The passphrase itself is never stored. |
+| **Mechanism** | Passphrase → **Argon2id** (high memory + time cost) + per-install random salt → a recovery key-encryption-key (KEK). Each per-scope SQLCipher DEK is wrapped a **second** time under this KEK — an **escrow copy** of the DEK ciphertext on disk, alongside the existing SE-wrapped ciphertext. Only the salt, KDF params, and Argon2id-wrapped escrow blobs persist. |
+| **Posture** | **Break-glass, not routine.** A successful recovery unlock establishes a normal session (transient DEK → brain over local IPC, idle re-lock) so the owner can actually use Artemis phone-less — but **every** recovery unlock is written to the **append-only audit log** and the path is **rate-limited** (exponential backoff → lockout after N failed attempts). |
+| **Strength** | = passphrase entropy × Argon2id cost. A deliberate, owner-accepted reduction of the wall to a *knowledge* factor **for the recovery case only**; blast radius bounded because it is rare, audited, rate-limited, and the escrow blob sits behind FileVault at rest. |
+| **After recovery** | If the phone was lost/stolen, **re-enrol a fresh phone + de-enrol the missing phone's public key** (recommended, not forced) — folds into the enrol/de-enrol/rotate flow this consequence already required. |
+
+New residual risk: the escrow blob is a **second at-rest ciphertext copy** of each DEK. Mitigated by the strong KDF + FileVault + no routine use — useless without the passphrase. **Build (M2):** the broker gains an escrow-wrap step + a recovery-unlock IPC path with audit + rate-limit; the pairing flow gains passphrase capture + the entropy gate. Covered by the M2 apex-security threat-model gate. Gated to the Mini.
+
 ## Runner-ups ruled out
 - **A — brain reads the login keychain directly:** fails the LOCKED rule on a headless no-Touch-ID Mini (degrades to "unlocked at login" ≈ FileVault); whole brain in the keyed blast radius.
 - **C — raw key only on the phone, sent over the wire:** best at-rest story but puts the raw DEK on the wire and makes the phone a brittle single point. We borrow its "biometric-on-phone" idea via a *signed assertion*, not its raw-key transport.
@@ -31,7 +49,7 @@ A **remote-attested key-broker** (Pattern B + a slice of C):
 - **Smallest trusted base** — only the tiny auditable broker touches the SE key; the large, injection-exposed brain holds only a transient session DEK.
 - **Honours the LOCKED wall, strictly stronger than FileVault** — no phone proof → no key; guest/thief cannot open owner data; nothing usable at rest on a powered-off stolen Mini.
 - **⭐ Irreducible core risk:** a prompt-injected tool exfiltrating the DEK from the live brain during a session → keep the DEK in a native crypto boundary the model/tool layer can't address; scoped tool I/O; egress filtering. **Deepest apex-security focus.**
-- **Phone = key authority** → phone loss = key compromise; need enrol/de-enrol/rotate/escrow flows.
+- **Phone = key authority** → phone loss = key compromise; need enrol/de-enrol/rotate/escrow flows. **Escrow/phone-less path now decided → recovery passphrase (Refinement 2026-06-22).**
 - **ADR-002 addition:** a new **broker LaunchAgent** + **owner auto-login**; the brain remains a LaunchDaemon.
 - **Cross-milestone:** M2 builds the broker + wall; M3/M4 stores born encrypted under this DEK model; M6 proactivity uses the Tier-0 proactive key (ADR-006). **Refinement (ADR-007):** the broker also **mounts a per-scope encrypted volume** on unlock (holding the LanceDB doc index + the SQLCipher memory DB) — one unlock opens the whole per-scope vault. The M2 broker specs gain this volume-mount step at finalization.
 

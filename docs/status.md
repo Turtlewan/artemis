@@ -9,7 +9,16 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-19 (**Owner-rules capture session.** Scanned ~20
+_Last updated by planning mode:_ 2026-06-22 (**Resumed the 2026-06-21 design session → closed out.**
+Committed the surface-7 + provenance closeout (885e4b6, 7 files). Resolved both parked follow-ups:
+(1) **phone-less unlock** — owner redirected the "first Tier-0 candidate" question into a real gap and
+chose a **recovery passphrase (break-glass escrow)** → **ADR-005 Refinement 2026-06-22** (Argon2id-wrapped
+escrow DEK copy; rare/audited/rate-limited; no routine override PIN; second-device deferred & non-breaking).
+The original first-Tier-0-*signal* candidate stays parked (an M6-build call). (2) **`uv` dev-deps migration**
+— owner chose **migrate cleanly** → new ready spec **`uv-dependency-groups-migration.md`** (`[project.optional-dependencies]`
+→ PEP 735 `[dependency-groups]`; WSL2-buildable, flash; build BEFORE `tooling-cleanup`). The apex-python
+Verification Recipe + RUNBOOK already use bare `uv sync`, so the migration brings the project into compliance — no recipe edit.)
+_Prior:_ 2026-06-19 (**Owner-rules capture session.** Scanned ~20
 automation/rule-bearing specs (6 parallel agents) → 6 capture workbooks under `docs/owner-rules/`
 + elicited owner values across all 6 surfaces. Key: SGT + 9–6 Mon–Fri · gentle-nudge posture ·
 **WAKE-triggered morning digest** (say "good morning") · email rubric (notify=legal+payment only;
@@ -151,16 +160,16 @@ _Last updated by coding mode:_ 2026-06-18 (fix-validation-test-quality built, ar
 | prebuild test-review walkthrough | planning | ✅ COMPLETE — all 12 sections reviewed + synthesised 2026-06-18 | docs/findings/prebuild-test-review-findings.md | Section-by-section owner review of the 121-test validation suite DONE. Synthesis → `docs/findings/prebuild-test-review-findings.md` (3 buckets): **(1) fix-queue** ~15-min DeepSeek (mypy-scope root `mypy src tests` + F6-a flaky FakeEmbedder→hashlib + F11-a/F12-a annotations + F3-a/F6-b hollow asserts + cosmetics) — promotable to `docs/changes/fix-validation-test-quality.md`; **(2) Mini-verification checklist** (ranking quality · FTS-live · SQLCipher+crash-safety · **F8-c power-loss posture** · /readyz · token streaming); **(3) design follow-ups** F2-a/F2-b/F9-a/F8-a + video keepers **V-1 whole-doc/aggregate** + **V-2 grill-me elicitation** → BACKLOG. Live @5975b30: 121 pass · ruff clean · mypy clean on `src`, 14 errs under `src tests`. | — |
 | fix-validation-test-quality | coding | ✅ COMPLETE — 121 tests, mypy+ruff clean, 0 flaky | docs/changes/done/fix-validation-test-quality.md | Mypy-scope root fixed (pyproject `files = ["src", "tests"]`); FakeEmbedder de-flaked (hashlib); annotation/tightening cosmetics. 7 files changed, archived to done/. | ✅ fff0a5f |
 | owner-rules capture | planning | ✅ COMPLETE — all 6 surfaces captured/defaulted | docs/owner-rules/ + finance.md | **Scanned ~20 automation/rule-bearing specs (6 parallel agents) → 6 capture workbooks + index + elicited owner values.** Captured: S1 proactivity ✅ (quiet hrs 23:30→07:15, gentle-nudge, **WAKE-triggered morning digest**, reviews: Sat-wake weekend + Sun-eve week-ahead), S2 scheduling ✅ (tz=Asia/Singapore, 09:00–18:00 Mon–Fri, **morning focus-window**), S3 email ✅ (VIPs Ashley/Debby, notify=legal+payment only, important≠notify, Finance reconciliation), S4 memory ✅ (what-to-remember w/ Ashley anchor, **financial+health excluded**, A.U.D.N.=keep-both+dated, precision-floor; decay→Mini), S5 ✅ (autonomy boundary CONFIRMED, auto-tagging precision-first, cloud=general-skills-only/email-local; token caps→M7-c build, egress=system), S6 ✅ (defaults accepted). **8 SPEC GAPS surfaced → `docs/owner-rules/00-INDEX.md` §Spec gaps** (apply as amendments when modules build): wake-hook type · working_days · Gmail Stage-1 widen · bank→Finance routing · Finance reconciliation (done in finance.md) · needs_review tagging state · classify_safety internal tier · preferred_focus_window. | ✅ 02696bf + session-end commit |
-| cross-module reactions (surface 7) | planning | ✅ COMPLETE — approach locked + ADR-021 written | docs/technical/adr/ADR-021-cross-module-reactions.md | **Cross-module "when X → then Y" reaction LAYER designed + locked.** Triage (46 reactions, A–E+D) + deep-dives (B4c amount-gated confirm @ ~S$500 · E8 reclassified = hub view) + wiring audit (27 ACCOUNTED · 17 PARTIAL · 2 GAP, both resolved) all done. **Approach LOCKED 2026-06-21 = hybrid learned-first** (owner chose opt 1 of 4; rejected built-in/declared/pure-learned) → **ADR-021** written: 3 pieces (emit · rule store · dispatcher) · shared fuzzy-match reconciler · link-integrity declared-contract+reconciler · stateful/windowed reactions first-class · hub-view carve-out (E8/E7/D4) · GATE posture · **5-capability dependency list** (M4-b module push · M4 fact-emit · finance.instrument · Trip entity+Maps de-park · gift-signal+share/clip channel) + Goals-deferred + E5 provenance OQ. D3 dropped. **Next: build specs (3 infra + reconciler + 5 amendments + per-cluster recipes) at Mini-build, against ADR-021.** | 🟡 ADR-021 + workbook + overview ADR-index + audit report uncommitted |
+| cross-module reactions (surface 7) | planning | ✅ COMPLETE — approach locked + ADR-021 written | docs/technical/adr/ADR-021-cross-module-reactions.md | **Cross-module "when X → then Y" reaction LAYER designed + locked.** Triage (46 reactions, A–E+D) + deep-dives (B4c amount-gated confirm @ ~S$500 · E8 reclassified = hub view) + wiring audit (27 ACCOUNTED · 17 PARTIAL · 2 GAP, both resolved) all done. **Approach LOCKED 2026-06-21 = hybrid learned-first** (owner chose opt 1 of 4; rejected built-in/declared/pure-learned) → **ADR-021** written: 3 pieces (emit · rule store · dispatcher) · shared fuzzy-match reconciler · link-integrity declared-contract+reconciler · stateful/windowed reactions first-class · hub-view carve-out (E8/E7/D4) · GATE posture · **5-capability dependency list** (M4-b module push · M4 fact-emit · finance.instrument · Trip entity+Maps de-park · gift-signal+share/clip channel) + Goals-deferred + E5 provenance OQ. D3 dropped. **Next: build specs (3 infra + reconciler + 5 amendments + per-cluster recipes) at Mini-build, against ADR-021.** | ✅ 885e4b6 |
 
-| design session 2026-06-21 (pause) | planning | ⏸ PAUSED — work complete, commit pending | docs/technical/adr/ADR-021 + ADR-004 | **Surface 7 reactions LOCKED → ADR-021** (hybrid learned-first) + **cross-store provenance RESOLVED → typed source ref** (ADR-004 Refinement 2026-06-21). Added backlog item: autonomous agents on internal LLM tokens. **▶ RESUME:** (1) draft the single surface-7+provenance closeout COMMIT (offered, not yet done — see Uncommitted); (2) 2 optional quick-stamp design items still open: **first Tier-0 entity candidate** (ADR-013 follow-up) + **`uv` dev-deps migration** decide-now-vs-defer. | 🟡 ADR-021 (new) · ADR-004 · status.md · docs/owner-rules/7-cross-module-reactions.md · docs/technical/architecture/overview.md · BACKLOG.md · docs/findings/2026-06-20-reaction-wiring-audit.md (untracked) |
+| design session 2026-06-21→22 | planning | ✅ COMPLETE — closeout committed + both follow-ups resolved | docs/technical/adr/ADR-005 + ADR-021 + ADR-004 | **Surface 7 reactions LOCKED → ADR-021** + **cross-store provenance → typed source ref** (ADR-004) — closeout **committed 885e4b6**. Resumed 2026-06-22 + resolved both follow-ups: (1) **phone-less unlock = recovery passphrase (break-glass escrow)** → **ADR-005 Refinement 2026-06-22** (owner redirected the Tier-0 question into this; first-Tier-0-signal candidate stays parked, an M6-build call); (2) **`uv` dev-deps migration → MIGRATE** (owner: clean, regardless of work) → new ready spec `uv-dependency-groups-migration.md`. | ✅ 885e4b6 + this-session commit (ADR-005 · new spec · status.md) |
 
 _(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated). **Zero parked spec
+_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated; **`uv-dependency-groups-migration` added `status: ready` 2026-06-22** — WSL2-buildable PEP 735 dev-deps migration + 2-doc alignment, build BEFORE `tooling-cleanup`). **Zero parked spec
 drafts. Zero open gates** — ADR-015 (port async) + ADR-016 (dispatch async) cascades both applied 2026-06-12, so the
 corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. Listed by milestone in dependency/build order._
 
@@ -218,14 +227,21 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
-- **🟢 NEW (2026-06-19) — `uv` dev-deps migration DEFERRED (decision pending, low priority).** Dev tooling
-  (mypy/pytest/ruff/anyio) lives under `[project.optional-dependencies] dev` (older form), so plain `uv sync` skips it —
-  only `uv sync --all-extras`/`--dev` installs it (the footgun the 2026-06-18 coding session hit). PEP 735
-  `[dependency-groups] dev` would make bare `uv sync` install dev deps + is semantically correct (dev tools aren't
-  consumer-facing extras). **Owner rec = defer:** `--all-extras` works today; migrating turns that flag into a no-op and
-  leaves ~61 specs + the apex-python Verification Recipe + RUNBOOK referencing a stale command, so it warrants its own
-  one-task sweep spec (migrate + update recipe/RUNBOOK), not a bundled cleanup. **Resume = decide migrate-now vs leave;
-  if migrate, spec the recipe/doc sweep alongside.**
+- **✅ RESOLVED 2026-06-22 — `uv` dev-deps migration → MIGRATE (own spec).** Owner chose to migrate regardless of
+  work, "just ensure it is clean." Mapping the blast radius showed it's tighter than feared: the apex-python Verification
+  Recipe **already** prescribes `[dependency-groups].dev` + bare `uv sync` (impl.md lines 24–25/96/119) and the RUNBOOK
+  already uses bare `uv sync` — so neither needs editing; the migration brings the project *into compliance* with its own
+  recipe. Most specs reference plain `uv sync` (which becomes correct post-migration). Only 3 hand-edited files:
+  `pyproject.toml` (the migration) + `tooling-cleanup.md` (drop its explicit `--all-extras`) + `M0-a` (pin the layout in
+  prose). → new ready spec **`docs/changes/uv-dependency-groups-migration.md`** (flash, WSL2-buildable, **build BEFORE
+  `tooling-cleanup`** — after migration bare `uv sync` installs dev tools).
+- **🟢 NEW (2026-06-22) — phone-less unlock = recovery passphrase (break-glass escrow) → ADR-005 Refinement.** Owner
+  raised the gap (no unlock path without the phone) while reviewing the Tier-0 question and chose a **recovery passphrase**:
+  Argon2id-derived KEK wraps an escrow copy of each per-scope DEK; rare / audited / rate-limited break-glass; **not** a
+  routine override PIN; second-device attestation deferred (non-breaking — each paired device already enrols its own SE key).
+  Resolves the standing ADR-005 consequence "phone loss = key compromise; need escrow flow." Build at M2 (Mini-gated). The
+  separate **first Tier-0 *signal* candidate** (calendar-derived vs weather-only) stays **parked** — an M6-build-time call
+  when the minimised-corpus schema is designed (ADR-006 Parked).
 - **🟢 NEW (2026-06-17) — validation slice: build the Python spine pre-Mini. AUDITED → GO.** The "build waits for
   the Mini" rule is an **inherited assumption** (owner-confirmed), not a constraint — the brain spine is pure Python
   and MLX is a swappable OpenAI-compatible endpoint. Build a thin vertical slice (M0-a→M0-d→M1-a→M1-b→M1-d→M1-c) in a
