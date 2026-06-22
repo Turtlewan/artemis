@@ -242,7 +242,7 @@ class TestInMemoryIndex:
         # InMemoryToolIndex uses concrete list signatures (list[str] vs
         # Sequence[str]); the real conformance test lives in test_ports.py
         # which drives a dedicated minimal impl.
-        vs: VectorStore = index  # type: ignore[assignment]
+        vs: VectorStore = index
         assert vs is not None
 
     def test_search_returns_at_most_k(self) -> None:

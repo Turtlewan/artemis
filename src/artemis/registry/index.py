@@ -8,6 +8,7 @@ LanceDB ANN replace it at corpus scale with no caller change.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 
 from artemis.ports.types import Chunk, RetrievedChunk, Vector
 
@@ -33,9 +34,9 @@ class InMemoryToolIndex:
     def add(
         self,
         scope: str,
-        ids: list[str],  # type[ignore] — Sequence[str] vs list[str]
-        vectors: list[Vector],
-        metadata: list[dict[str, object]],
+        ids: Sequence[str],
+        vectors: Sequence[Vector],
+        metadata: Sequence[Mapping[str, object]],
     ) -> None:
         """Store vectors under a scope. Each vector is L2-normalised."""
         if len(ids) != len(vectors) or len(vectors) != len(metadata):
