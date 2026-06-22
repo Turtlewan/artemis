@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis · theme tuner — 16 ambient palettes (season × time)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1400px 800px at 50% -8%,#0c121c,#04060a 60%),#04060a;color:#e9f6ff;
+    font-family:'Inter',system-ui,sans-serif;padding:40px 26px 110px;min-height:100vh}
+  .head{text-align:center;margin-bottom:14px}
+  .head h1{font-family:'Space Grotesk';font-weight:500;font-size:22px}
+  .head p{color:#8fa7b6;font-size:13px;margin-top:8px;max-width:720px;margin-inline:auto;line-height:1.5}
+  .wrap{max-width:1280px;margin:0 auto}
+  .season{margin-top:38px}
+  .season-h{display:flex;align-items:baseline;gap:14px;padding:0 4px 14px;border-bottom:1px solid rgba(120,200,255,.1);margin-bottom:22px}
+  .season-h h2{font-family:'Space Grotesk';font-weight:500;font-size:18px}
+  .season-h span{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#7e93a2}
+  .row4{display:grid;grid-template-columns:repeat(auto-fit,minmax(278px,1fr));gap:24px}
+
+  .card{display:flex;flex-direction:column;gap:10px}
+  .ct{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px}
+  .ct .tm{font-family:'Space Grotesk';font-size:13.5px;font-weight:500;color:var(--p)}
+  .ct .note{font-size:10px;color:#7e93a2;letter-spacing:.02em;text-align:right;max-width:150px}
+
+  .panel{position:relative;border-radius:18px;padding:13px 13px 11px;overflow:hidden;
+    background:color-mix(in srgb,var(--p) 5%,var(--bg));
+    backdrop-filter:blur(22px) saturate(145%);-webkit-backdrop-filter:blur(22px) saturate(145%);
+    border:1px solid color-mix(in srgb,var(--p) 26%,transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 16px 50px -20px rgba(0,0,0,.85),
+               0 0 26px -8px color-mix(in srgb,var(--p) 65%,transparent)}
+  .panel::before{content:"";position:absolute;inset:0;z-index:0;opacity:.5;
+    background-image:linear-gradient(color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px),
+                     linear-gradient(90deg,color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px);
+    background-size:20px 20px;mask:radial-gradient(120% 90% at 50% 0,#000,transparent 70%)}
+  .panel::after{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.12),transparent 32%);mix-blend-mode:screen}
+  .bar{display:flex;align-items:center;gap:10px;position:relative;z-index:2;padding:3px 2px}
+  .mark svg{width:25px;height:25px;stroke:var(--p);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--p) 80%,transparent))}
+  .inp{flex:1;font-family:'Space Grotesk';font-size:15px;font-weight:500}
+  .car{display:inline-block;width:2px;height:16px;margin-left:2px;background:var(--p);box-shadow:0 0 7px var(--p);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+  .hint{font-family:'Space Grotesk';font-size:10px;letter-spacing:.07em;border:1px solid color-mix(in srgb,var(--a) 34%,transparent);color:var(--a);border-radius:6px;padding:2px 6px}
+  .div{height:1px;margin:11px 2px 6px;position:relative;z-index:2;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--p) 22%,transparent),transparent)}
+  .rows{position:relative;z-index:2;display:flex;flex-direction:column;gap:2px}
+  .rw{display:flex;align-items:center;gap:10px;padding:7px;border-radius:9px;transition:.16s}
+  .rw.sel{background:color-mix(in srgb,var(--p) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--p) 18%,transparent) inset}
+  .ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:12px;flex:0 0 auto;
+    background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 24%,transparent);color:var(--p)}
+  .ic.al{background:color-mix(in srgb,var(--a) 12%,transparent);border-color:color-mix(in srgb,var(--a) 26%,transparent);color:var(--a)}
+  .t{flex:1;font-size:13px;color:#dcebf5;line-height:1.25}
+  .t small{display:block;color:#8295a2;font-size:11px;margin-top:1px}
+  .mt{font-family:'Space Grotesk';font-size:10px;color:#8295a2}
+  .mt.acc{color:var(--a)}
+  .foot{display:flex;gap:7px;margin-top:9px;padding:0 2px;position:relative;z-index:2}
+  .chip{font-family:'Space Grotesk';font-size:9.5px;letter-spacing:.05em;color:#9fb2bf;border:1px solid color-mix(in srgb,var(--p) 18%,transparent);border-radius:999px;padding:2px 8px;display:flex;gap:5px;align-items:center}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--p);box-shadow:0 0 6px var(--p)}
+  .dot.a{background:var(--a);box-shadow:0 0 6px var(--a)}
+
+  /* ---- tuner controls ---- */
+  .ctl{display:flex;gap:8px;align-items:center;padding:2px 4px 0}
+  .pick{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .pick label{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.08em;color:#7e93a2;text-transform:uppercase}
+  .pick input[type=color]{width:34px;height:24px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:none;cursor:pointer;padding:0}
+  .pick input[type=color]::-webkit-color-swatch{border:none;border-radius:5px}
+  .pick input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+  .hex{font-family:'Space Grotesk';font-size:9px;color:#8295a2;letter-spacing:.02em}
+  .draft{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.1em;color:#ffb259;border:1px solid rgba(255,178,89,.4);border-radius:5px;padding:1px 5px;margin-left:6px}
+  .vetted{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.1em;color:#5fd0a0;border:1px solid rgba(95,208,160,.35);border-radius:5px;padding:1px 5px;margin-left:6px}
+
+  /* ---- sticky export bar ---- */
+  .exportbar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:12px;justify-content:center;align-items:center;
+    padding:13px 20px;background:linear-gradient(0deg,#04060a,rgba(4,6,10,.86));backdrop-filter:blur(10px);
+    border-top:1px solid rgba(120,200,255,.12)}
+  .btn{font-family:'Space Grotesk';font-size:12px;font-weight:500;letter-spacing:.03em;color:#04060a;
+    background:#58c6ff;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;box-shadow:0 0 18px -6px #58c6ff}
+  .btn.ghost{background:transparent;color:#9fb6c6;border:1px solid rgba(120,200,255,.22);box-shadow:none}
+  .toast{font-family:'Space Grotesk';font-size:11.5px;color:#5fd0a0;opacity:0;transition:.2s}
+  .toast.on{opacity:1}
+
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>Artemis · <b>theme tuner</b> — 16 ambient palettes (season × time)</h1>
+  <p>Adjust each palette by eye: the three pickers per card are <b>bg · primary · accent</b>; the panel updates live. When happy, hit <b>Copy all as table</b> (bottom) and paste into <code>design-brief.md</code>. 9 cells are vetted from the original mockup; 7 (Summer ×4, night ×3) are draft starting points.</p>
+</div>
+<div class="wrap" id="wrap"></div>
+
+<div class="exportbar">
+  <button class="btn" id="copyMd">Copy all as table</button>
+  <button class="btn ghost" id="copyJson">Copy as JSON</button>
+  <button class="btn ghost" id="reset">Reset to defaults</button>
+  <span class="toast" id="toast">copied ✓</span>
+</div>
+
+<script>
+const MARK='<svg viewBox="0 0 32 32" fill="none" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="currentColor" stroke="none"/></svg>';
+const CTX={
+  morning:{hint:"DIGEST",inp:"good morning",r1:["☀","Your day in 30 seconds — 3 things","Digest","codex"],r2:["◔","2 things need you before noon","Heads-up","review"]},
+  afternoon:{hint:"TASK",inp:"reschedule my week",r1:["⚙","Reschedule my week — 6 steps","Move 3 meetings · protect AM focus","codex"],r2:["⚑","2 conflicts need approval","Gate","review"]},
+  evening:{hint:"WIND-DOWN",inp:"what's left today?",r1:["☾","Tomorrow at a glance — 4 events","Plan","codex"],r2:["✓","Inbox cleared · 1 draft to review","Done","review"]},
+  night:{hint:"QUIET",inp:"good night",r1:["☾","Nothing urgent · resting till 07:15","Quiet hours","local"],r2:["✦","First tomorrow: standup 09:30","Heads-up","local"]},
+};
+// 9 vetted (from seasonal-time-schemes.html) + 7 draft (Summer ×4, night ×3)
+const DEFAULTS=[
+ {season:"Spring",sub:"fresh · light · luminous",items:[
+   {time:"Early morning",ctx:"morning",note:"ethereal dawn · fresh green + soft peach",bg:"#08120e",p:"#8fecb8",a:"#ffc2a6",v:1},
+   {time:"Afternoon",ctx:"afternoon",note:"high noon · bright spring green + clear blue sky",bg:"#0a1612",p:"#5fee9c",a:"#84d2ff",v:1},
+   {time:"Evening",ctx:"evening",note:"golden-green dusk · warm sun + fresh foliage",bg:"#0a0c0d",p:"#f2b487",a:"#93d59a",v:1},
+   {time:"Night",ctx:"night",note:"spring night · blue sky + fresh green",bg:"#05080f",p:"#5aa6d0",a:"#8fd0a8",v:0},
+ ]},
+ {season:"Summer",sub:"bright · warm · saturated · tropical",items:[
+   {time:"Early morning",ctx:"morning",note:"summer dawn · coral first light + cool sky",bg:"#0e0a10",p:"#ff9e6e",a:"#8fb0ff",v:0},
+   {time:"Afternoon",ctx:"afternoon",note:"high noon · blazing sun + bright blue sky",bg:"#11140a",p:"#ffd64a",a:"#58c4f2",v:0},
+   {time:"Evening",ctx:"evening",note:"warm amber · sunset pink",bg:"#0d0908",p:"#ff9f4a",a:"#ff5e8a",v:0},
+   {time:"Night",ctx:"night",note:"summer night · blue sky + warm glow",bg:"#06080f",p:"#4f9fc8",a:"#e3a06f",v:0},
+ ]},
+ {season:"Autumn",sub:"warm · muted · rich · hazy",items:[
+   {time:"Early morning",ctx:"morning",note:"amber mist · cool + warm sun",bg:"#0f0c08",p:"#e3b572",a:"#93b39c",v:1},
+   {time:"Afternoon",ctx:"afternoon",note:"harvest gold · rust",bg:"#100a05",p:"#f0a23f",a:"#c2552b",v:1},
+   {time:"Evening",ctx:"evening",note:"ember · dusk red-violet",bg:"#0d0606",p:"#ff7338",a:"#9a5ab0",v:1},
+   {time:"Night",ctx:"night",note:"dim ember · muted violet",bg:"#0a0707",p:"#a06a44",a:"#6a5a7a",v:0},
+ ]},
+ {season:"Winter",sub:"cool · bright · sharp · high-contrast",items:[
+   {time:"Early morning",ctx:"morning",note:"alpine sunrise · frosty blue + warm sun-on-snow",bg:"#080d14",p:"#abe0ff",a:"#ffc7a6",v:1},
+   {time:"Afternoon",ctx:"afternoon",note:"bluebird ski day · crisp blue + warm sunlit snow",bg:"#060c14",p:"#58c6ff",a:"#fff0d8",v:1},
+   {time:"Evening",ctx:"evening",note:"alpine dusk · snow-blue + alpenglow lodge glow",bg:"#07091a",p:"#8aa6ff",a:"#ffb479",v:1},
+   {time:"Night",ctx:"night",note:"winter night · cold indigo + warm cabin glow",bg:"#05070e",p:"#5a76b0",a:"#b88a5c",v:0},
+ ]},
+];
+// deep clone working model
+let DATA=JSON.parse(JSON.stringify(DEFAULTS));
+const wrap=document.getElementById('wrap');
+
+function render(){
+  wrap.innerHTML='';
+  DATA.forEach((S,si)=>{
+    const sec=document.createElement('div');sec.className='season';
+    sec.innerHTML=`<div class="season-h"><h2>${S.season}</h2><span>${S.sub}</span></div>`;
+    const row=document.createElement('div');row.className='row4';
+    S.items.forEach((it,ii)=>{
+      const c=CTX[it.ctx];
+      const card=document.createElement('div');card.className='card';
+      card.style.cssText=`--p:${it.p};--a:${it.a};--bg:${it.bg}`;
+      const tag=it.v?`<span class="vetted">vetted</span>`:`<span class="draft">draft</span>`;
+      card.innerHTML=`
+        <div class="ct"><div class="tm">${it.time}${tag}</div><div class="note">${it.note}</div></div>
+        <div class="panel">
+          <div class="bar"><div class="mark" style="color:${it.p}">${MARK}</div><div class="inp">${c.inp}<span class="car"></span></div><div class="hint">${c.hint}</div></div>
+          <div class="div"></div>
+          <div class="rows">
+            <div class="rw sel"><div class="ic">${c.r1[0]}</div><div class="t">${c.r1[1]}<small>${c.r1[2]}</small></div><div class="mt">${c.r1[3]}</div></div>
+            <div class="rw"><div class="ic al">${c.r2[0]}</div><div class="t">${c.r2[1]}<small>${c.r2[2]}</small></div><div class="mt acc">${c.r2[3]}</div></div>
+          </div>
+          <div class="foot"><div class="chip"><span class="dot"></span> local 8B</div><div class="chip"><span class="dot a"></span> codex · 4.1k left</div></div>
+        </div>
+        <div class="ctl">
+          <div class="pick"><label>bg</label><input type="color" data-k="bg" value="${it.bg}"><span class="hex">${it.bg}</span></div>
+          <div class="pick"><label>primary</label><input type="color" data-k="p" value="${it.p}"><span class="hex">${it.p}</span></div>
+          <div class="pick"><label>accent</label><input type="color" data-k="a" value="${it.a}"><span class="hex">${it.a}</span></div>
+        </div>`;
+      // wire pickers
+      card.querySelectorAll('input[type=color]').forEach(inp=>{
+        inp.addEventListener('input',e=>{
+          const k=e.target.dataset.k, val=e.target.value;
+          DATA[si].items[ii][k]=val;
+          card.style.setProperty('--'+k, val);
+          if(k==='p') card.querySelector('.mark').style.color=val;
+          e.target.parentElement.querySelector('.hex').textContent=val;
+        });
+      });
+      row.appendChild(card);
+    });
+    sec.appendChild(row);wrap.appendChild(sec);
+  });
+}
+render();
+
+// ---- export helpers ----
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1400);}
+async function copy(text,msg){try{await navigator.clipboard.writeText(text);toast(msg);}catch(_){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();toast(msg);}}
+
+document.getElementById('copyMd').addEventListener('click',()=>{
+  let md='| Season | Time | `--bg` | `--p` (primary) | `--a` (accent) | Status |\n|--------|------|--------|-----------------|----------------|--------|\n';
+  DATA.forEach(S=>S.items.forEach(it=>{
+    const t=it.time.replace('Early morning','morning').toLowerCase();
+    md+=`| ${S.season} | ${t} | \`${it.bg}\` | \`${it.p}\` | \`${it.a}\` | ${it.v?'vetted':'draft'} |\n`;
+  }));
+  copy(md,'table copied ✓');
+});
+document.getElementById('copyJson').addEventListener('click',()=>{
+  const out=DATA.map(S=>({season:S.season,items:S.items.map(it=>({time:it.time,bg:it.bg,p:it.p,a:it.a}))}));
+  copy(JSON.stringify(out,null,2),'JSON copied ✓');
+});
+document.getElementById('reset').addEventListener('click',()=>{DATA=JSON.parse(JSON.stringify(DEFAULTS));render();toast('reset ✓');});
+</script>
+</body>
+</html>
