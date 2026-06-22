@@ -9,7 +9,17 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-22 (**ARCHITECTURE RE-LOOK — hybrid cloud/local model layer ACCEPTED + UI/executor captured.**
+_Last updated by planning mode:_ 2026-06-22 (**SENSITIVE-HANDLING REFINED → ADR-022 Refinement.** Resumed the scope-out
+checkpoint; owner pressure-tested the hybrid and **LOCKED an upgraded version (phased), REJECTING full scope-out** (too blunt
+for incidental email; gives up sensitive assistance). **Gate:** regex → a **cheap LOCAL model at the INGESTION seam** (fail-closed;
+reads on-box, no cloud round-trip) — the blocked posture's **option C (local-classifier-first)**, retiring the regex false-negative
+leak. **Reasoner:** base-local → **Codex-DISTILLED** (teacher trains on **synthetic** data only — real records never leave the box;
+reuses `distill-datagen-pipeline`). **Phasing (additive):** NOW = local-model gate + detect-and-drop + start the Codex-teacher
+distill drip; LATER (Mac+training) = the distilled reasoner graduates into `sensitive_reasoner` → detect-and-route-local.
+**Recorded: ADR-022 § Refinement 2026-06-22.** Both Open Questions (scope-out-vs-gate · sensitivity posture) RESOLVED.
+`brain-sensitivity-routing` unblocked but **regex mechanism SUPERSEDED — needs redraft** to the local-model/ingestion gate (banner
+added at spec top); `distill-datagen-pipeline` gains sensitive-domain categories + a pluggable Codex teacher.)
+_Prior:_ 2026-06-22 (**ARCHITECTURE RE-LOOK — hybrid cloud/local model layer ACCEPTED + UI/executor captured.**
 A long re-look (sparked by "use agent harnesses + OpenAI") → **3 new ADRs**. **ADR-024 (Accepted): Task Executor** — general
 multi-step plan→act→verify agent, background-default, +durable **task-memory** (ADR-004 unchanged), reliability spine, reuses
 tools+GATE, graduates→recipes (= M9). **ADR-023 (Accepted, supersedes ADR-017): Tauri** cross-platform desktop client — `.exe`
@@ -178,14 +188,14 @@ _Last updated by coding mode:_ 2026-06-18 (fix-validation-test-quality built, ar
 
 | design session 2026-06-21→22 | planning | ✅ COMPLETE — closeout committed + both follow-ups resolved | docs/technical/adr/ADR-005 + ADR-021 + ADR-004 | **Surface 7 reactions LOCKED → ADR-021** + **cross-store provenance → typed source ref** (ADR-004) — closeout **committed 885e4b6**. Resumed 2026-06-22 + resolved both follow-ups: (1) **phone-less unlock = recovery passphrase (break-glass escrow)** → **ADR-005 Refinement 2026-06-22** (owner redirected the Tier-0 question into this; first-Tier-0-signal candidate stays parked, an M6-build call); (2) **`uv` dev-deps migration → MIGRATE** (owner: clean, regardless of work) → new ready spec `uv-dependency-groups-migration.md`. | ✅ 885e4b6 + this-session commit (ADR-005 · new spec · status.md) |
 
-| design/build session 2026-06-22 (cont.) | planning | ⏸ CHECKPOINT — saved before context-clear | docs/changes/ (brain specs) · docs/design/ (mockups) | **▶ RESUME — new live idea: SCOPE SENSITIVE DATA OUT of Artemis** (instead of a runtime sensitivity gate) → cloud-everything (Codex) is clean, **drop the classifier + local sensitive-reasoner + most of the M2 wall** = the simplest architecture this session. Aligns with owner-rules (financial+health already excluded from memory) + Finance-deferred. **OPEN DECISION = the scope line, esp. EMAIL** (the main incidental-sensitive vector): 3 opts presented — (rec) keep email + COARSE source-filter financial/medical at ingestion via Gmail categories · exclude email entirely · drop sensitive spokes only + accept incidental-to-cloud. **If adopted:** DROP `brain-sensitivity-routing`, amend ADR-022 (scoping policy replaces the runtime gate), lighten the privacy wall. **Next phase = "make it more efficient"** = simplify the corpus around scoped cloud-everything. **Brain specs:** `codex-model-adapter` + `composite-model-routing` stay READY (security+python reviewed+folded); `brain-sensitivity-routing` blocked/maybe-dropped. **UI:** Holo Tactical shape locked + ambient season×time themes (9 mockups in docs/design/, not yet picked; +Summer optional). | 3 brain specs · docs/design/*.html · status.md (this commit) |
+| design/build session 2026-06-22 (cont.) | planning | ✅ sensitive-handling RESOLVED → ADR-022 Refinement · UI theme still unpicked | docs/technical/adr/ADR-022 · docs/changes/brain-sensitivity-routing.md · docs/design/ | **Sensitive handling LOCKED = upgraded hybrid, phased** (scope-out REJECTED): local-model gate at the INGESTION seam (fail-closed) + Codex-distilled reasoner; posture = option C → **ADR-022 § Refinement 2026-06-22**. `brain-sensitivity-routing` **REDRAFTED → `status: ready`** (regex retired; local-model gate, loopback-guarded, fail-closed; security+python spec-review folded — 2 BLOCKs each resolved); `distill-datagen-pipeline` to gain sensitive-domain categories + pluggable Codex teacher (future). `codex-model-adapter` + `composite-model-routing` stay READY. **STILL OPEN: UI theme** — Holo Tactical shape locked + 9 ambient season×time mockups in docs/design/ NOT yet picked (+Summer optional). **Next: pick the UI theme (or queue the ingestion-gate + distill amendments).** | ADR-022 · brain-sensitivity-routing.md (redraft) · status.md (this commit) |
 
 _(Build status after slicing: the validation slice confirmed the brain spine is WSL2-buildable. Remaining ~60 specs are Mini-gated.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated; **`uv-dependency-groups-migration` added `status: ready` 2026-06-22** — WSL2-buildable PEP 735 dev-deps migration + 2-doc alignment, build BEFORE `tooling-cleanup`; **3 brain-Codex specs added 2026-06-22, security+python reviewed & folded:** `codex-model-adapter` (ready) → `composite-model-routing` (ready) → `brain-sensitivity-routing` (**blocked: owner privacy-posture sign-off**) — wire Codex (ChatGPT subscription) as the cloud reasoning engine behind the `ModelPort` seam + hybrid sensitivity routing (ADR-022); WSL2/Windows-buildable, build in that dependency order. Reviews fixed: blocking-I/O→`to_thread`, stream-split, stderr-leak scrub, typed-Settings/Protocol; the sensitivity regex gate was strengthened but needs an owner posture call — see Open Questions). **Zero parked spec
+_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated; **`uv-dependency-groups-migration` added `status: ready` 2026-06-22** — WSL2-buildable PEP 735 dev-deps migration + 2-doc alignment, build BEFORE `tooling-cleanup`; **3 brain-Codex specs added 2026-06-22, security+python reviewed & folded:** `codex-model-adapter` (ready) → `composite-model-routing` (ready) → `brain-sensitivity-routing` (**ready — REDRAFTED 2026-06-22** to a local-model gate; regex retired) — wire Codex (ChatGPT subscription) as the cloud reasoning engine behind the `ModelPort` seam + hybrid sensitivity routing (ADR-022); WSL2/Windows-buildable, build in that dependency order. `brain-sensitivity-routing` redraft (security+python spec-review applied — 2 BLOCKs each resolved): the gate is a **cheap local model** that classifies the typed request on-box, **loopback-guarded** (refuses non-local endpoints → fail-closed), **fail-closed at every layer**, `<user_request>` injection-delimiter, kill-switch `cloud_reasoning_enabled`. One documented residual: a 4B classifier isn't fully injection-proof (accepted v1, single-owner). The ingestion gate (corpus protection) is a separate future M3/M8 amendment.). **Zero parked spec
 drafts. Zero open gates** — ADR-015 (port async) + ADR-016 (dispatch async) cascades both applied 2026-06-12, so the
 corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. Listed by milestone in dependency/build order._
 
@@ -249,20 +259,17 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   stay in force; **nothing retired** (net change is additive — a cloud path for the non-sensitive surface). **Remaining:** model
   expected usage vs the Codex 5h/weekly rate caps (+ fallback API cost) · owner runs `codex login` + `codex exec` to confirm the
   subscription path on their plan.
-- **🔴 OPEN — DECISION (2026-06-22) — SCOPE SENSITIVE DATA *OUT* vs gate it (NEW; likely supersedes the posture item below).**
-  Owner's idea: exclude sensitive domains (Finance/Health/Journal) from Artemis entirely so **cloud-everything is clean** — no
-  runtime classifier, no local sensitive-reasoner, lighter M2 wall. The simplest architecture of the session. **Crux = EMAIL**
-  (incidental sensitive content): (rec) keep email + a **coarse source-filter** dropping financial/medical mail from the cloud
-  corpus at ingestion (Gmail categories — simpler/more-reliable than runtime text classification) · exclude email entirely ·
-  drop dedicated sensitive spokes only + accept incidental-to-cloud. **If adopted:** drop `brain-sensitivity-routing`, amend
-  ADR-022 (a *scoping policy* replaces the runtime gate), lighten M2. **Resume = pick the email line, then simplify the corpus.**
-- **🔴 OPEN — DECISION (2026-06-22) — sensitivity-gate privacy posture (blocks `brain-sensitivity-routing`; MOOTED if scope-out adopted).** The
-  regex egress-gate keeps sensitive (finance/health/journal/memory) reasoning local, but a regex can't be complete and a
-  false-negative leaks to cloud unrecoverably (apex-security BLOCK). Gate was strengthened (journal + indirect phrasings +
-  probe tests). **Pick the posture:** (A) strengthened-regex cloud-on (accept documented residual leak; fastest) · (B)
-  fail-closed — `cloud_reasoning_enabled` defaults **False**, opt into cloud deliberately (safe default) · (C) build a
-  local-4B classifier gate first (most robust, a follow-up spec). Spec stays `status: blocked` until chosen. See
-  `docs/changes/brain-sensitivity-routing.md` § Privacy posture.
+- **✅ RESOLVED 2026-06-22 — sensitive-handling architecture = upgraded hybrid, phased (scope-out REJECTED; posture = option C).**
+  Owner pressure-tested the hybrid and locked an improved version (→ **ADR-022 § Refinement 2026-06-22**), folding in BOTH the
+  earlier "scope sensitive data out entirely" idea and the blocked posture question. **Rejected** full scope-out (too blunt for
+  incidental email; gives up sensitive assistance). **Gate:** regex → a **cheap LOCAL model at the INGESTION seam**, **fail-closed**,
+  reads on-box (no cloud round-trip) — this is posture **option C (local-classifier-first)**, which retires the regex
+  false-negative leak the apex-security BLOCK was about. **Reasoner:** base-local → **Codex-distilled** (teacher trains on
+  **synthetic** data only — real records never leave; reuses `distill-datagen-pipeline`; teacher seam pluggable Claude/Codex).
+  **Phasing (additive):** now = local-model gate + detect-and-drop + start the distill drip; later (Mac+training) = the distilled
+  reasoner graduates into `sensitive_reasoner` → detect-and-route-local. **Spec impact:** `brain-sensitivity-routing` unblocked
+  but **regex mechanism superseded — needs redraft** to the local-model/ingestion gate (banner added at the spec top);
+  `distill-datagen-pipeline` gains sensitive-domain categories + the pluggable Codex teacher.
 - **🟢 NEW (2026-06-22) — open follow-ups from the re-look (ADR-022 §Parked):** (a) model a real monthly API cost for the
   local-trigger + on-demand-cloud design; (b) the **constrained-decoding × Pydantic AI** integration check on Windows/Ollama
   (does Pydantic AI wrap or fight Outlines guaranteed-valid output from a local 4B); (c) **first-hand Hermes repo read** to

@@ -1,6 +1,6 @@
 # ADR-022 — Model & runtime re-architecture: on-demand cloud reasoning + local-trigger proactivity + composed harness
 
-- **Status:** **Accepted** — privacy-routing policy resolved 2026-06-22 = **hybrid** (sensitive → local, rest → Codex/cloud; the wall is kept).
+- **Status:** **Accepted** — privacy-routing policy resolved 2026-06-22 = **hybrid** (sensitive → local, rest → Codex/cloud; the wall is kept). **Refined 2026-06-22:** sensitivity gate = a local model (not regex); sensitive reasoner = Codex-distilled; phased build — see § Refinement.
 - **Date:** 2026-06-22
 - **Deciders:** owner + planning
 - **Relates:** ADR-001 (stack — local-model portfolio/MLX **retained** for the *sensitive* path; non-sensitive → cloud) · ADR-002 (deployment — build-Windows-first; Mac = host + sensitive-model box) · ADR-003 / ADR-005 / ADR-006 (the privacy wall — **RETAINED** under the hybrid policy) · ADR-004 (memory) · ADR-023 (Tauri client) · ADR-024 (task executor). Research this session: agent-framework comparison, the OpenClaw/Hermes harness ecosystem, the Codex-subscription / third-party-harness bans.
@@ -24,6 +24,20 @@ Taken **eyes-open**: (a) Codex is a **coding** agent — strong for tool/code ta
 
 ## Privacy-routing policy — RESOLVED 2026-06-22 = HYBRID
 The owner chose the **hybrid**: **sensitive tasks (finance / health / journal / memory) reason on a LOCAL model and never leave the box; everything else routes to Codex/cloud.** The **sensitivity router** (existing) gates what is allowed to leave. **The privacy wall is KEPT** — ADR-003/005/006, the **M2** security wall, the local sensitive-reasoner (27B prod / 8B dev), the recovery-passphrase + passkey unlock, and the local-model host (Mac/MLX prod) **all stay in force; nothing is retired.** The net change vs the original local-first design is **additive**: non-sensitive reasoning moves to the Codex subscription.
+
+## Refinement 2026-06-22 — sensitivity gate = local model (not regex) · sensitive reasoner = Codex-distilled · phased
+
+A follow-on design pass (owner + planning) pressure-tested the hybrid's two soft spots — *how* sensitivity is decided, and *how good* the local sensitive path can be — and locked an upgraded version. **An earlier same-day idea, "scope sensitive data out of Artemis entirely" (drop the classifier + local reasoner + most of M2; cloud-everything is then clean), was considered and REJECTED:** scoping-out is too blunt (esp. for *incidentally*-sensitive email) and gives up sensitive assistance. The hybrid is **kept and improved** instead.
+
+**1 — Sensitivity gate = a cheap LOCAL model, run at INGESTION (replaces the regex).** The blocked `brain-sensitivity-routing` posture question is **RESOLVED → option C (local-classifier-first).** A regex egress-gate is rejected as the primary mechanism (the standing apex-security BLOCK: a regex can't be complete; a false-negative leaks unrecoverably). A small local instruct model (4B-class; fits the RTX 5060 Ti 8 GB dev box, trivial on the Mac) classifies sensitivity by *reading the content **on-box*** — content-level precision with **no cloud round-trip**, robust to the indirect phrasing a regex misses. Posture: **fail-closed** (unsure → sensitive), matching the owner-rules "precision-first / needs-review when unsure" stance. **Clean seam: gate at ingestion** (email/documents entering the corpus), not every turn — sensitive content never enters the cloud-visible corpus, so later cloud queries are auto-safe; the owner's own typed prompt is the one remaining outbound path, guarded separately.
+
+**2 — Sensitive reasoner = Codex-distilled (not a base small model).** The local sensitive reasoner's capability gap vs Codex is closed via **reasoning distillation** (reuses `distill-datagen-pipeline`): Codex (teacher) generates high-quality reasoning traces on **synthetic / generic** finance-health-journal scenarios → fine-tune the local model → the trained local model applies the learned capability to the owner's **real** data on-box. **Hard guardrail: the teacher trains on SYNTHETIC data only — the owner's real records never reach the cloud.** The teacher seam stays pluggable (Claude *or* Codex). Eyes-open: a distilled 4B is still a 4B (strong on narrow, recurring tasks; a residual gap on open-ended reasoning); the fine-tuning back-half is hardware-gated (Mac / GPU-box; the deferred MLX-training step + its known bug).
+
+**3 — Phasing (additive — same gate + ingestion seam in both phases).**
+- **Now (pre-Mac):** local-model gate at ingestion → **detect-and-drop** (sensitive kept out of cloud; base-local handling only) + **start the Codex-teacher distill drip** generating sensitive-domain traces.
+- **Later (Mac + training):** the distilled local reasoner **graduates into** the `sensitive_reasoner` role → full **detect-and-route-local** sensitive assistance.
+
+**Effect on specs:** `brain-sensitivity-routing` is **unblocked but its regex mechanism is SUPERSEDED** — it must be re-drafted to a local-model gate at the ingestion seam (regex → model; the `sensitivity.py` content changes). `distill-datagen-pipeline` gains sensitive-domain reasoning categories + the pluggable Codex teacher. `composite-model-routing` / `codex-model-adapter` are unaffected.
 
 ## Consequences
 - **Hybrid (chosen):** non-sensitive reasoning → Codex-subscription; **sensitive → local model** (RTX 5060 Ti 8B in dev / Mac 27B in prod). The privacy wall (M2 / ADR-003/005/006), the local sensitive-reasoner, and the recovery-passphrase/passkey unlock **all stay**; **nothing is retired**. The change is additive — a cloud path for the non-sensitive surface, gated by the sensitivity router.
