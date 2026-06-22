@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis · ambient themes — season × time of day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1400px 800px at 50% -8%,#0c121c,#04060a 60%),#04060a;color:#e9f6ff;
+    font-family:'Inter',system-ui,sans-serif;padding:46px 30px 90px;min-height:100vh}
+  .head{text-align:center;margin-bottom:18px}
+  .head h1{font-family:'Space Grotesk';font-weight:500;font-size:22px}
+  .head p{color:#8fa7b6;font-size:13px;margin-top:8px;max-width:680px;margin-inline:auto;line-height:1.5}
+  .wrap{max-width:1240px;margin:0 auto}
+  .season{margin-top:42px}
+  .season-h{display:flex;align-items:baseline;gap:14px;padding:0 4px 16px;border-bottom:1px solid rgba(120,200,255,.1);margin-bottom:24px}
+  .season-h h2{font-family:'Space Grotesk';font-weight:500;font-size:18px}
+  .season-h span{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#7e93a2}
+  .row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:28px}
+
+  .card{display:flex;flex-direction:column;gap:11px;animation:rise .55s cubic-bezier(.2,.8,.2,1) both}
+  .ct{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px}
+  .ct .tm{font-family:'Space Grotesk';font-size:13.5px;font-weight:500;color:var(--p)}
+  .ct .note{font-size:10.5px;color:#7e93a2;letter-spacing:.03em}
+
+  .panel{position:relative;border-radius:18px;padding:13px 13px 11px;overflow:hidden;
+    backdrop-filter:blur(22px) saturate(145%);-webkit-backdrop-filter:blur(22px) saturate(145%);
+    border:1px solid color-mix(in srgb,var(--p) 26%,transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 16px 50px -20px rgba(0,0,0,.85),
+               0 0 26px -8px color-mix(in srgb,var(--p) 65%,transparent)}
+  .panel::before{content:"";position:absolute;inset:0;z-index:0;opacity:.5;
+    background-image:linear-gradient(color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px),
+                     linear-gradient(90deg,color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px);
+    background-size:20px 20px;mask:radial-gradient(120% 90% at 50% 0,#000,transparent 70%)}
+  .panel::after{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.12),transparent 32%);mix-blend-mode:screen}
+  .bar{display:flex;align-items:center;gap:10px;position:relative;z-index:2;padding:3px 2px}
+  .mark svg{width:25px;height:25px;stroke:var(--p);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--p) 80%,transparent))}
+  .inp{flex:1;font-family:'Space Grotesk';font-size:15px;font-weight:500}
+  .car{display:inline-block;width:2px;height:16px;margin-left:2px;background:var(--p);box-shadow:0 0 7px var(--p);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+  .hint{font-family:'Space Grotesk';font-size:10px;letter-spacing:.07em;border:1px solid color-mix(in srgb,var(--a) 34%,transparent);color:var(--a);border-radius:6px;padding:2px 6px}
+  .div{height:1px;margin:11px 2px 6px;position:relative;z-index:2;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--p) 22%,transparent),transparent)}
+  .rows{position:relative;z-index:2;display:flex;flex-direction:column;gap:2px}
+  .rw{display:flex;align-items:center;gap:10px;padding:7px;border-radius:9px;transition:.16s}
+  .rw:hover{background:color-mix(in srgb,var(--p) 7%,transparent);transform:translateX(2px)}
+  .rw.sel{background:color-mix(in srgb,var(--p) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--p) 18%,transparent) inset}
+  .ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:12px;flex:0 0 auto;
+    background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 24%,transparent);color:var(--p)}
+  .ic.al{background:color-mix(in srgb,var(--a) 12%,transparent);border-color:color-mix(in srgb,var(--a) 26%,transparent);color:var(--a)}
+  .t{flex:1;font-size:13px;color:#dcebf5;line-height:1.25}
+  .t small{display:block;color:#8295a2;font-size:11px;margin-top:1px}
+  .mt{font-family:'Space Grotesk';font-size:10px;color:#8295a2}
+  .mt.acc{color:var(--a)}
+  .foot{display:flex;gap:7px;margin-top:9px;padding:0 2px;position:relative;z-index:2}
+  .chip{font-family:'Space Grotesk';font-size:9.5px;letter-spacing:.05em;color:#9fb2bf;border:1px solid color-mix(in srgb,var(--p) 18%,transparent);border-radius:999px;padding:2px 8px;display:flex;gap:5px;align-items:center}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--p);box-shadow:0 0 6px var(--p)}
+  .dot.a{background:var(--a);box-shadow:0 0 6px var(--a)}
+  .sw{display:flex;gap:6px;padding:0 4px;align-items:center}
+  .sw i{width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.12)}
+  .sw .lab{font-family:'Space Grotesk';font-size:9px;color:#7e93a2;letter-spacing:.03em}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>Artemis · <b>ambient themes</b> — season × time of day</h1>
+  <p>The palette shifts with your real clock + calendar. Within a day: cool soft morning → bright afternoon → warm-then-cool evening. Across seasons: spring fresh & light · autumn warm & muted · winter cool & sharp.</p>
+</div>
+<div class="wrap" id="wrap"></div>
+
+<script>
+const MARK='<svg viewBox="0 0 32 32" fill="none" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="currentColor" stroke="none"/></svg>';
+const CTX={
+  morning:{hint:"DIGEST",inp:"good morning",r1:["☀","Your day in 30 seconds — 3 things","Digest","codex"],r2:["◔","2 things need you before noon","Heads-up","review"]},
+  afternoon:{hint:"TASK",inp:"reschedule my week",r1:["⚙","Reschedule my week — 6 steps","Move 3 meetings · protect AM focus","codex"],r2:["⚑","2 conflicts need approval","Gate","review"]},
+  evening:{hint:"WIND-DOWN",inp:"what's left today?",r1:["☾","Tomorrow at a glance — 4 events","Plan","codex"],r2:["✓","Inbox cleared · 1 draft to review","Done","review"]},
+};
+const DATA=[
+ {season:"Spring",sub:"fresh · light · luminous",items:[
+   {time:"Early morning",ctx:"morning",note:"dewy dawn · cool→apricot",bg:"#08110d",p:"#84e9b8",a:"#ffb59c"},
+   {time:"Afternoon",ctx:"afternoon",note:"bright · fresh greens + blossom",bg:"#07110c",p:"#56e0a6",a:"#ffd98a"},
+   {time:"Evening",ctx:"evening",note:"golden-green dusk · lilac",bg:"#0c0a10",p:"#c4dd6a",a:"#c6a3ff"},
+ ]},
+ {season:"Autumn",sub:"warm · muted · rich · hazy",items:[
+   {time:"Early morning",ctx:"morning",note:"amber mist · cool + warm sun",bg:"#0f0c08",p:"#e3b572",a:"#93b39c"},
+   {time:"Afternoon",ctx:"afternoon",note:"harvest gold · rust",bg:"#100a05",p:"#f0a23f",a:"#c2552b"},
+   {time:"Evening",ctx:"evening",note:"ember · dusk red-violet",bg:"#0d0606",p:"#ff7338",a:"#9a5ab0"},
+ ]},
+ {season:"Winter",sub:"cool · bright · sharp · high-contrast",items:[
+   {time:"Early morning",ctx:"morning",note:"frosty blue-grey · frost pink",bg:"#080d14",p:"#abe0ff",a:"#ffd7e6"},
+   {time:"Afternoon",ctx:"afternoon",note:"crisp clear blue · silver-white",bg:"#060c14",p:"#58c6ff",a:"#e6f1ff"},
+   {time:"Evening",ctx:"evening",note:"deep indigo · aurora teal",bg:"#07091a",p:"#8aa6ff",a:"#5fe6d0"},
+ ]},
+];
+const wrap=document.getElementById('wrap');
+let n=0;
+DATA.forEach(S=>{
+  const sec=document.createElement('div');sec.className='season';
+  sec.innerHTML=`<div class="season-h"><h2>${S.season}</h2><span>${S.sub}</span></div>`;
+  const row=document.createElement('div');row.className='row3';
+  S.items.forEach(it=>{
+    const c=CTX[it.ctx];
+    const card=document.createElement('div');card.className='card';
+    card.style.cssText=`--p:${it.p};--a:${it.a};animation-delay:${n*45}ms`;n++;
+    card.innerHTML=`
+      <div class="ct"><div class="tm">${it.time}</div><div class="note">${it.note}</div></div>
+      <div class="panel" style="background:color-mix(in srgb, ${it.p} 5%, ${it.bg})">
+        <div class="bar"><div class="mark" style="color:${it.p}">${MARK}</div><div class="inp">${c.inp}<span class="car"></span></div><div class="hint">${c.hint}</div></div>
+        <div class="div"></div>
+        <div class="rows">
+          <div class="rw sel"><div class="ic">${c.r1[0]}</div><div class="t">${c.r1[1]}<small>${c.r1[2]}</small></div><div class="mt">${c.r1[3]}</div></div>
+          <div class="rw"><div class="ic al">${c.r2[0]}</div><div class="t">${c.r2[1]}<small>${c.r2[2]}</small></div><div class="mt acc">${c.r2[3]}</div></div>
+        </div>
+        <div class="foot"><div class="chip"><span class="dot"></span> local 8B</div><div class="chip"><span class="dot a"></span> codex · 4.1k left</div></div>
+      </div>
+      <div class="sw"><i style="background:${it.bg}"></i><i style="background:${it.p}"></i><i style="background:${it.a}"></i><span class="lab">${it.bg} · ${it.p} · ${it.a}</span></div>`;
+    row.appendChild(card);
+  });
+  sec.appendChild(row);wrap.appendChild(sec);
+});
+</script>
+</body>
+</html>

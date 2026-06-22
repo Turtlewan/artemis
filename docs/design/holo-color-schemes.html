@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis · Holo Tactical — 15 color schemes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(1400px 800px at 50% -10%,#0d1420,#04060a 60%),#04060a;
+    color:#e9f6ff;font-family:'Inter',system-ui,sans-serif;padding:46px 28px 90px;min-height:100vh;
+  }
+  .head{text-align:center;margin-bottom:40px}
+  .head h1{font-family:'Space Grotesk';font-weight:500;font-size:22px;letter-spacing:.01em}
+  .head p{color:#8fa7b6;font-size:13px;margin-top:8px;letter-spacing:.04em}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:30px;max-width:1320px;margin:0 auto}
+
+  .card{display:flex;flex-direction:column;gap:12px;animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
+  .meta-top{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px}
+  .nm{font-family:'Space Grotesk';font-size:14px;font-weight:500}
+  .nm b{color:var(--p)}
+  .th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#7e93a2}
+
+  /* ---- parametric liquid-glass holo-tactical panel ---- */
+  .panel{
+    position:relative;border-radius:18px;padding:13px 13px 11px;overflow:hidden;
+    background:color-mix(in srgb, var(--p) 5%, rgba(255,255,255,.02));
+    backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+    border:1px solid color-mix(in srgb, var(--p) 26%, transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.08) inset,
+               0 16px 50px -20px rgba(0,0,0,.85),
+               0 0 26px -8px color-mix(in srgb, var(--p) 70%, transparent);
+  }
+  .panel::before{content:"";position:absolute;inset:0;z-index:0;opacity:.5;
+    background-image:linear-gradient(color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px),
+                     linear-gradient(90deg,color-mix(in srgb,var(--p) 7%,transparent) 1px,transparent 1px);
+    background-size:20px 20px;mask:radial-gradient(120% 90% at 50% 0,#000,transparent 70%)}
+  .panel::after{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.12),transparent 32%);mix-blend-mode:screen}
+  .bar{display:flex;align-items:center;gap:10px;position:relative;z-index:2;padding:3px 2px}
+  .mark svg{width:26px;height:26px;stroke:var(--p);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--p) 80%,transparent))}
+  .inp{flex:1;font-family:'Space Grotesk';font-size:15px;font-weight:500}
+  .car{display:inline-block;width:2px;height:17px;margin-left:2px;background:var(--p);
+    box-shadow:0 0 7px var(--p);vertical-align:-3px;animation:blink 1.1s steps(1) infinite}
+  .hint{font-family:'Space Grotesk';font-size:10px;letter-spacing:.08em;
+    border:1px solid color-mix(in srgb,var(--a) 34%,transparent);color:var(--a);border-radius:6px;padding:2px 6px}
+  .div{height:1px;margin:11px 2px 6px;position:relative;z-index:2;
+    background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--p) 22%,transparent),transparent)}
+  .rows{position:relative;z-index:2;display:flex;flex-direction:column;gap:2px}
+  .row{display:flex;align-items:center;gap:10px;padding:7px;border-radius:9px;transition:.16s}
+  .row:hover{background:color-mix(in srgb,var(--p) 7%,transparent);transform:translateX(2px)}
+  .row.sel{background:color-mix(in srgb,var(--p) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--p) 18%,transparent) inset}
+  .ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:12px;flex:0 0 auto;
+    background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 24%,transparent);color:var(--p)}
+  .ic.alert{background:color-mix(in srgb,var(--a) 12%,transparent);border-color:color-mix(in srgb,var(--a) 26%,transparent);color:var(--a)}
+  .t{flex:1;font-size:13px;color:#dcebf5;line-height:1.25}
+  .t small{display:block;color:#8295a2;font-size:11px;margin-top:1px}
+  .mt{font-family:'Space Grotesk';font-size:10px;color:#8295a2}
+  .mt.acc{color:var(--a)}
+  .foot{display:flex;gap:7px;margin-top:9px;padding:0 2px;position:relative;z-index:2}
+  .chip{font-family:'Space Grotesk';font-size:9.5px;letter-spacing:.05em;color:#9fb2bf;
+    border:1px solid color-mix(in srgb,var(--p) 18%,transparent);border-radius:999px;padding:2px 8px;display:flex;gap:5px;align-items:center}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--p);box-shadow:0 0 6px var(--p)}
+  .dot.a{background:var(--a);box-shadow:0 0 6px var(--a)}
+
+  .sw{display:flex;gap:6px;padding:0 4px}
+  .sw i{width:22px;height:22px;border-radius:6px;display:block;border:1px solid rgba(255,255,255,.12)}
+  .sw .lab{font-family:'Space Grotesk';font-size:9.5px;color:#7e93a2;align-self:center;letter-spacing:.04em}
+
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Artemis · <b>Holo Tactical</b> — 15 colour schemes</h1>
+    <p>Same panel, recoloured by colour theory. Pick a number (or mix two).</p>
+  </div>
+  <div class="grid" id="grid"></div>
+
+<script>
+const SCHEMES = [
+  {n:"01 · Jarvis",     th:"complementary",        bg:"#06080c", p:"#3fe7ff", a:"#ffc26b"},
+  {n:"02 · Arctic",     th:"monochromatic cool",   bg:"#070b12", p:"#9fd8ff", a:"#e8f4ff"},
+  {n:"03 · Emerald",    th:"analogous green",       bg:"#04100b", p:"#34e6a0", a:"#c4ff5e"},
+  {n:"04 · Plasma",     th:"complementary",         bg:"#0a060c", p:"#ff5bd0", a:"#46e8ff"},
+  {n:"05 · Solar",      th:"analogous warm",        bg:"#0c0703", p:"#ffb347", a:"#ff5e3a"},
+  {n:"06 · Nebula",     th:"split-complementary",   bg:"#09060f", p:"#9d7bff", a:"#3fe7ff"},
+  {n:"07 · Crimson",    th:"analogous warm",        bg:"#0c0406", p:"#ff5566", a:"#ffb13f"},
+  {n:"08 · Mint",       th:"monochromatic",         bg:"#04100e", p:"#5ff0d0", a:"#b8ffe9"},
+  {n:"09 · Royal",      th:"complementary",         bg:"#050814", p:"#5a85ff", a:"#ffd35e"},
+  {n:"10 · Toxic",      th:"analogous",             bg:"#070c04", p:"#b6ff4a", a:"#46e8ff"},
+  {n:"11 · Orchid",     th:"analogous warm-cool",   bg:"#0b0710", p:"#ff7bd5", a:"#b89dff"},
+  {n:"12 · Sunset",     th:"split-complementary",   bg:"#0c0606", p:"#ff8a3d", a:"#ff4d9d"},
+  {n:"13 · Abyss",      th:"analogous blue",        bg:"#04070f", p:"#4a78ff", a:"#41e0d8"},
+  {n:"14 · Prism",      th:"triadic",               bg:"#07070a", p:"#46e8ff", a:"#ff5bd0"},
+  {n:"15 · Mono",       th:"monochromatic minimal", bg:"#060809", p:"#54e9ff", a:"#54e9ff"},
+];
+const MARK = '<svg viewBox="0 0 32 32" fill="none" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="currentColor" stroke="none"/></svg>';
+const grid = document.getElementById('grid');
+SCHEMES.forEach((s,i)=>{
+  const card=document.createElement('div');
+  card.className='card';
+  card.style.cssText=`--p:${s.p};--a:${s.a};--bg:${s.bg};animation-delay:${i*40}ms`;
+  card.innerHTML=`
+    <div class="meta-top"><div class="nm">${s.n.replace(/·\\s(\\w+)/,'· <b>$1</b>')}</div><div class="th">${s.th}</div></div>
+    <div class="panel" style="background:color-mix(in srgb, ${s.p} 5%, ${s.bg})">
+      <div class="bar">
+        <div class="mark" style="color:${s.p}">${MARK}</div>
+        <div class="inp">reschedule my week<span class="car"></span></div>
+        <div class="hint">TASK</div>
+      </div>
+      <div class="div"></div>
+      <div class="rows">
+        <div class="row sel"><div class="ic">⚙</div><div class="t">Reschedule my week — 6 steps<small>Move 3 meetings · protect AM focus</small></div><div class="mt">codex</div></div>
+        <div class="row"><div class="ic alert">⚑</div><div class="t">2 conflicts need approval<small>Gate</small></div><div class="mt acc">review</div></div>
+      </div>
+      <div class="foot">
+        <div class="chip"><span class="dot"></span> local 8B</div>
+        <div class="chip"><span class="dot a"></span> codex · 4.1k left</div>
+      </div>
+    </div>
+    <div class="sw">
+      <i style="background:${s.bg}"></i><i style="background:${s.p}"></i><i style="background:${s.a}"></i>
+      <span class="lab">${s.bg} · ${s.p} · ${s.a}</span>
+    </div>`;
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>
