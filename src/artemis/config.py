@@ -20,7 +20,7 @@ class ModelRole(BaseModel):
 
     endpoint: str
     model_id: str
-    adapter: Literal["openai", "claude-cli"]
+    adapter: Literal["openai", "claude-cli", "codex"]
 
 
 class Settings(BaseSettings):
@@ -57,6 +57,10 @@ class Settings(BaseSettings):
 
     # Embedding model dimension (Qwen3-Embedding-0.6B → 1024)
     embedding_dimension: int = Field(default=1024, ge=128, le=4096)
+
+    # Codex CLI reasoning engine (ChatGPT subscription auth managed by codex login).
+    codex_binary: str = "codex"
+    codex_model: str = "gpt-5.5"
 
     # Optional API key for authed OpenAI-compatible endpoints (dev: DeepSeek/OpenAI
     # cloud). Local MLX/Ollama servers need none. Sent as `Authorization: Bearer`.
