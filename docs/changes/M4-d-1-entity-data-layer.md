@@ -4,6 +4,7 @@ spec: m4-d-1-entity-data-layer
 status: ready
 token_profile: balanced
 autonomy_level: L2
+coder_model: codex
 ---
 
 # Spec: M4-d-1 — Entity data layer (Person/Place/Goal entities + EntityAlias + cross-module EntityRef) in the owner-private memory DB, with `EntityRepository` (resolve/create/alias/merge) and the `subject_entity_id` fact link

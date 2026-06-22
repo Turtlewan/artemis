@@ -9,6 +9,13 @@ Package layout:
   repository.py  — ``BitemporalRepository`` (add/update/tombstone/as_of/history)
 """
 
+from artemis.memory.entities import (
+    EntityRef,
+    EntityRepository,
+    EntityRow,
+    EntityType,
+    person_fact_key,
+)
 from artemis.memory.repository import (
     BitemporalRepository,
     CurrentFactConflictError,
@@ -22,9 +29,14 @@ __all__ = [
     "BitemporalRepository",
     "CurrentFactConflictError",
     "DimensionMismatchError",
+    "EntityRef",
+    "EntityRepository",
+    "EntityRow",
+    "EntityType",
     "EpisodeRow",
     "FactRow",
     "SENTINEL_TS",
     "create_schema",
     "now_iso",
+    "person_fact_key",
 ]

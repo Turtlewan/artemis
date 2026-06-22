@@ -131,7 +131,29 @@ def create_schema(
             last_access            TEXT,
             keywords               TEXT,
             contextual_description TEXT,
-            linked_ids             TEXT
+            linked_ids             TEXT,
+            -- Links a fact's subject to an entity; populated by M4-d-2, nullable here.
+            subject_entity_id      TEXT
+        )"""
+    )
+
+    # Entity backbone: owner-private person/place/goal records and normalized aliases.
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS entities (
+            entity_id TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL CHECK(entity_type IN ('person','place','goal')),
+            canonical_name TEXT NOT NULL,
+            external_ref TEXT,
+            attributes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS entity_aliases (
+            alias TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'extracted' CHECK(source IN ('seed','extracted','owner'))
         )"""
     )
 
@@ -146,6 +168,25 @@ def create_schema(
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_facts_tx ON facts (person_id, tx_from, tx_to)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_facts_key_tx ON facts (fact_key, tx_from)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities (entity_type)")
+    conn.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_external_ref
+            ON entities (external_ref) WHERE external_ref IS NOT NULL"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_entity_aliases_entity ON entity_aliases (entity_id)"
+    )
+
+    fact_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(facts)").fetchall()}
+    if "subject_entity_id" not in fact_columns:
+        raise RuntimeError(
+            "facts.subject_entity_id missing - a pre-M4-d-1 facts table exists; "
+            "the IF NOT EXISTS DDL skipped the column"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_facts_subject_entity "
+        "ON facts (subject_entity_id, tx_to, valid_to)"
+    )
 
     # ── sqlite-vec vector index ─────────────────────────────────────────────
     conn.execute(
