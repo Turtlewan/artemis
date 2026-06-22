@@ -48,9 +48,7 @@ class FakeEmbedder:
 
 async def _repl() -> None:
     settings = get_settings()
-    gateway = Gateway(
-        compose_brain(settings, embedder=FakeEmbedder(settings.embedding_dimension))
-    )
+    gateway = Gateway(compose_brain(settings, embedder=FakeEmbedder(settings.embedding_dimension)))
     print("Artemis dev chat (FakeEmbedder) — type a question, /quit to exit.", flush=True)
     for raw in sys.stdin:
         line = raw.strip()

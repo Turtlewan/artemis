@@ -40,9 +40,7 @@ class LanceDBVectorStore:
         store: VectorStore = LanceDBVectorStore(path, dimension=1024)  # type-checks
     """
 
-    def __init__(
-        self, db_path: Path, *, dimension: int, table_name: str = "chunks"
-    ) -> None:
+    def __init__(self, db_path: Path, *, dimension: int, table_name: str = "chunks") -> None:
         import lancedb
 
         self._dimension = dimension

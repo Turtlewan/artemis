@@ -11,9 +11,7 @@ from artemis.ports.types import Message
 
 
 def test_auth_headers_present_when_key_set() -> None:
-    assert _auth_headers(Settings(model_api_key="sk-test")) == {
-        "Authorization": "Bearer sk-test"
-    }
+    assert _auth_headers(Settings(model_api_key="sk-test")) == {"Authorization": "Bearer sk-test"}
 
 
 def test_auth_headers_absent_when_no_key() -> None:

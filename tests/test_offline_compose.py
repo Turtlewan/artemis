@@ -52,9 +52,7 @@ def test_compose_brain_accepts_overrides() -> None:
 
 
 async def test_offline_brain_handles_request_without_network() -> None:
-    gateway = Gateway(
-        compose_brain(Settings(), embedder=_FakeEmbedder(), model=_FakeModel())
-    )
+    gateway = Gateway(compose_brain(Settings(), embedder=_FakeEmbedder(), model=_FakeModel()))
     resp = await gateway.handle_text("what time is it?")
     # Returns *something* (tool result / responder / escalation stub) without raising.
     assert resp.text

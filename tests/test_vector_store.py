@@ -122,9 +122,7 @@ def test_dimension_lock_on_write(tmp_path: Path) -> None:
 
 def test_dimension_lock_on_reopen(tmp_path: Path) -> None:
     store = _store(tmp_path, dim=8)
-    store.add(
-        "owner-private", ["c0"], [_unit([1, 0, 0, 0, 0, 0, 0, 0])], [{"text": "x"}]
-    )
+    store.add("owner-private", ["c0"], [_unit([1, 0, 0, 0, 0, 0, 0, 0])], [{"text": "x"}])
     with pytest.raises(DimensionMismatchError):
         LanceDBVectorStore(tmp_path / "kb", dimension=4)  # same path, wrong dim
 
