@@ -4,16 +4,29 @@ _The connective tissue: one module reacting to another. CANDIDATES below are see
 `docs/findings/cross-module-io-map.md` for owner triage — keep / drop / add. Legend:
 **✅** already in specs · **◑** partially in specs · **🆕** new (needs the reaction layer)._
 
-Status: 🟡 triage in progress (2026-06-19).
+Status: 🟡 triage in progress (2026-06-20).
 - **Cluster A (email) DONE** — triaged; A5/A7/A8 expanded into playbooks.
-- **Clusters B / C / E — all permutations enumerated; owner triage of the ⭐ items PENDING.**
-- **Cluster D (calendar) — NOT yet triaged** (simple menu only).
-- **Approach** (learned-first vs declared vs built-in) — discussed, **not yet locked**.
+- **Clusters B / C / E — DONE (owner-triaged 2026-06-20).** B: B2b/B4b/B4c/B5/B6 keep (B6 extended
+  +task-complete), B7 deferred. C: all kept (C3c/C7 Goal-gated, C5b propose-not-auto). E: all kept
+  (E7 merges w/ D4, E8 flagged deep-dive). Cross-cutting rules added: **task⇄Calendar always linked**
+  + **link-integrity** (declared wiring contract + reconciler).
+- **Cluster D (calendar) — DONE (owner-triaged 2026-06-20).** D1/D2/D3 keep (D3 propose-not-auto),
+  D4 merged into E7 (person briefing).
+- **ALL CLUSTERS TRIAGED (A–E + D).** D3 **dropped** (gap-fill opt-out conflict, owner 2026-06-20).
+- **Deep-dives DONE:** B4c (amount-gated confirm @ ~S$500; shared reconciler) · E8 (reclassified = hub view).
+- **WIRING AUDIT DONE 2026-06-20** → `docs/findings/2026-06-20-reaction-wiring-audit.md` (46 reactions:
+  27 ACCOUNTED · 17 PARTIAL · 2 GAP). PARTIALs cluster on **5 missing capabilities** (module→Memory push ·
+  transaction.instrument · Memory emit point · Trip entity + Maps · gift-signal + share-channel) → ADR
+  dependency list / amendments. GAPs resolved: D3 dropped · E8 reclassified.
+- **Approach** — ✅ **LOCKED 2026-06-21 → ADR-021** (hybrid learned-first).
 
-**▶ RESUME HERE:** (1) owner triages B/C/E ⭐ rows (keep/drop) + flagged deep-dives **B4c** (charge↔receipt
-+ fraud signal) and **E8** ("what's due this week" hub view); (2) triage cluster D; (3) lock the reaction
-approach → write the cross-module-reaction **ADR** (the 3 missing pieces: emit events · rule store ·
-reaction dispatcher — see `docs/findings/cross-module-io-map.md`). Then specs at Mini-build time.
+**✅ SURFACE 7 COMPLETE 2026-06-21.** Approach locked (hybrid learned-first) and the cross-module-reaction
+**ADR-021** written (`docs/technical/adr/ADR-021-cross-module-reactions.md`). It specifies: the **3 pieces**
+(emit events · rule store · reaction dispatcher), the **shared fuzzy-match reconciler** (audit X-cut #1), the
+**link-integrity contract + reconciler**, **stateful/windowed reactions** as first-class, **hub views carved
+out** (E8/E7/D4), the **GATE posture**, and the **5-capability dependency list** + amendments (M4-b module
+add_fact · M4 emit point · finance.instrument · Trip/Maps · gift-signal/share-channel). **Next:** build specs
+(3 infra pieces + reconciler + 5 amendments + per-cluster recipes) at Mini-build time, against ADR-021.
 
 ## A. Triggered by EMAIL (Gmail) — the richest source
 | # | When (X) | Then (Y) | In specs? | Keep? |
@@ -139,15 +152,29 @@ _Legend: ✅ already in specs/menu · ⭐ new high-value · ◽ plausible (owner
 | B1 | bill due | Tasks: "pay X" task | ✅ | |
 | B1b | bill due | Calendar: due-date marker | ◽ | |
 | B2 | subscription renewal soon | Calendar marker + notify | ✅ | |
-| B2b | renewal / **price increase** | Tasks: "decide keep/cancel before renewal" | ⭐ | |
+| B2b | renewal / **price increase** | Tasks: "decide keep/cancel before renewal" **+ Calendar** due-date marker / focus block (deadline = renewal date) | ⭐ | ✅ owner (+ calendar) |
 | B3 | new recurring charge | Memory: "subscribes to X" + price history | ✅ | |
 | B4 | unusual spend | notify | ✅ | |
-| B4b | unusual spend | Tasks: "review / dispute this charge?" | ⭐ | |
+| B4b | unusual spend | Tasks: "review / dispute this charge?" **+ Calendar** marker (deadline = dispute window) | ⭐ | ✅ owner (+ calendar) |
 | B4c | **any charge** | Gmail: find the source receipt email (charge↔email link); **no matching email → higher fraud suspicion** | ⭐ | |
 | B5 | **purchase matches a "buy X" task** | Tasks: complete it (**Buy-it loop**) | ⭐ | |
-| B6 | **purchase = a travel booking** (flight/hotel paid) | → trigger the A5 travel playbook | ⭐ | |
+| B6 | **purchase = a travel booking** (flight/hotel paid) | (1) trigger the A5 travel playbook **and** (2) complete any **linked "book the trip / buy flight" task** (Buy-it loop, B5) — both reactions off one purchase | ⭐ | ✅ owner (extended: + task-complete) |
 | B7 | category spend over a threshold | budget awareness / notify | ⚠️ end-state (budget envelopes) | |
 | B8 | finance facts / patterns | Memory + Knowledge | ✅ | |
+
+### B4c detail — charge↔receipt matcher + fraud signal (owner deep-dive 2026-06-20)
+A **stateful, windowed reconciliation** (same shape as A9), not a one-shot — receipt emails lag or
+precede the bank charge. Two email types: (a) the bank/card notification that *creates* the txn (A3);
+(b) the merchant receipt B4c *links* to it as corroboration.
+- **Matcher:** `amount + fuzzy merchant token + date window (±7d, tunable)`. Confident → silent internal
+  link; uncertain → needs-review. **Shared reconciler** with A9 + B5/B6 + E5b + dedup (audit X-cut #1 —
+  build once).
+- **Fraud signal = AMOUNT-GATED confirmation, not an alarm (owner):** everyday/retail spend **below
+  ~S$500 → no fraud check** (silent link only, never ping). A charge **≥ ~S$500 with no matching receipt
+  → ping owner to CONFIRM** ("Did you make this S$X at Y?"). Precision-first; fits *notify = payment*.
+- **Bidirectional:** a receipt arriving also back-fills its charge.
+- **New wiring (audit PARTIAL):** the reverse direction (charge w/o email → flag) + Finance→Gmail
+  cross-module read are new. Threshold + window tunable.
 
 ## C. Triggered by TASKS / PRODUCTIVITY — all permutations (deep dive 2026-06-19)
 | # | When Tasks emits… | Then (reaction) | Class | Keep? |
@@ -155,47 +182,81 @@ _Legend: ✅ already in specs/menu · ⭐ new high-value · ◽ plausible (owner
 | C1 | task scheduled | Calendar: focus block | ✅ | |
 | C2 | "pay bill" task completed | Finance: mark bill paid (**reverse of A9**) | ✅ | |
 | C3 | project completed | Knowledge summary + Memory fact | ✅ | |
-| C3b | project completed | Tasks: archive child tasks | ◽ | |
-| C3c | task/project completed **linked to a Goal** | Goal: update progress (**Goal-progress loop**) | ⭐ | |
+| C3b | project completed | Tasks: archive child tasks | ◽ | ✅ owner keep |
+| C3c | task/project completed **linked to a Goal** | Goal: update progress (**Goal-progress loop**) | ⭐ | ✅ owner keep (Goal-gated) |
 | C4 | task completed | Calendar: clear linked focus block | ✅ | |
-| C4b | task completed | Memory: note completion / accomplishment pattern | ◽ | |
+| C4b | task completed | Memory: note completion / accomplishment pattern | ◽ | ✅ owner keep |
 | C5 | task overdue | notify nudge | ✅ | |
-| C5b | task overdue | Calendar: auto-find time / propose reschedule | ⭐ | |
-| C5c | task overdue **repeatedly** | escalate priority / flag "stuck" | ◽ | |
+| C5b | task overdue | Calendar: auto-find time / **propose** reschedule (suggest, not silent-move) — task⇄calendar linked | ⭐ | ✅ owner keep (propose-not-auto) |
+| C5c | task overdue **repeatedly** | escalate priority / flag "stuck" | ◽ | ✅ owner keep |
 | C6 | commitment/suggestion captured | Recipe graduation (M7) | ✅ | |
-| C6b | commitment captured | Memory: commitment as a fact | ◽ | |
-| C7 | GOAL entity created | surface in week-ahead review; entity link | ◽ | |
+| C6b | commitment captured | Memory: commitment as a fact | ◽ | ✅ owner keep |
+| C7 | GOAL entity created | surface in week-ahead review; entity link | ◽ | ✅ owner keep (Goal-gated) |
 
 ## D. Triggered by CALENDAR
 | # | When (X) | Then (Y) | In specs? | Keep? |
 |---|----------|----------|-----------|-------|
-| D1 | meeting created w/ **external attendee** | Tasks: prep task | 🆕 | |
-| D2 | meeting **cancelled** | cancel linked focus block / re-plan tasks | ◑ | |
-| D3 | **free gap** found | schedule a pending task into it | ◑ | |
-| D4 | meeting **with a person** | surface Memory facts (person briefing) | 🆕 | |
+| D1 | meeting created w/ **external attendee** | Tasks: prep task (+ Calendar focus block before meeting, per task⇄Calendar rule) | 🆕 | ✅ owner keep |
+| D2 | meeting **cancelled** | cancel linked focus block / re-plan tasks (lifecycle-sync) | ◑ | ✅ owner keep |
+| D3 | **free gap** found | ~~propose scheduling a pending task~~ | ◑ | ❌ **DROPPED** (owner 2026-06-20) — conflicts w/ the 2026-06-09 gap-fill opt-out; free gaps stay focus-protect only; C5b covers the overdue case |
+| D4 | meeting **with a person** | person briefing — surface Memory facts (**merged into E7**) | 🆕 | ✅ owner keep (= E7) |
 
 ## E. Cross-cutting (entity / knowledge / enrichment) — all permutations (deep dive 2026-06-19)
 | # | When… | Then (reaction) | Class | Keep? |
 |---|----|----|----|----|
-| E1 | **any** module mentions a known person/place/goal | resolve + link to entity (auto-tag); unsure → ask | ⭐ universal | |
+| E1 | **any** module mentions a known person/place/goal | resolve + link to entity (auto-tag); unsure → ask | ⭐ universal | ✅ owner keep (foundational join) |
 | E2 | booking / receipt email | add to Knowledge | ✅ | |
 | E3 | entity gains/changes info (new email/phone) | propagate via entity refs (live, no copies); name→email merge = lifecycle-sync | ✅ | |
-| E4 | a **key date** learned about a person (birthday) | Calendar + advance gift/plan nudge (A8 pattern) | ⭐ | |
-| E5 | document ingested (Knowledge) | Memory: extract facts | ⭐ | |
-| E5b | document = **statement / receipt** (OCR) | Finance: transaction extract | ⭐ | |
-| E5c | document ingested | link to relevant entities (person/project) | ◽ | |
-| E6 | fact added to Memory that **is a date** | Calendar marker | ⭐ | |
+| E4 | a **key date** learned about a person (birthday) | Calendar + advance gift/plan nudge (A8 pattern) | ⭐ | ✅ owner keep |
+| E5 | document ingested (Knowledge) | Memory: extract facts | ⭐ | ✅ owner keep |
+| E5b | document = **statement / receipt** (OCR) | Finance: transaction extract | ⭐ | ✅ owner keep (pairs w/ B4c) |
+| E5c | document ingested | link to relevant entities (person/project) | ◽ | ✅ owner keep |
+| E6 | fact added to Memory that **is a date** | Calendar marker | ⭐ | ✅ owner keep |
 | E6b | fact added = **gift-signal** | wishlist (A8) | ✅ | |
-| E7 | (hub) **before meeting a person** | person briefing — entity facts + recent interactions (= D4) | ⭐ | |
-| E8 | (hub) "**what's due this week**" | synthesize Finance bills + Tasks + Calendar | ⭐ | |
+| E7 | (hub) **before meeting a person** | person briefing — entity facts + recent interactions (= D4) | ⭐ | ✅ owner keep (merge w/ D4) |
+| E8 | (hub) "**what's due this week**" | synthesize Finance bills + Tasks + Calendar | ⭐ | ✅ owner keep — deep-dive |
+
+### E8 detail — "what's due this week" hub (owner deep-dive 2026-06-20)
+**Reclassified: a HUB VIEW, not a reaction** (audit GAP #2 + finance.md §Cross-module). It's *pulled*,
+not event-triggered → **Brain query-time synthesis** (ADR-013 #4); needs **none** of the 3 reaction-layer
+pieces (no emit / rule / dispatcher). Spec it in the brain/hub layer, not the rule store. E7/D4 (person
+briefing) are the same kind.
+- **Surfacing:** on-demand ("what's due this week?") **+** auto-included in the Sunday-evening week-ahead
+  review (optionally the morning digest).
+- **Live by construction:** recomputes from current module state on every read → completed/paid items
+  drop off automatically, no staleness. Can show **progress** ("4 of 9 done") — pairs with C4b.
+- **Aggregates:** Finance (bills due + renewals) · Tasks (due + overdue) · Calendar (events +
+  reaction-created markers/blocks). It's the **payoff surface** where the task⇄Calendar + reconciliation
+  wiring becomes visible in one place.
 
 ## Emergent loops & patterns (across A–E)
 1. **Bill lifecycle loop** — A6 (email→bill) → B1 (bill→task) → A9 (payment→mark paid+complete) ↔ C2 (manual task-done→mark paid). ✅
-2. **Buy-it loop** — "buy X" task → B5 purchase detected → complete the task. ⭐
+2. **Buy-it loop** — "buy X" task → B5 purchase detected → complete the task. ⭐ Also covers
+   **B6** (a travel-booking purchase completes its "book the trip" task) — and B6 shows one event
+   **fanning out** to two reactions (A5 playbook + task-complete): fan-out, not chaining, so still one hop each. ⭐
 3. **Charge↔receipt linking** — B4c: every charge ties to its source email; a charge with **no** email = fraud signal (feeds the legal/fraud notify rule). ⭐
 4. **Goal-progress loop** — C3c: completing tasks/projects advances a linked Goal. ⭐
 5. **Entity enrichment → person briefing** — E1/E3/E4 build the person graph; E7/D4 spend it (know who you're meeting). ⭐
 6. **Document → facts + ledger** — E5/E5b: ingested docs feed Memory facts and (if statements/receipts) the Finance ledger. ⭐
+
+## Approach decision — ✅ LOCKED 2026-06-21 → ADR-021
+How a reaction comes to exist + becomes active. **Triage already settled WHICH reaction types owner
+wants; this decides the RUNTIME model** (auto vs suggest-then-graduate vs switch-on).
+
+| Model | How a rule activates | Pros | Cons |
+|---|---|---|---|
+| Built-in / hardcoded | ships as code, enabled | instant value; predictable | rigid; not personalized; can act unbidden |
+| Owner-declared | owner switches each on | full control | high upfront friction; slow value |
+| Learned-first (suggest→confirm→graduate) | suggest per pattern → confirm → graduate to auto (M7 recipe loop) | low friction; adapts; builds trust; observable | slower to mature; needs suggestion machinery |
+
+**✅ CHOSEN = Hybrid, learned-first (owner 2026-06-21):** (a) a few **safe built-ins auto from day one** — only
+universally-correct, internal/reversible, zero-judgment reactions (E1 entity-link · C1/C4 task↔block ·
+D2 lifecycle-sync · A6 bill→task); (b) **everything with judgment → suggest→confirm→graduate** via the
+M7 recipe loop (precedent: M8-d-c2 capture-recipe graduation); (c) **owner-declare always available** as
+manual force-enable/disable/hand-write. Fits precision-first + gentle-nudge + internal-reversible boundary;
+reuses M7 (no new machinery). Rejected built-in-first (acts unbidden), declared-first (high friction),
+pure-learned (taxes zero-judgment reactions). **Locked into ADR-021** with the 3 pieces · shared reconciler ·
+link-integrity contract · stateful-reactions-first-class · hub-view carve-out · 5-capability dependency list.
 
 ## Owner-added reactions
 _(to be filled during triage)_
@@ -211,6 +272,31 @@ _(to be filled during triage)_
   matched (payee + ~amount + due-window) → bill marked **paid** → linked "pay-bill" task auto-completes.
   The bill-side twin of dedup. Needs bill state (open→paid) + a payment↔bill matcher + lifecycle-sync
   to Tasks. Ambiguous match → owner-review (precision-first).
+
+## Cross-cutting rule — task ⇄ Calendar always linked (owner 2026-06-20)
+Any reaction that **creates OR links to a task** must also wire that task into the **Calendar** via the
+existing Task→Calendar integration — a **due-date marker** and/or a **focus block** — so the task
+surfaces in time rather than sitting orphaned in the task list. This is **bidirectional**: a task touched
+by a reaction always has its calendar reflection, and completing the task clears the linked block (C4).
+Applies wherever a reaction spawns or references a dated/deadlined task: B2b, B4b, B5/B6 (booking task),
+the A5/A7 playbook tasks (already do this), and across C (C3c, C5b, C5c) and E. Deadline source = the
+triggering event (renewal date, dispute window, due date, etc.).
+
+## Link-integrity — how "properly wired" is guaranteed (owner 2026-06-20)
+Concern: half-wired links (task with no calendar block · charge with no receipt · bill paid but task
+still open). Five mechanisms — four already exist, one is a new ADR requirement:
+1. **One join, no copies (✅ ADR-013)** — links are logical `EntityRef{module,entity_id}` /
+   `person_fact_key` resolved live via ToolRegistry; nothing copied → nothing drifts.
+2. **Bidirectional + lifecycle-synced (✅ ADR-013 #3)** — both ends store the ref; change/delete one →
+   the other updates/clears (generalizes M8-d-b auto-cancel). No orphans.
+3. **Idempotent reconciliation (✅ invariant)** — match on stable keys (booking ref · payee+amount+window ·
+   task id); re-fire updates the existing link, never duplicates (A9 / A5 trip-assembly pattern).
+4. **Precision-first linking (✅ owner rule)** — uncertain match → needs-review, never a silent wrong link.
+5. **⚠️ NEW ADR REQUIREMENT — declared wiring contract + link-integrity reconciler.** Each reaction
+   declares: *emit event · entity join · reverse link · GATE? · idempotency key*. A periodic **reconciler**
+   (generalized A9 matcher) sweeps for half-wired links and repairs or flags them. This is the actual
+   guarantee — a verifier + contract, not trust. (Closes the I/O-map gap: "memory facts from other
+   modules — structurally possible, not yet wired.")
 
 ## Notes
 - ✅/◑ items mostly exist as one-directional pushes already; the reaction LAYER makes them uniform,

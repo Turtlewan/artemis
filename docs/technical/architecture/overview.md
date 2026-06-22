@@ -290,6 +290,7 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [015](../adr/ADR-015-async-port-surface.md) | Async port surface: network-I/O ports (LLM/embed/rerank/retrieve/memory) are `async`; local-disk/cached stay sync |
 | [016](../adr/ADR-016-async-tool-dispatch-surface.md) | Uniform async tool-dispatch: `ToolSpec.callable_ref` + GATE `approve` are `async` (every tool callable is `async def`) |
 | [017](../adr/ADR-017-macos-client-surface.md) | macOS client surface: native multiplatform `ArtemisMac` (Athena-style menu-bar + panel + window); Mac = another paired device |
+| [021](../adr/ADR-021-cross-module-reactions.md) | Cross-module reactions: hybrid learned-first "when X→then Y" layer (3 pieces + shared reconciler + link-integrity contract); hub views carved out. (018–020 reserved for APEX-system ADRs.) |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·

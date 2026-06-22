@@ -27,11 +27,27 @@ Build a **custom bitemporal `MemoryStore`** on a **per-person SQLCipher database
 | **Extraction model** | Local teacher (per the sensitivity router); **constrained decoding** for all structured output. |
 | **Forgetting/decay** | Score `recency × salience × access` (Ebbinghaus-style); **never hard-delete** — demote below the inject threshold / tombstone via `valid_to`. Owner-driven true purge is a separate explicit action. |
 | **Auto-inject** | Each turn, query current (`as_of=now`) facts above the inject threshold, rank, pack into the system prompt within a token budget. |
-| **Provenance + owner control** | Each fact carries `source_turn_id`, `extracted_at`, `extractor_model`, `confidence`; owner edit = a normal bitemporal UPDATE (auditable); owner delete = tombstone (or explicit purge). |
+| **Provenance + owner control** | Each fact carries a **typed source reference** (`source_kind` ∈ turn\|document\|module + `source_ref`), `extracted_at`, `extractor_model`, `confidence` (see Refinement 2026-06-21); owner edit = a normal bitemporal UPDATE (auditable); owner delete = tombstone (or explicit purge). |
 | **Upgradeability** | All behind the `MemoryStore` port → Graphiti / memori swappable later if requirements outgrow the custom store. |
 
 ### Refinement (2026-06-04, M4 review) — fact identity & cardinality
 A "logical fact" is keyed **cardinality-aware** (resolves the multi-valued-relation data-loss bug): a `relation → SINGLE | MULTI` registry — seeded with common relations, **default MULTI (fail-safe: never overwrite)**, one-shot local-teacher classification on first sighting (cached as a rule), owner-overridable. **SINGLE** relations (e.g. `lives_in`, `birthday`) key on `(subject, relation)` with the index-enforced one-current-row invariant (UPDATE = close-interval + insert). **MULTI** relations (e.g. `likes`, `knows`, `owns`) key on `(subject, relation, object)` so values coexist; a superseding change = invalidate-old + add-new. The A.U.D.N. decider respects cardinality. (Apply to M4-a schema/keying + M4-b decider at finalization.)
+
+### Refinement (2026-06-21, cross-store provenance) — typed source reference
+Resolves the open question "does a document-sourced fact point back to its source chunk, or bottom out at a
+conversational turn?" (status.md; surfaced by reaction E5). **Decision: generalize fact provenance from the
+turn-only `source_turn_id` to a typed logical source reference** — `source_kind ∈ {turn, document, module}`
++ `source_ref` (the id within that source: an `episodes.turn_id`, an M3 knowledge **chunk_id** (doc-level
+fallback if chunk ids aren't stable), or a module record id e.g. a Finance `txn_id`). One provenance axis,
+polymorphic by kind. **Cross-store refs (document/module) resolve tool-mediated — never a cross-store DB
+join** (ADR-013 D2: a `document` ref resolves via the knowledge module's get-chunk tool, a `module` ref via
+that module's tool), preserving the M2 scope wall. This serves **every** module→Memory push (the audit's
+X-cut #3), not only documents, and gives the owner a real "says who? → here is the exact source" trail for
+non-conversational facts. **Applied as part of the M4-b module-push amendment that ADR-021 already requires**
+(M4-a `facts` schema: replace bare `source_turn_id` with `source_kind`/`source_ref`, migrating existing
+turn rows to `kind="turn"`; M4-b write path + `MemoryStore.add_fact` carry the typed ref; the owner view in
+M4-c-2 renders it). No new build item — it shapes an amendment already on the list. (Apply at M4 finalization /
+the ADR-021 amendment wave.)
 
 ### Refinement (2026-06-08, brain/AI research sweep) — patterns to absorb
 Memory deep-dive (`docs/research/2026-06-08-agent-memory.md`) re-confirmed **build-custom** — no framework satisfies SQLCipher-at-rest + bitemporal + small-model robustness + per-person partition together (Graphiti needs ~70B for schema-valid extraction; Mem0 OSS lacks bitemporal + at-rest encryption). Absorb three patterns:
