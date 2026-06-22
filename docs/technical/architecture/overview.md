@@ -289,8 +289,11 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [014](../adr/ADR-014-vision-build-assistant.md) | Vision build-assistant: overhead desk-vision *input* + guided-build subsystem (DESIGNED, deferred; capability ladder Rung 0→3) |
 | [015](../adr/ADR-015-async-port-surface.md) | Async port surface: network-I/O ports (LLM/embed/rerank/retrieve/memory) are `async`; local-disk/cached stay sync |
 | [016](../adr/ADR-016-async-tool-dispatch-surface.md) | Uniform async tool-dispatch: `ToolSpec.callable_ref` + GATE `approve` are `async` (every tool callable is `async def`) |
-| [017](../adr/ADR-017-macos-client-surface.md) | macOS client surface: native multiplatform `ArtemisMac` (Athena-style menu-bar + panel + window); Mac = another paired device |
+| [017](../adr/ADR-017-macos-client-surface.md) | ~~macOS client surface: native multiplatform `ArtemisMac`~~ — **SUPERSEDED by ADR-023** (Tauri desktop client) |
 | [021](../adr/ADR-021-cross-module-reactions.md) | Cross-module reactions: hybrid learned-first "when X→then Y" layer (3 pieces + shared reconciler + link-integrity contract); hub views carved out. (018–020 reserved for APEX-system ADRs.) |
+| [022](../adr/ADR-022-model-runtime-relook.md) | **Accepted** — Model/runtime re-architecture: reasoning routed by sensitivity — **non-sensitive → Codex-subscription** (pluggable, local/API fallback), **sensitive → local model**; **hybrid, privacy wall retained**. Local-trigger proactivity + composed harness (own spine + Pydantic AI + MCP + OTel); build-Windows-first |
+| [023](../adr/ADR-023-tauri-client-replatform.md) | Client re-platform → **Tauri** cross-platform desktop (`.exe` Windows-now → Mac later); supersedes ADR-017 |
+| [024](../adr/ADR-024-task-executor.md) | Task Executor: general multi-step plan→act→verify agent (background-default) + separate durable task-memory; reuses GATE; graduates→recipes (= M9) |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·

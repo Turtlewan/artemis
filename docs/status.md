@@ -9,7 +9,21 @@ stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skil
 backends: planning=claude | coding=deepseek-v4-flash
 coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
 
-_Last updated by planning mode:_ 2026-06-22 (**Resumed the 2026-06-21 design session → closed out.**
+_Last updated by planning mode:_ 2026-06-22 (**ARCHITECTURE RE-LOOK — hybrid cloud/local model layer ACCEPTED + UI/executor captured.**
+A long re-look (sparked by "use agent harnesses + OpenAI") → **3 new ADRs**. **ADR-024 (Accepted): Task Executor** — general
+multi-step plan→act→verify agent, background-default, +durable **task-memory** (ADR-004 unchanged), reliability spine, reuses
+tools+GATE, graduates→recipes (= M9). **ADR-023 (Accepted, supersedes ADR-017): Tauri** cross-platform desktop client — `.exe`
+on Windows now → Mac `.app` later; no Swift/Xcode; client of the M1-c gateway; unlock→passkeys+recovery-passphrase. **ADR-022
+(Accepted): model/runtime re-architecture** — reasoning routed by sensitivity: **non-sensitive → Codex on the ChatGPT subscription** (pluggable seam, local/API fallback; no per-token bill), **sensitive → local model**; proactivity
+kept via a **local always-on heartbeat that fires the cloud on-demand** (idle≈free); **embeddings stay local** (Ollama Qwen3-0.6B);
+harness = **own thin spine + Pydantic AI + MCP + OTel + borrow LangGraph checkpoint/interrupt patterns + Hermes's GEPA**; **build the
+full app on Windows first**, Mac = final host. Researched + REJECTED: full cloud pivot · build-on-Hermes/OpenClaw (immature/insecure/
+provider-banned). **Subscription path CONFIRMED VIABLE (revised):** Codex on a ChatGPT plan is OpenAI-permitted for *personal* use → **adopted as the default reasoning engine** behind a pluggable seam with local/API fallback (eyes-open: coding-oriented · 5h/weekly rate caps · undocumented backend).
+**✅ Privacy gate RESOLVED 2026-06-22 = HYBRID → ADR-022 ACCEPTED.** Sensitive (finance/health/journal/memory) reason on a
+LOCAL model (never leave the box); everything else → Codex/cloud; the sensitivity router gates it. **Privacy wall KEPT** —
+M2/ADR-003/005/006 + local sensitive-reasoner + recovery-passphrase/passkey all stay; **nothing retired** (change is additive).
+Hardware checked: RTX 5060 Ti **8 GB** + Ryzen 7700 + 32 GB → real local embed/rerank/4B + an 8B for the sensitive path; 27B = Mac-prod.)
+_Prior:_ 2026-06-22 (**Resumed the 2026-06-21 design session → closed out.**
 Committed the surface-7 + provenance closeout (885e4b6, 7 files). Resolved both parked follow-ups:
 (1) **phone-less unlock** — owner redirected the "first Tier-0 candidate" question into a real gap and
 chose a **recovery passphrase (break-glass escrow)** → **ADR-005 Refinement 2026-06-22** (Argon2id-wrapped
@@ -227,6 +241,16 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **✅ RESOLVED 2026-06-22 — privacy-routing policy = HYBRID → ADR-022 ACCEPTED.** Sensitive tasks (finance/health/journal/
+  memory) reason on a **LOCAL** model and never leave the box; everything else → **Codex/cloud subscription**; the sensitivity
+  router gates it. **Privacy wall KEPT** — M2/ADR-003/005/006 + the local sensitive-reasoner + recovery-passphrase/passkey all
+  stay in force; **nothing retired** (net change is additive — a cloud path for the non-sensitive surface). **Remaining:** model
+  expected usage vs the Codex 5h/weekly rate caps (+ fallback API cost) · owner runs `codex login` + `codex exec` to confirm the
+  subscription path on their plan.
+- **🟢 NEW (2026-06-22) — open follow-ups from the re-look (ADR-022 §Parked):** (a) model a real monthly API cost for the
+  local-trigger + on-demand-cloud design; (b) the **constrained-decoding × Pydantic AI** integration check on Windows/Ollama
+  (does Pydantic AI wrap or fight Outlines guaranteed-valid output from a local 4B); (c) **first-hand Hermes repo read** to
+  extract the GEPA self-improving-skill + layered-memory specifics for the recipe system (borrow, not build-on).
 - **✅ RESOLVED 2026-06-22 — `uv` dev-deps migration → MIGRATE (own spec).** Owner chose to migrate regardless of
   work, "just ensure it is clean." Mapping the blast radius showed it's tighter than feared: the apex-python Verification
   Recipe **already** prescribes `[dependency-groups].dev` + bare `uv sync` (impl.md lines 24–25/96/119) and the RUNBOOK
