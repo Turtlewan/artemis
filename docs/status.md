@@ -6,8 +6,9 @@ token_profile: lean
 autonomy_level: L3
 specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults applied 2026-06-08
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
-backends: planning=claude | coding=deepseek-v4-flash
-coder_tier_policy: split   # tier-aware coding (ADR-019): planning tags specs coder_tier + emits a Build plan; toggle Flash↔Pro at coding via apex-code pro/flash (Phase 0 toggle Mac-gated — manual ANTHROPIC_MODEL switch meanwhile)
+backends: planning=claude | coding=codex/gpt-5.5   # ADR-026: Codex CLI is the Artemis-core build coder (was deepseek-v4-flash). DeepSeek/Claude-coding remain available APEX modes but non-default. Build host = Windows/WSL2 now (ADR-022); Mini = final host + HW-gated tails.
+coder_tier_policy: retired   # ADR-026: Codex is single-model — coder_tier flash/pro tags on specs are vestigial/ignored; cross_model_review now default-satisfied (Claude plans+reviews → Codex builds = cross-family). Build driver = docs/bring-up/CODEX-BUILD-RUNBOOK.md (per-spec, outside apex-code).
+coder_models: [flash, pro, codex]   # per-spec coder menu (apex-plan model-routing). codex added 2026-06-22 (ADR-026) for the Codex test-build. A spec's `coder_model: <m>` frontmatter pins the WHOLE spec to one coder, bypassing per-task routing.
 
 _Last updated by planning mode:_ 2026-06-22 (**SENSITIVE-HANDLING REFINED → ADR-022 Refinement.** Resumed the scope-out
 checkpoint; owner pressure-tested the hybrid and **LOCKED an upgraded version (phased), REJECTING full scope-out** (too blunt
