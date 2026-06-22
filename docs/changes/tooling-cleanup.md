@@ -13,6 +13,7 @@ coder_tier: flash
 
 <!-- A spec is an EXECUTION SCRIPT, not a design doc. DeepSeek executes literally. -->
 <!-- Split rule: 7 distinct files touched but ONE logical phase — Task 2 is a single zero-judgment `ruff format .` command, not per-file logic. Kept as one spec deliberately. -->
+<!-- BUILD ORDER: assumes uv-dependency-groups-migration is applied (dev tools in [dependency-groups]); bare `uv sync` installs them. -->
 
 ## Assumptions
 - The `VectorStore` Protocol (`src/artemis/ports/retrieval.py:40-55`) already declares `add(scope: Scope, ids: Sequence[str], vectors: Sequence[Vector], metadata: Sequence[Mapping[str, object]]) -> None`. The gap is that `InMemoryToolIndex.add` narrows these to `list`/`dict`. → impact: Stop (re-read both files before editing; the fix only widens the index, never the protocol).
@@ -82,7 +83,7 @@ No hand-edits. The `ruff format .` command in Task 2 reformats the 5 drift files
 
 ## Commands to run
 ```bash
-uv sync --all-extras
+uv sync
 # Task 1 edits (index.py + test_manifest_registry.py), then:
 uv run --frozen ruff format .          # Task 2
 uv run --frozen ruff check .
