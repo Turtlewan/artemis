@@ -19,6 +19,11 @@ you supervise each spec._
   `uv sync --all-extras` **once** before starting; after spec 1 (the PEP 735 migration) bare
   `uv sync` installs them.
 
+## Standing rules — `AGENTS.md` (repo root)
+Codex auto-loads `AGENTS.md` from the repo root into every session. It holds the build rules
+(surgical scope, tests-are-the-contract, never commit/push, stop-and-ask, verify commands) so the
+driving prompt stays short. Added 2026-06-22. Edit it, not each prompt, to change standing behaviour.
+
 ## Important — sandbox mode
 
 Building needs **write + command-exec**, which is the *opposite* of how Artemis *uses* Codex at
@@ -87,6 +92,32 @@ End commit messages with the project's Co-Authored-By trailer. **Never push to m
 push to a branch + PR if you push at all). Then move the spec to `docs/changes/done/`.
 
 ### 4. Advance to the next spec.
+
+## Autonomous one-shot mode (alternative to per-spec)
+The per-spec procedure above is the supervised default. To build the whole batch in one go (Codex
+walks all 5 in dependency order, verifying each before the next), launch interactively so you can
+watch, then give it the batch prompt. `AGENTS.md` supplies the rules; commits stay owner-controlled.
+
+```
+codex --sandbox workspace-write -m gpt-5.5
+```
+Prompt:
+```
+Build these 5 specs in this exact order, each fully green before starting the next:
+1. docs/changes/uv-dependency-groups-migration.md
+2. docs/changes/tooling-cleanup.md
+3. docs/changes/codex-model-adapter.md
+4. docs/changes/composite-model-routing.md
+5. docs/changes/brain-sensitivity-routing.md
+
+For each spec: implement only the files it lists, run its Commands to run, make every
+Acceptance criterion pass, and fix the code (never the tests) until green. Follow AGENTS.md.
+Do NOT commit and do NOT push at any point. After all 5 are green, show me the full
+`git diff --stat` and a per-spec summary. If any spec's acceptance criteria can't be met
+as written, stop and tell me which one and why — don't skip ahead.
+```
+Trade-off vs supervised: no human gate between specs, so you review the full diff + commit per-spec
+at the end instead of between each. A spec that can't meet its AC surfaces as a stop-and-report.
 
 ## Scope & safety rules
 
