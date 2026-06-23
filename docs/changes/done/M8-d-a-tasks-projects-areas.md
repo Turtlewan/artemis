@@ -371,3 +371,20 @@ Productivity scale is hundreds–low thousands of tasks. No LanceDB, no vector i
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: Schema DDL (7 tables, indexes, StrEnum constants, idempotent create_schema)
+- [x] Task 2: Repository (areas/projects/tasks/subtasks/suggestions CRUD + recurrence engine)
+- [x] Task 3: ProductivityStore (lazy keyed _connect via sqlcipher_open seam, thin delegation)
+- [x] Task 4: Tool callables (30 async ToolSpec callables, init_tools store-injection seam)
+- [x] Task 5: ModuleManifest (productivity_manifest → 30 tools, OWNER_PRIVATE, no hooks)
+- [ ] Task 6: GATED on-hardware (real keyed SQLCipher open) — skipped, needs the Mini
+- [x] Task 7: Tests (tests/test_productivity_core.py, +11 tests)
+
+**Built by Codex (gpt-5.5) via `codex exec`. Independently verified green: ruff format+check clean, mypy clean (88 src files), pytest 227 passed (+11 from 216 baseline).**
+
+**Deviations from spec (pre-approved reality-adaptations):**
+1. Stale `/Users/artemis-build/artemis/` path prefixes → repo-relative (cwd).
+2. `_connect()` mirrors `PendingActionStore._connect`; the spec's `try/except ImportError` off-hardware fallback was dropped as unreachable — `sqlcipher_open` is itself the dev-stub seam (plain sqlite3 off-hardware, never raises ImportError). `PRAGMA foreign_keys = ON` placed at the top of `create_schema` (so direct-repo tests get FK enforcement) and kept in `_connect`.
+3. **Entity GOAL interface fiction:** the live `EntityRepository.resolve_or_create_entity(name, entity_type, *, external_ref=None) -> str` has no `entity_id` kwarg and returns `str` (not `EntityRef`). Real wiring is M4-d (deferred); this spec only ever passes a fake. Adapted: `create_project`'s `entity_repo` is typed against a narrow `GoalEntityRepo` Protocol defined in `repository.py` (`resolve_or_create_entity(*, name, entity_type, entity_id) -> EntityRef`), not the concrete class. Test supplies a `FakeEntityRepository`. Flag for M4-d: the real eager-GOAL wiring must reconcile this signature gap.
+4. `now_iso()` defined locally (timezone-aware) rather than importing memory's — avoids cross-module coupling.
+5. Doc-table task (data-model.md) left untouched — out of Files-to-Change scope.
