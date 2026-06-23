@@ -137,4 +137,11 @@ The pass is **async/batched off the interactive turn** (ADR-004) — the episodi
 - [ ] (GATED, on Mini) Task 6: A.U.D.N. eval runs over the labeled set; op-accuracy + confusion matrix + extractor-model go/no-go recorded → verify in handoff.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 extraction.py (FactExtractor grammar-constrained + ExtractedFact + FakeExtractor)
+- [x] Task 2 decide.py (AudnDecider ADD/UPDATE/DELETE/NOOP + AudnDecision/AudnOp + FakeDecider)
+- [x] Task 3 write_path.py (MemoryWritePath extract→match→decide→apply + MemoryWriteQueue, degrade-don't-crash, episodic-first)
+- [x] Task 4 memory/__init__.py re-exports + `build_write_path` factory
+- [x] Task 5 tests/test_memory_write_path.py
+- [ ] Task 6 A.U.D.N. accuracy eval — GATED on-Mini (real served model)
+- Verify: 197 passed · ruff + mypy clean · scope = extraction/decide/write_path (new) + __init__.py (Task 4) + test
+- DEVIATIONS (in-place adaptations): (1) `build_write_path(repo, embedder, model)` — Task 4 typed it `(store: SqliteMemoryStore, model)` but no SqliteMemoryStore/engine.py/store.py exist in the reduced build; built from the live BitemporalRepository + embedder instead (same wiring intent); (2) test fixture mirrors tests/test_memory_bitemporal.py (in-memory sqlite3 + sqlite-vec + BitemporalRepository) — the spec's open_memory_db/SqliteMemoryStore references are stale.
