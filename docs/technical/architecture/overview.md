@@ -292,8 +292,11 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [017](../adr/ADR-017-macos-client-surface.md) | ~~macOS client surface: native multiplatform `ArtemisMac`~~ — **SUPERSEDED by ADR-023** (Tauri desktop client) |
 | [021](../adr/ADR-021-cross-module-reactions.md) | Cross-module reactions: hybrid learned-first "when X→then Y" layer (3 pieces + shared reconciler + link-integrity contract); hub views carved out. (018–020 reserved for APEX-system ADRs.) |
 | [022](../adr/ADR-022-model-runtime-relook.md) | **Accepted** — Model/runtime re-architecture: reasoning routed by sensitivity — **non-sensitive → Codex-subscription** (pluggable, local/API fallback), **sensitive → local model**; **hybrid, privacy wall retained**. Local-trigger proactivity + composed harness (own spine + Pydantic AI + MCP + OTel); build-Windows-first |
-| [023](../adr/ADR-023-tauri-client-replatform.md) | Client re-platform → **Tauri** cross-platform desktop (`.exe` Windows-now → Mac later); supersedes ADR-017 |
+| [023](../adr/ADR-023-tauri-client-replatform.md) | Client re-platform → **Tauri** cross-platform desktop (`.exe` Windows-now → Mac later); supersedes ADR-017. **(Navigation shell superseded by ADR-028; platform choice stands.)** |
 | [024](../adr/ADR-024-task-executor.md) | Task Executor: general multi-step plan→act→verify agent (background-default) + separate durable task-memory; reuses GATE; graduates→recipes (= M9) |
+| [025](../adr/ADR-025-tauri-client-auth-wall-reroot.md) | Tauri client auth/wall re-root: unlock = **custom P-256 challenge-response + native hardware sealing** (Windows TPM/Hello · macOS SE/Touch ID), reusing the M2-a verifier; supersedes ADR-023 §4; recovery passphrase unchanged |
+| [026](../adr/ADR-026-codex-build-coder.md) | Build coder = **Codex CLI (`gpt-5.5`)** for Artemis core (supersedes DeepSeek); coder-tier policy retired; `cross_model_review` default-satisfied (Claude plans/reviews → Codex builds). (027 = APEX-system ADR.) |
+| [028](../adr/ADR-028-client-spatial-navigation.md) | **Client navigation = spatial "travel-zoom" command-map** (pan + scroll-zoom + travel-then-expand; brain core; floating Ask pop-up; photo background) — supersedes the Review/Chat/Status tab-shell. Mockup: `docs/research/mockups/travel-zoom-workspace.html` |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·

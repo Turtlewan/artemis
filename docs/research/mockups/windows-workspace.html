@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis — windowed workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --p:#5ec8ff; --a:#ffc26b; --ok:#67e0a3; --text:#eef7ff; --muted:#a8bccb;
+    /* more transparent glass so the photo shows through */
+    --glass:rgba(16,28,44,.28); --glass2:rgba(16,28,44,.16); --hair:rgba(175,215,255,.22);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{color:var(--text);font-family:'Inter',system-ui,'Segoe UI',sans-serif;height:100%;background:#070d16}
+
+  /* photographic background — brighter, lighter overlay (more visible) */
+  .bg{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:brightness(.7) saturate(1.08) blur(1px);transition:opacity .5s,background-image .5s}
+  .bg-grad{position:fixed;inset:0;z-index:0;pointer-events:none;background:
+    radial-gradient(1200px 820px at 50% -8%, rgba(40,90,120,.16), transparent 60%),
+    radial-gradient(900px 700px at 88% 112%, rgba(50,30,80,.16), transparent 55%),
+    linear-gradient(180deg, rgba(7,13,22,.18), rgba(7,13,22,.44) 72%, rgba(7,13,22,.6))}
+  .app{position:fixed;inset:0;z-index:1}
+
+  /* top bar */
+  .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;padding:13px 20px;z-index:50}
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand svg{width:23px;height:23px;filter:drop-shadow(0 0 6px var(--p))}
+  .brand b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.2em;font-size:12.5px}
+  .top .sp{flex:1}
+  .ghost{font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);backdrop-filter:blur(8px);transition:.16s}
+  .ghost:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .bgpick{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--hair);border-radius:11px;background:rgba(8,14,22,.4);backdrop-filter:blur(10px)}
+  .bgpick .lab{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .sw{width:18px;height:18px;border-radius:6px;cursor:pointer;border:1px solid var(--hair);background-size:cover;background-position:center}
+  .sw.on{box-shadow:0 0 0 2px var(--p)}.sw.void{background:linear-gradient(135deg,#0a1320,#111a2b)}
+  .stat{display:flex;align-items:center;gap:12px}
+  .s{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--p);box-shadow:0 0 7px var(--p)}
+  .dot.a{background:var(--a);box-shadow:0 0 7px var(--a)}.dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+
+  /* ---------- central pulsing core (placeholder — refine later) ---------- */
+  .core{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);width:220px;height:220px;z-index:2;display:grid;place-items:center;pointer-events:none}
+  .core .orb{position:absolute;width:160px;height:160px;border-radius:50%;filter:blur(2px);
+    background:radial-gradient(circle at 50% 42%, color-mix(in srgb,var(--p) 34%,transparent), transparent 68%);animation:pulse 3.4s ease-in-out infinite}
+  .core .ring{position:absolute;width:140px;height:140px;border-radius:50%;border:1px solid color-mix(in srgb,var(--p) 32%,transparent);animation:ping 3.4s ease-out infinite}
+  .core .ring.b{animation-delay:1.7s}
+  .core .mk{position:relative;width:74px;height:74px;filter:drop-shadow(0 0 14px var(--p));animation:spin 46s linear infinite}
+  .core .mk svg{width:74px;height:74px}
+
+  /* ---------- windows ---------- */
+  .desk{position:absolute;inset:0;z-index:5}
+  .win{position:absolute;display:flex;flex-direction:column;min-width:170px;min-height:90px;border-radius:14px;overflow:hidden;
+    background:linear-gradient(160deg,var(--glass),var(--glass2));backdrop-filter:blur(26px) saturate(130%);-webkit-backdrop-filter:blur(26px) saturate(130%);
+    border:1px solid var(--hair);box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 30px 80px -34px #000;transition:box-shadow .2s,border-color .2s}
+  .win.focus{border-color:color-mix(in srgb,var(--p) 32%,transparent);box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 36px 90px -32px #000,0 0 40px -16px var(--p)}
+  .win::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;background:linear-gradient(162deg,rgba(255,255,255,.10),transparent 30%);mix-blend-mode:screen}
+  .ti{display:flex;align-items:center;gap:10px;padding:10px 11px;border-bottom:1px solid var(--hair);cursor:grab;user-select:none;position:relative;z-index:2}
+  .ti.drag{cursor:grabbing}
+  .ti .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;background:color-mix(in srgb,var(--p) 13%,transparent);border:1px solid color-mix(in srgb,var(--p) 24%,transparent)}
+  .ti .ic svg{width:15px;height:15px;stroke:var(--p);fill:none;stroke-width:1.7}
+  .ti h3{font-family:'Space Grotesk';font-weight:500;font-size:13.5px;letter-spacing:.01em}
+  .ti .count{font-family:'Space Grotesk';font-size:10.5px;color:var(--muted)}
+  .ti .soon{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:2px 6px}
+  .ti .ctrls{margin-left:auto;display:flex;gap:6px}
+  .cbtn{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;cursor:pointer;border:1px solid var(--hair);background:rgba(255,255,255,.06);transition:.15s}
+  .cbtn svg{width:9px;height:9px;stroke:#0a121c;fill:none;stroke-width:2.4;opacity:0;transition:.15s}
+  .cbtn.min:hover{background:var(--a)}.cbtn.cls:hover{background:#ff7a8a}
+  .cbtn:hover svg{opacity:1}
+  .ct{flex:1;overflow:auto;padding:10px 13px;position:relative;z-index:2}
+  .grip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:3}
+  .grip::after{content:"";position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-right:2px solid var(--hair);border-bottom:2px solid var(--hair)}
+
+  /* content bits (light) */
+  .tag{font-family:'Space Grotesk';font-size:9.5px;letter-spacing:.03em;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .tag.a{color:var(--a);border-color:color-mix(in srgb,var(--a) 38%,transparent)}
+  .tag.p{color:var(--p);border-color:color-mix(in srgb,var(--p) 38%,transparent)}
+  /* glanceable summary (list-type windows) */
+  .sum{display:flex;align-items:baseline;gap:9px;padding:2px 0}
+  .sum .cnt{font-family:'Space Grotesk';font-weight:500;font-size:20px;line-height:1;color:#fff}
+  .sum .cnt.a{color:var(--a)}
+  .sum .cl{font-size:12px;color:var(--muted);line-height:1.3}
+  /* fixed metrics (diet & fitness etc.) */
+  .metrics{display:flex;gap:8px;padding:2px 0}
+  .metrics .m{flex:1;text-align:center;border:1px solid var(--hair);border-radius:9px;padding:7px 3px;background:rgba(120,180,255,.04)}
+  .metrics .m b{font-family:'Space Grotesk';font-weight:500;font-size:16px;display:block;color:#eaf7ff}
+  .metrics .m span{font-size:8.5px;color:var(--muted);letter-spacing:.08em}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--hair);font-size:12.8px;color:#dceaf4}
+  .row:first-child{border-top:0}
+  .row .t{flex:1;min-width:0}
+  .row .tm{font-family:'Space Grotesk';font-size:11px;color:var(--muted);flex:0 0 auto}
+  .row.now{background:color-mix(in srgb,var(--p) 12%,transparent);margin:2px -7px;padding:8px 7px;border-radius:9px;border-top:0;box-shadow:0 0 0 1px color-mix(in srgb,var(--p) 20%,transparent) inset}
+  .chk{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--hair);flex:0 0 auto;display:grid;place-items:center}
+  .chk svg{width:10px;height:10px;stroke:var(--ok);fill:none;stroke-width:2.4;opacity:0}
+  .amt{font-family:'Space Grotesk';font-size:12.5px;flex:0 0 auto}.amt.in{color:var(--ok)}.amt.out{color:#e9b6bd}
+  .ent{display:flex;align-items:center;gap:9px;border:1px solid color-mix(in srgb,var(--p) 24%,transparent);border-radius:10px;padding:9px 10px;margin-bottom:4px;background:color-mix(in srgb,var(--p) 8%,transparent)}
+  .ent .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#0a121c;background:var(--p);flex:0 0 auto}
+  .ent .nm{font-size:13px;font-weight:600}.ent .rel{color:var(--muted);font-size:11px}
+
+  /* chat window */
+  .cwin .ct{display:flex;flex-direction:column;gap:11px}
+  .msg{max-width:84%}.msg.me{align-self:flex-end}
+  .bub{display:inline-block;border-radius:13px;padding:9px 11px;font-size:12.8px;line-height:1.5}
+  .me .bub{background:color-mix(in srgb,var(--p) 16%,transparent);border:1px solid color-mix(in srgb,var(--p) 26%,transparent)}
+  .ai .bub{background:rgba(120,180,255,.07);border:1px solid var(--hair);color:#dcebf5}
+  .ai .ft2{margin-top:5px;font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);display:flex;gap:8px}.ai .ft2 .e{color:var(--p)}
+  .caret{display:inline-block;width:2px;height:14px;margin-left:2px;vertical-align:-2px;background:var(--p);box-shadow:0 0 8px var(--p);animation:blink 1.1s steps(1) infinite}
+  .ask{display:flex;align-items:center;gap:9px;margin:0 13px 12px;border:1px solid var(--hair);border-radius:11px;padding:9px 11px;background:rgba(120,180,255,.06)}
+  .ask .ph{flex:1;font-family:'Space Grotesk';font-size:13px;color:#a8bdcc}.ask kbd{font-family:'Space Grotesk';font-size:10px;color:var(--muted);border:1px solid var(--hair);border-radius:6px;padding:2px 6px}
+
+  /* dock */
+  .dock{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:6px;padding:5px 8px;border-radius:13px;z-index:40;
+    background:linear-gradient(160deg,var(--glass),var(--glass2));backdrop-filter:blur(24px) saturate(130%);border:1px solid var(--hair);box-shadow:0 20px 50px -30px #000}
+  .dk{position:relative;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;cursor:pointer;background:color-mix(in srgb,var(--p) 9%,transparent);border:1px solid var(--hair);transition:.16s}
+  .dk:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--p) 38%,transparent)}
+  .dk svg{width:16px;height:16px;stroke:var(--p);fill:none;stroke-width:1.7}
+  .dk .ind{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);width:3.5px;height:3.5px;border-radius:50%;background:var(--p);box-shadow:0 0 6px var(--p);opacity:0;transition:.16s}
+  .dk.open .ind{opacity:1}
+  .dk .tip{position:absolute;bottom:42px;left:50%;transform:translateX(-50%);font-family:'Space Grotesk';font-size:10px;color:#dfeefb;background:rgba(8,14,22,.85);border:1px solid var(--hair);border-radius:7px;padding:3px 8px;white-space:nowrap;opacity:0;pointer-events:none;transition:.14s}
+  .dk:hover .tip{opacity:1}
+
+  /* ---------- Ask button (summons the chat) ---------- */
+  .ask-btn{display:flex;align-items:center;gap:8px;font-family:'Space Grotesk';font-size:12px;color:#eaf7ff;
+    border:1px solid color-mix(in srgb,var(--p) 42%,transparent);border-radius:10px;padding:7px 13px;cursor:pointer;
+    background:color-mix(in srgb,var(--p) 15%,transparent);backdrop-filter:blur(10px);box-shadow:0 0 18px -8px var(--p);transition:.16s}
+  .ask-btn:hover{background:color-mix(in srgb,var(--p) 24%,transparent)}
+  .ask-btn svg{width:16px;height:16px;filter:drop-shadow(0 0 5px var(--p))}
+  .ask-btn kbd{font-size:10px;color:var(--muted);border:1px solid var(--hair);border-radius:5px;padding:1px 5px}
+
+  /* ---------- CHAT pop-up — distinct, global, always-on-top ---------- */
+  .chat-scrim{position:fixed;inset:0;z-index:55;background:rgba(3,7,13,.38);opacity:0;pointer-events:none;transition:.25s}
+  .app.chat-on .chat-scrim{opacity:1;pointer-events:auto}
+  .chatpop{position:fixed;z-index:60;right:30px;bottom:30px;width:470px;max-width:94vw;height:520px;max-height:80vh;
+    display:flex;flex-direction:column;border-radius:22px;overflow:hidden;
+    background:linear-gradient(158deg, rgba(22,44,70,.58), rgba(13,25,42,.44));
+    backdrop-filter:blur(36px) saturate(150%);-webkit-backdrop-filter:blur(36px) saturate(150%);
+    border:1px solid color-mix(in srgb,var(--p) 40%,transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.16) inset,0 44px 120px -30px #000,0 0 64px -14px var(--p);
+    transform:translateY(22px) scale(.97);opacity:0;pointer-events:none;transition:.34s cubic-bezier(.2,.8,.2,1)}
+  .app.chat-on .chatpop{transform:none;opacity:1;pointer-events:auto}
+  .chatpop::before{content:"";position:absolute;inset:0;z-index:0;opacity:.5;pointer-events:none;
+    background-image:linear-gradient(rgba(94,200,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(94,200,255,.06) 1px,transparent 1px);
+    background-size:24px 24px;mask:radial-gradient(120% 70% at 50% 0,#000,transparent 72%)}
+  .chatpop::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;background:linear-gradient(160deg,rgba(255,255,255,.16),transparent 30%);mix-blend-mode:screen}
+  .cpop-head{position:relative;z-index:2;display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid color-mix(in srgb,var(--p) 18%,transparent);cursor:grab;user-select:none}
+  .cpop-head.drag{cursor:grabbing}
+  .cpop-head .mk{position:relative;width:30px;height:30px;flex:0 0 auto}
+  .cpop-head .mk svg{width:30px;height:30px;filter:drop-shadow(0 0 8px var(--p))}
+  .cpop-head .mk i{position:absolute;inset:-5px;border-radius:50%;border:1px solid color-mix(in srgb,var(--p) 34%,transparent);animation:ping 3s ease-out infinite}
+  .cpop-head .ti2{flex:1}
+  .cpop-head .ti2 b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.18em;font-size:13px;display:block}
+  .cpop-head .ti2 small{font-family:'Space Grotesk';font-size:10px;color:var(--p);letter-spacing:.05em}
+  .cpop-head .x{cursor:pointer;color:var(--muted);width:28px;height:28px;display:grid;place-items:center;border-radius:8px;font-size:13px}
+  .cpop-head .x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+  .cpop-body{position:relative;z-index:2;flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:13px}
+  .cpop-foot{position:relative;z-index:2;padding:0 14px 14px}
+  .cpop-ask{display:flex;align-items:center;gap:11px;border:1px solid color-mix(in srgb,var(--p) 28%,transparent);border-radius:14px;padding:12px 14px;background:rgba(120,180,255,.07)}
+  .cpop-ask .mk2 svg{width:20px;height:20px;filter:drop-shadow(0 0 5px var(--p))}
+  .cpop-ask .ph{flex:1;font-family:'Space Grotesk';font-size:15px;color:#aec3d2}
+  .cpop-ask kbd{font-size:10.5px;color:var(--muted);border:1px solid var(--hair);border-radius:6px;padding:2px 6px}
+  .cpop-engines{display:flex;gap:8px;margin-top:10px;padding-left:2px}
+  .cpop-engines span{font-family:'Space Grotesk';font-size:10px;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:4px 9px;display:flex;gap:6px;align-items:center}
+
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.1);opacity:1}}
+  @keyframes ping{0%{transform:scale(.65);opacity:.55}80%,100%{transform:scale(1.7);opacity:0}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="bg-grad"></div>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg><b>ARTEMIS</b></div>
+    <div class="sp"></div>
+    <button class="ghost" onclick="arrange()">Tidy windows</button>
+    <div class="bgpick"><span class="lab">Bg</span>
+      <div class="sw on" data-seed="peaks"></div><div class="sw" data-seed="coast"></div><div class="sw" data-seed="nebula"></div><div class="sw void" data-seed="void"></div>
+    </div>
+    <div class="stat">
+      <span class="s"><span class="dot"></span> Winter·afternoon</span>
+      <span class="s"><span class="dot ok"></span> Connected</span>
+      <span class="s"><span class="dot"></span> Unlocked</span>
+    </div>
+    <button class="ask-btn" onclick="toggleChat()"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg> Ask Artemis <kbd>⌥␣</kbd></button>
+  </div>
+
+  <!-- central pulsing brain (placeholder) -->
+  <div class="core">
+    <span class="orb"></span><span class="ring"></span><span class="ring b"></span>
+    <span class="mk"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.4"><circle cx="16" cy="16" r="9"/><circle cx="16" cy="16" r="13" opacity=".5"/><path d="M16 3a13 13 0 0 0 0 26" stroke-linecap="round"/><circle cx="16" cy="16" r="2.6" fill="#5ec8ff" stroke="none"/></svg></span>
+  </div>
+
+  <div class="desk" id="desk"></div>
+  <div class="dock" id="dock"></div>
+
+  <!-- global chat pop-up — distinct from the domain windows -->
+  <div class="chat-scrim" onclick="closeChat()"></div>
+  <div class="chatpop" id="chatpop">
+    <div class="cpop-head" id="cpopHead">
+      <div class="mk"><i></i><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.5"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.4" fill="#5ec8ff" stroke="none"/></svg></div>
+      <div class="ti2"><b>ARTEMIS</b><small>● listening · local</small></div>
+      <div class="x" onclick="closeChat()">✕</div>
+    </div>
+    <div class="cpop-body">
+      <div class="msg me"><div class="bub">What did Ashley say about the Penang trip?</div></div>
+      <div class="msg ai"><div class="bub">She's free <b>12–13 July</b> and asked: fly Friday evening or Saturday morning? Debby might join<span class="caret"></span></div><div class="ft2"><span>memory recall</span><span>· gmail.search</span><span class="e">· local</span></div></div>
+    </div>
+    <div class="cpop-foot">
+      <div class="cpop-ask"><span class="mk2"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg></span><span class="ph">Ask Artemis…</span><kbd>⏎</kbd></div>
+      <div class="cpop-engines"><span><span class="dot"></span> local 8B</span><span><span class="dot a"></span> codex · 4.1k</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON={
+  schedule:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',
+  tasks:'<path d="M5 13l4 4L19 7"/><path d="M5 7h6"/>',
+  finance:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 10h4a1.6 1.6 0 0 1 0 3.2H10a1.6 1.6 0 0 0 0 3.2h4.5"/>',
+  fitness:'<path d="M3 12h3l2 6 4-13 3 9 2-4h4"/>',
+  people:'<circle cx="9" cy="8" r="3"/><path d="M3 19v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1"/><path d="M16 5.6a3 3 0 0 1 0 5.4M21 19v-1a4 4 0 0 0-3-3.9"/>',
+  travel:'<path d="M12 21s7-6.5 7-11a7 7 0 0 0-14 0c0 4.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  review:'<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  memory:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2 2M16.4 16.4l2 2"/>',
+  email:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'
+};
+const chkoff='<div class="chk"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></div>';
+
+/* lighter, glanceable content per window (detail comes later on focus) */
+const WINS={
+  schedule:{title:'Schedule',count:'',x:70,y:92,w:198,h:108,rot:-1.5,open:true,
+    body:`<div class="sum"><span class="cnt">3</span><span class="cl">events today</span></div>`},
+  tasks:{title:'Tasks',count:'',x:476,y:74,w:206,h:108,rot:1.2,open:true,
+    body:`<div class="sum"><span class="cnt">5</span><span class="cl">open · 2 due today</span></div>`},
+  people:{title:'People',count:'',x:96,y:332,w:196,h:108,rot:1.4,open:true,
+    body:`<div class="sum"><span class="cnt">2</span><span class="cl">people to brief</span></div>`},
+  fitness:{title:'Diet & Fitness',count:'',x:1004,y:152,w:276,h:120,rot:-1.2,open:true,
+    body:`<div class="metrics"><div class="m"><b>6.2k</b><span>STEPS</span></div><div class="m"><b>1,480</b><span>KCAL</span></div><div class="m"><b>5km</b><span>RUN 18:30</span></div></div>`},
+  finance:{title:'Finance',count:'',x:312,y:520,w:212,h:108,rot:1,open:true,
+    body:`<div class="sum"><span class="cnt a">2</span><span class="cl">bills due this week</span></div>`},
+  travel:{title:'Travel',count:'',x:984,y:470,w:198,h:108,rot:-1.3,open:true,
+    body:`<div class="sum"><span class="cnt">1</span><span class="cl">trip planned</span></div>`},
+  review:{title:'Review',count:'',x:440,y:300,w:206,h:108,rot:0,open:false,
+    body:`<div class="sum"><span class="cnt a">2</span><span class="cl">waiting for you</span></div>`},
+  memory:{title:'Memory',count:'',x:520,y:340,w:214,h:108,rot:0,open:false,
+    body:`<div class="sum"><span class="cnt">1.2k</span><span class="cl">things remembered</span></div>`},
+  email:{title:'Email',count:'',x:840,y:330,w:206,h:108,rot:0,open:false,
+    body:`<div class="sum"><span class="cnt">4</span><span class="cl">unread · 1 needs you</span></div>`}
+};
+const ORDER=['schedule','tasks','finance','fitness','people','travel','review','memory','email'];
+
+const desk=document.getElementById('desk'), dock=document.getElementById('dock');
+let z=10;
+function build(){
+  desk.innerHTML='';
+  ORDER.forEach(id=>{
+    const c=WINS[id];
+    const w=document.createElement('div'); w.className='win '+(c.cls||''); w.id='win-'+id;
+    w.style.cssText=`left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px;z-index:${++z};display:${c.open?'flex':'none'}`;
+    w.innerHTML=`<div class="ti"><div class="ic"><svg viewBox="0 0 24 24">${ICON[id]}</svg></div>
+        <h3>${c.title}</h3>${c.count?`<span class="count">${c.count}</span>`:''}${c.soon?'<span class="soon">soon</span>':''}
+        <div class="ctrls"><div class="cbtn min" title="Minimise"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></div>
+          <div class="cbtn cls" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div></div></div>
+      <div class="ct">${c.body}</div>
+      ${c.askbar?'<div class="ask"><span class="ph">Ask Artemis…</span><kbd>⏎</kbd></div>':''}
+      <div class="grip"></div>`;
+    desk.appendChild(w);
+    wire(w,id);
+  });
+  buildDock(); refreshDock();
+}
+function focusWin(w){document.querySelectorAll('.win').forEach(x=>x.classList.remove('focus'));w.classList.add('focus');w.style.zIndex=++z;}
+function wire(w,id){
+  const ti=w.querySelector('.ti');
+  w.addEventListener('pointerdown',()=>focusWin(w),true);
+  let d=null;
+  ti.addEventListener('pointerdown',e=>{if(e.target.closest('.cbtn'))return;d={x:e.clientX,y:e.clientY,l:w.offsetLeft,t:w.offsetTop};ti.classList.add('drag');ti.setPointerCapture(e.pointerId);});
+  ti.addEventListener('pointermove',e=>{if(!d)return;w.style.left=Math.max(0,d.l+e.clientX-d.x)+'px';w.style.top=Math.max(52,d.t+e.clientY-d.y)+'px';});
+  ti.addEventListener('pointerup',()=>{d=null;ti.classList.remove('drag');});
+  w.querySelector('.cbtn.min').onclick=e=>{e.stopPropagation();w.style.display='none';};
+  w.querySelector('.cbtn.cls').onclick=e=>{e.stopPropagation();w.style.display='none';WINS[id].open=false;refreshDock();};
+  const g=w.querySelector('.grip');let r=null;
+  g.addEventListener('pointerdown',e=>{e.stopPropagation();r={x:e.clientX,y:e.clientY,w:w.offsetWidth,h:w.offsetHeight};g.setPointerCapture(e.pointerId);});
+  g.addEventListener('pointermove',e=>{if(!r)return;w.style.width=Math.max(230,r.w+e.clientX-r.x)+'px';w.style.height=Math.max(130,r.h+e.clientY-r.y)+'px';});
+  g.addEventListener('pointerup',()=>{r=null;});
+}
+function buildDock(){
+  dock.innerHTML='';
+  ORDER.forEach(id=>{
+    const c=WINS[id];
+    const d=document.createElement('div'); d.className='dk'; d.id='dk-'+id;
+    d.innerHTML=`<svg viewBox="0 0 24 24">${ICON[id]}</svg><div class="ind"></div><div class="tip">${c.title}</div>`;
+    d.onclick=()=>{const w=document.getElementById('win-'+id);w.style.display='flex';WINS[id].open=true;focusWin(w);refreshDock();};
+    dock.appendChild(d);
+  });
+}
+function refreshDock(){ORDER.forEach(id=>{const w=document.getElementById('win-'+id);document.getElementById('dk-'+id).classList.toggle('open',w&&w.style.display!=='none');});}
+function arrange(){ORDER.forEach(id=>{const c=WINS[id],w=document.getElementById('win-'+id);w.style.left=c.x+'px';w.style.top=c.y+'px';w.style.width=c.w+'px';w.style.height=c.h+'px';w.style.display=c.open?'flex':'none';});refreshDock();}
+
+/* background */
+const SEEDS={peaks:'artemis-peaks-7',coast:'artemis-coast-3',nebula:'artemis-nebula-9'};
+const bg=document.getElementById('bg');
+function setBg(seed){if(seed==='void'){bg.style.opacity='0';}else{bg.style.opacity='1';bg.style.backgroundImage=`url(https://picsum.photos/seed/${SEEDS[seed]}/1920/1080)`;}}
+document.querySelectorAll('.sw').forEach(s=>{if(SEEDS[s.dataset.seed])s.style.backgroundImage=`url(https://picsum.photos/seed/${SEEDS[s.dataset.seed]}/60/60)`;
+  s.onclick=()=>{document.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));s.classList.add('on');setBg(s.dataset.seed);};});
+
+/* ---- global chat pop-up ---- */
+const app=document.getElementById('app');
+function openChat(){app.classList.add('chat-on');}
+function closeChat(){app.classList.remove('chat-on');}
+function toggleChat(){app.classList.toggle('chat-on');}
+(function(){const h=document.getElementById('cpopHead'),p=document.getElementById('chatpop');let d=null;
+  h.addEventListener('pointerdown',e=>{if(e.target.closest('.x'))return;const r=p.getBoundingClientRect();
+    p.style.transition='none';p.style.left=r.left+'px';p.style.top=r.top+'px';p.style.right='auto';p.style.bottom='auto';
+    d={x:e.clientX,y:e.clientY,l:r.left,t:r.top};h.classList.add('drag');h.setPointerCapture(e.pointerId);});
+  h.addEventListener('pointermove',e=>{if(!d)return;p.style.left=Math.max(0,d.l+e.clientX-d.x)+'px';p.style.top=Math.max(52,d.t+e.clientY-d.y)+'px';});
+  h.addEventListener('pointerup',()=>{d=null;h.classList.remove('drag');});
+})();
+
+/* keys */
+addEventListener('keydown',e=>{if(e.altKey&&e.code==='Space'){e.preventDefault();toggleChat();}if(e.key==='Escape')closeChat();});
+
+build(); setBg('peaks');
+</script>
+</body>
+</html>

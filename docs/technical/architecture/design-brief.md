@@ -13,9 +13,10 @@ panels over a deep radial-gradient void, a faint tactical grid masked into the g
 glow, hairline borders, a blinking caret. Restrained, not arcade-y. Fonts: **Space Grotesk** (display /
 UI labels / numerals) + **Inter** (body). Reference: `docs/design/summon-panel-mockup.html` variant ②.
 
-## Locked — the summon panel (shape)
+## Locked — the "Ask Artemis" pop-up (shape)
 
-The primary surface is a **summon panel** (global hotkey ⌥Space), structure LOCKED:
+Per **ADR-028** the home surface is the spatial command-map (see below); this panel is the floating
+**"Ask Artemis" chat pop-up** (global hotkey ⌥Space), summonable over any view. Structure LOCKED:
 - **Brand mark** (arc-reactor-style ringed circle, stroked in the primary colour, soft drop-glow).
 - **Input line** (Space Grotesk, blinking caret) + a mode **hint** chip (`TASK` / `DIGEST` / `WIND-DOWN`…).
 - **Results list** — each row: rounded icon tile · title + subtitle · a right-aligned **engine tag**.
@@ -25,6 +26,21 @@ The primary surface is a **summon panel** (global hotkey ⌥Space), structure LO
 
 Two row colour roles drive everything: **`--p` primary** (brand, selection, most icons, glow) and
 **`--a` accent** (alerts / `review` / secondary), over a near-black **`--bg`**.
+
+## Locked — client navigation: spatial "travel-zoom" workspace (ADR-028)
+
+The home is a **pannable spatial command-map**, not tabs/pages. Domain **glance cards** sit on a large
+world plane around a central **pulsing "brain" core** (some off-screen by design). Locked behaviour:
+- **Pan** (drag) + **scroll-to-zoom** (eased, toward cursor) with **gentle rubber-band bounds**; reach any
+  domain via its card, the **dock** (complete index of domains), or the **minimap**; **Home / Esc** recenters.
+- **Open a domain** = the camera **travels across** to its card, then the card **expands open in place**
+  (shared-element morph) into a **full detail card = the top-most layer**, floating over the still-visible,
+  lightly-dimmed (~18%) map; it **collapses back into the card** on close. Transform/opacity only; pre-warm
+  the glass/blur layers so the first open isn't janky.
+- **Glance cards:** one line; number + label **baseline-aligned, vertically centred, left-aligned**. List
+  domains show a **count** ("3 events today"); fixed-metric domains (e.g. Diet & Fitness) show **fixed stat tiles**.
+- **Chat** is the Ask-Artemis pop-up above — never a domain card or a tab.
+Reference mockup (the feel = source of truth): `docs/research/mockups/travel-zoom-workspace.html`.
 
 ## Locked — ambient theming system
 
@@ -40,6 +56,9 @@ Two axes:
   reflect local weather.
 
 → **4 seasons × 4 time-states = 16 ambient palettes.** Each cell defines `--bg` / `--p` / `--a`.
+
+The home's **photographic background also rotates with the season×time state** — a curated, **bundled/local**
+image per cell (never fetched, per ADR-028); the liquid-glass panels float over it with a light dim only.
 
 ## Palette matrix
 
@@ -97,3 +116,6 @@ _(A fixed-scheme catalogue of 15 named palettes — Jarvis, Arctic, Nebula… �
   requirement (privacy/cost transparency), not decoration.
 - Do **not** add a light theme — the identity is dark-only liquid-glass.
 - Do **not** invent new seasons/time-states — the matrix is 4 × 4.
+- Do **not** let the overview scroll — the map navigates by **pan + zoom only**; glance cards never
+  content-scroll (no scrollbars inside a card). (ADR-028)
+- Do **not** make the chat a domain card or a tab — it is the floating **Ask-Artemis pop-up** (ADR-028).
