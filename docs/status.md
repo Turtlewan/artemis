@@ -273,6 +273,14 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **🟢 NEW (2026-06-23) — dev-machine local-model stack DESIGNED + specced (ready).** Ollama on the 8GB Windows box (dev
+  twin of M0-c's mlx-openai-server, both behind `roles.toml`): embedder Qwen3-Embedding-0.6B + reranker Qwen3-Reranker-0.6B
+  + responder Qwen3-4B (which **also serves as the sensitivity classifier** — decided) ≈ 4GB, all hot, no eviction at this
+  lean scope. Swaps the validation slice off FakeEmbedder/cloud-only onto **real local models** so the brain is tested for
+  real. → ready spec `docs/changes/dev-model-stack-ollama.md` (3 files: roles.toml→Ollama · `dev_chat --real` flag ·
+  `DEV-MODEL-STACK.md` runbook). Its acceptance criteria (tool-calling + structured-output through Ollama/Qwen3)
+  **empirically answer ADR-022 parked (b)**. Deferred: 8B sensitive reasoner (N/A till distilled post-Mac) · vision (M3-d) ·
+  voice (M5); non-sensitive cloud path = Codex (separate adapter).
 - **🟢 NEW (2026-06-23) — M9 Task Executor design DECIDED → ADR-024 Refinement 2026-06-23.** Supervised long-horizon
   executor fully designed (autonomy ceiling · owner per-task unattended-vs-supervised flag · plan-preview trigger ·
   plan→act→verify loop w/ deterministic-read-back verification · linear plan + reserved parallel-groups ·
