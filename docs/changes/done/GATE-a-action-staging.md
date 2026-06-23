@@ -194,4 +194,11 @@ Load-bearing invariants the build MUST honour (per ADR-012 §3 + apex-security s
 - [ ] (GATED, on Mini) Real SQLCipher keyed persistence: stage→approve round-trip with correct DEK works; wrong key fails to open; expired action not dispatched → verify recorded in handoff.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 model.py (PendingAction frozen + ActionStatus enum, validators)
+- [x] Task 2 store.py (PendingActionStore owner-private, _connect via sqlcipher_open, set_status_conditional at-most-once guard)
+- [x] Task 3 service.py (ActionStagingService stage/approve/reject/expire_due, twin dispatch-once, EXECUTING revert)
+- [x] Task 4 staging/__init__.py re-exports
+- [x] Task 5 tests/test_action_staging.py
+- [ ] Task 6 real SQLCipher keyed round-trip — GATED on-Mini
+- Verify: 216 passed · ruff + mypy --strict clean · scope = 5 spec files
+- DEVIATIONS (in-place): (1) `_connect` uses `from artemis.data.sqlcipher import sqlcipher_open` (M2-c dev-stub seam, committed 991350e) — implemented from the spec's Task-2 description since M8-a's SqlCipherTokenStore isn't built to copy; (2) async tests use the repo's `asyncio_mode=auto` convention (plain `async def`), not the spec's suggested anyio.
