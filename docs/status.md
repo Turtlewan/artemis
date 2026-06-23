@@ -10,7 +10,20 @@ backends: planning=claude | coding=codex/gpt-5.5   # ADR-026: Codex CLI is the A
 coder_tier_policy: retired   # ADR-026: Codex is single-model — coder_tier flash/pro tags on specs are vestigial/ignored; cross_model_review now default-satisfied (Claude plans+reviews → Codex builds = cross-family). Build driver = docs/bring-up/CODEX-BUILD-RUNBOOK.md (per-spec, outside apex-code).
 coder_models: [flash, pro, codex]   # per-spec coder menu (apex-plan model-routing). codex added 2026-06-22 (ADR-026) for the Codex test-build. A spec's `coder_model: <m>` frontmatter pins the WHOLE spec to one coder, bypassing per-task routing.
 
-_Last updated by planning mode:_ 2026-06-22 (**SENSITIVE-HANDLING REFINED → ADR-022 Refinement.** Resumed the scope-out
+_Last updated by planning mode:_ 2026-06-23 (**CLIENT UI DIRECTION LOCKED → ADR-028 + architecture-validation research.**
+(1) **Client navigation LOCKED = spatial "travel-zoom" command-map** — pannable map + central pulsing brain core; pan +
+eased scroll-zoom with rubber-band bounds; travel-across-then-**expand-open** (shared-element morph) as the **top-most**
+layer over a lightly-dimmed still-visible map; minimal **baseline-aligned, left, vertically-centred** glance cards (list→count,
+fixed-metric→tiles); **overview never content-scrolls**; distinct floating **Ask-Artemis pop-up** (⌥Space); **photographic
+background** bundled/local, season×time-driven. **Supersedes the Review/Chat/Status tab-shell**; ADR-023 (Tauri) + ADR-025
+(auth/lock) unchanged. **Reconciled into the corpus:** new **ADR-028** + `design-brief.md` + re-authored `app-flow.md` +
+`overview.md` ADR index + memory (`client-ui-travel-zoom-direction`). Reference mockup: `docs/research/mockups/travel-zoom-workspace.html`
+(+ exploration mockups in that dir). **Remaining:** fonts pass (deferred) · **CLIENT-\* specs need re-scope to the map shell**
+(world/camera + domain glance-card/detail-overlay + dock + minimap + Ask pop-up; content unchanged) · final domain set/grouping TBD.
+(2) **Architecture-validation research** (3 parallel agents → `docs/research/2026-06-23-architecture-validation/`): verdict =
+substrate is **SOTA-aligned** ("over-built storage, under-built cognitive layer"); **5 cheap-now/expensive-later schema
+reservations** surfaced (see new Open Question) — all ADDITIVE if the hooks exist.)
+_Prior:_ 2026-06-22 (**SENSITIVE-HANDLING REFINED → ADR-022 Refinement.** Resumed the scope-out
 checkpoint; owner pressure-tested the hybrid and **LOCKED an upgraded version (phased), REJECTING full scope-out** (too blunt
 for incidental email; gives up sensitive assistance). **Gate:** regex → a **cheap LOCAL model at the INGESTION seam** (fail-closed;
 reads on-box, no cloud round-trip) — the blocked posture's **option C (local-classifier-first)**, retiring the regex false-negative
@@ -176,7 +189,7 @@ baseline @ 1616894, 139 tests pass.** Remaining brain-Codex trio: `composite-mod
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| brain-Codex build batch | coding | 🔄 IN PROGRESS — 3/5 built & committed (+ M4-d-1 Codex test) | docs/changes/ + docs/bring-up/CODEX-BUILD-RUNBOOK.md | **Build order (linear), per-spec via Codex CLI** (`codex … -m gpt-5.5`, owner-supervised, OUTSIDE apex-code): ✅ `uv-dependency-groups-migration` (aaa9e2a) → ✅ `tooling-cleanup` both tasks (3e4e9d4 + 8f7d026) → ✅ `codex-model-adapter` (1616894) → **▶ NEXT: `composite-model-routing`** → `brain-sensitivity-routing`. Also ✅ `M4-d-1` entity data layer = first Codex test build (362c134). Codex builds faithfully (spec-conformant · surgical · scrubbed errors) — see ADR-026. **Clean baseline @ 1616894, 139 tests pass.** `cross_model_review` on `brain-sensitivity-routing` SATISFIED (Claude plans/reviews → Codex builds). Prereq met (`codex login`). **RESUME = run the `composite-model-routing` Codex prompt → paste result to planning for fidelity-check + commit, then `brain-sensitivity-routing`.** | — |
+| brain-Codex build batch | coding | 🔄 IN PROGRESS — 4/5 built (4 committed) · ▶ next: brain-sensitivity-routing | docs/changes/ + docs/bring-up/CODEX-BUILD-RUNBOOK.md | **Build order (linear), per-spec via Codex CLI** (`codex … -m gpt-5.5`, owner-supervised, OUTSIDE apex-code): ✅ `uv-dependency-groups-migration` (aaa9e2a) → ✅ `tooling-cleanup` both tasks (3e4e9d4 + 8f7d026) → ✅ `codex-model-adapter` (1616894) → ✅ `composite-model-routing` (15388f5, moved to done/) → **▶ NEXT: `brain-sensitivity-routing`** (final in batch). Also ✅ `M4-d-1` entity data layer = first Codex test build (362c134). Codex builds faithfully (spec-conformant · surgical · scrubbed errors) — see ADR-026. **Clean baseline @ 15388f5, 145 tests pass.** `cross_model_review` on `brain-sensitivity-routing` SATISFIED (Claude plans/reviews → Codex builds). Prereq met (`codex login`). **RESUME = run the `brain-sensitivity-routing` Codex prompt → fidelity-check + commit.** Build surfaced one spec gap (resolved on planning side): `test_config.py`'s exact-match roles.toml guardrail needed the new `responder_cloud`/`codex` role; spec amended to list `test_config.py` as file 6 (allow-list catch-up, not a weakened test). | — |
 | M8 first-spoke-wave | planning | ✅ COMPLETE · 0 parked | docs/changes/ | Gmail (M8-a/b1/b2) + Calendar (CAL-a/b/c/d) + Productivity (M8-d-a/b/c1/c2) + GATE (a/b) ALL READY. Module designs calendar/gmail/productivity.md complete. **M6-c was amended in place** (pre_tick_steps). Build-ready for batch handoff. | — |
 | SP0 core | planning | ✅ COMPLETE — batch-handoff-ready (all sweeps + ADR-015/016 cascades done) | docs/changes/ (~61 ready specs) | Core spine M0–M7 + OBS + DR + CLIENT + M8 (Gmail/Calendar/Productivity) + GATE all specced; 2026-06-11 sweep + final spec-lint remediation COMPLETE; ADR-015 (port) + ADR-016 (dispatch) async cascades applied. No remaining handoff blockers. | — |
 | corpus-remediation | planning | ✅ COMPLETE — corpus batch-handoff-ready | docs/findings/spec-lint-2026-06-11/_SUMMARY.md | Sweep remediation (Waves 0–3 + D1–D6) + final spec-lint pass (10 agents) + fix wave (9 agents) + **ADR-015 async-port cascade** + **ADR-016 uniform-async-tool-dispatch cascade** ALL DONE. ADR-016 (owner: option A) cascaded across M1-a/b + GATE-a/b + M1-d + CAL-a/b/c/d + M8-b1/b2 + M8-d-a/b/c2 + M4-d-2 (4 parallel AFK agents); contracts.md Seam 2+3 amended; both parked markers (M8-d-c2 LINT-DEFER, M4-d-2 stays-sync note) cleared; verified zero stale sync citations. **No remaining gate — the ~61-spec corpus is fully batch-handoff-ready for DeepSeek when the Mini arrives.** | M1-a/b · GATE-a/b · M1-d · CAL-a/b/c/d · M8-b1/b2 · M8-d-a/b/c2 · M4-d-2 · contracts.md · ADR-016 (new) |
@@ -201,7 +214,7 @@ _(Build status after slicing: the validation slice confirmed the brain spine is 
 
 <!-- PLANNING:START -->
 ## Pending Specs
-_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated; **`uv-dependency-groups-migration` added `status: ready` 2026-06-22** — WSL2-buildable PEP 735 dev-deps migration + 2-doc alignment, build BEFORE `tooling-cleanup`; **3 brain-Codex specs added 2026-06-22, security+python reviewed & folded:** `codex-model-adapter` (ready) → `composite-model-routing` (ready) → `brain-sensitivity-routing` (**ready — REDRAFTED 2026-06-22** to a local-model gate; regex retired) — wire Codex (ChatGPT subscription) as the cloud reasoning engine behind the `ModelPort` seam + hybrid sensitivity routing (ADR-022); WSL2/Windows-buildable, build in that dependency order. `brain-sensitivity-routing` redraft (security+python spec-review applied — 2 BLOCKs each resolved): the gate is a **cheap local model** that classifies the typed request on-box, **loopback-guarded** (refuses non-local endpoints → fail-closed), **fail-closed at every layer**, `<user_request>` injection-delimiter, kill-switch `cloud_reasoning_enabled`. One documented residual: a 4B classifier isn't fully injection-proof (accepted v1, single-owner). The ingestion gate (corpus protection) is a separate future M3/M8 amendment.). **Zero parked spec
+_~60 specs `status: ready` in `docs/changes/` (M4-c split into M4-c-1/M4-c-2 on 2026-06-12; fix-validation-test-quality done + archived to `done/` 2026-06-18; **`tooling-cleanup` added `status: ready` 2026-06-19** — WSL2-buildable protocol-gap fix + format drift, not Mini-gated; **`uv-dependency-groups-migration` added `status: ready` 2026-06-22** — WSL2-buildable PEP 735 dev-deps migration + 2-doc alignment, build BEFORE `tooling-cleanup`; **3 brain-Codex specs added 2026-06-22, security+python reviewed & folded:** `codex-model-adapter` (✅ done 1616894) → `composite-model-routing` (✅ done 15388f5, archived to `done/`) → `brain-sensitivity-routing` (**ready — REDRAFTED 2026-06-22** to a local-model gate; regex retired) — wire Codex (ChatGPT subscription) as the cloud reasoning engine behind the `ModelPort` seam + hybrid sensitivity routing (ADR-022); WSL2/Windows-buildable, build in that dependency order. `brain-sensitivity-routing` redraft (security+python spec-review applied — 2 BLOCKs each resolved): the gate is a **cheap local model** that classifies the typed request on-box, **loopback-guarded** (refuses non-local endpoints → fail-closed), **fail-closed at every layer**, `<user_request>` injection-delimiter, kill-switch `cloud_reasoning_enabled`. One documented residual: a 4B classifier isn't fully injection-proof (accepted v1, single-owner). The ingestion gate (corpus protection) is a separate future M3/M8 amendment.). **Zero parked spec
 drafts. Zero open gates** — ADR-015 (port async) + ADR-016 (dispatch async) cascades both applied 2026-06-12, so the
 corpus is **fully batch-handoff-ready** for DeepSeek when the Mini arrives. Listed by milestone in dependency/build order._
 
@@ -259,6 +272,21 @@ fully build-ready for the batch handoff. ~56 specs ready in `docs/changes/`.
 Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
 
 ## Open Questions
+- **🟢 NEW (2026-06-23) — CLIENT-* specs need re-scope to the travel-zoom map shell (ADR-028).** Client UI direction is
+  LOCKED to a spatial command-map (supersedes the tab-shell). CLIENT-a..f must be re-scoped to build: a world/camera layer
+  (pan / eased scroll-zoom / camera-travel + rubber-band bounds), a domain **glance-card + top-most detail-overlay**
+  (expand-open ↔ collapse), a **dock** (complete domain index), a **minimap**, and the distinct **Ask-Artemis pop-up**.
+  Review/Chat/Status *content* is unchanged — only navigation. Plus a deferred **fonts pass**. Refs: ADR-028 ·
+  `design-brief.md` · `app-flow.md` · mockup `docs/research/mockups/travel-zoom-workspace.html`.
+- **🟢 NEW (2026-06-23) — architecture-validation: 5 cheap-now/expensive-later schema reservations to decide.** Research
+  (`docs/research/2026-06-23-architecture-validation/`, 3 reports): substrate SOTA-aligned but storage over-built vs the
+  cognitive layer. **Decide before the M3/M4 specs harden:** (1) add `source_kind="derived"` (+ `source_ref` fact-id list)
+  to the M4 fact provenance enum (future reflection/consolidation loop); (2) keep the `MemoryStore` port from hard-coding
+  `(subject,relation,object)` as the only record shape (future procedural memory); (3) reserve RAPTOR-style summary-tree
+  fields (`node_level`/`is_summary` + parent link) in M3 (hierarchy/whole-doc is ingest-time, not a read patch); (4) reserve
+  a structured-projection ingest hook + side table for aggregates; (5) durable-execution + idempotency-key convention &
+  planner-mode as a first-class escalation tier (Task Executor). All ADDITIVE if the hooks exist. Reconfirms the **64GB RAM**
+  call as highest-leverage. (Full reports + per-area verdicts in the research dir.)
 - **✅ RESOLVED 2026-06-22 — privacy-routing policy = HYBRID → ADR-022 ACCEPTED.** Sensitive tasks (finance/health/journal/
   memory) reason on a **LOCAL** model and never leave the box; everything else → **Codex/cloud subscription**; the sensitivity
   router gates it. **Privacy wall KEPT** — M2/ADR-003/005/006 + the local sensitive-reasoner + recovery-passphrase/passkey all
