@@ -278,9 +278,11 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   plan→act→verify loop w/ deterministic-read-back verification · linear plan + reserved parallel-groups ·
   plan-fresh-compose-recipe-fragments · two-tier task-memory w/ sensitivity-defer guardrail · risk+milestone agent-inbox
   check-ins · per-task deadline+token-ceiling + intra-GPT model tiering + token-bucket retries + circuit-breaker · GPU
-  residency priority). M9 stays post-spoke-wave; logic Windows-buildable. **2 follow-ups:** (a) M7-a1 recipe format →
-  fragment-composability (in discussion); (b) Codex-subscription intra-GPT model-tiering vs metered-API [researching →
-  `docs/research/2026-06-23-codex-subscription-model-tiering.md`].
+  residency priority). M9 stays post-spoke-wave; logic Windows-buildable. **2 follow-ups — both RESOLVED 2026-06-23:**
+  (a) ✅ M7 recipes → **atomic composable primitives** (recipe = one capability; whole task = saved plan of recipe-refs);
+  model-agnostic format (skill-shaped, NOT Codex AGENTS.md / vendor-tied) — reshapes M7-a1/a2 at M7 spec time (M7 not built).
+  (b) ✅ Intra-GPT tiering **works in-subscription** — Codex CLI `--model` picks `gpt-5.5`/`gpt-5.4`/`gpt-5.4-mini` (no metered
+  API; per-model quota → mini ~4× throughput) → `docs/research/2026-06-23-codex-subscription-model-tiering.md`.
 - **🟢 NEW (2026-06-23) — CLIENT-* specs need re-scope to the travel-zoom map shell (ADR-028).** Client UI direction is
   LOCKED to a spatial command-map (supersedes the tab-shell). CLIENT-a..f must be re-scoped to build: a world/camera layer
   (pan / eased scroll-zoom / camera-travel + rubber-band bounds), a domain **glance-card + top-most detail-overlay**
