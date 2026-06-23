@@ -10,7 +10,25 @@ backends: planning=claude | coding=codex/gpt-5.5   # ADR-026: Codex CLI is the A
 coder_tier_policy: retired   # ADR-026: Codex is single-model — coder_tier flash/pro tags on specs are vestigial/ignored; cross_model_review now default-satisfied (Claude plans+reviews → Codex builds = cross-family). Build driver = docs/bring-up/CODEX-BUILD-RUNBOOK.md (per-spec, outside apex-code).
 coder_models: [flash, pro, codex]   # per-spec coder menu (apex-plan model-routing). codex added 2026-06-22 (ADR-026) for the Codex test-build. A spec's `coder_model: <m>` frontmatter pins the WHOLE spec to one coder, bypassing per-task routing.
 
-_Last updated by planning mode:_ 2026-06-23 (**CLIENT UI DIRECTION LOCKED → ADR-028 + architecture-validation research.**
+_Last updated by planning mode:_ 2026-06-23 (**CONTINUATION — reservations APPLIED · M9 designed · client re-scope designed · dev-model-stack specced.**
+(1) **Architecture-validation reservations A–J decided AND applied** across 12 corpus files (additive schema/port/runtime hooks; 77cab92):
+derived-provenance · record-type-generic memory port · async-write/scope guard · RAPTOR summary-tree fields · structured-projection hook ·
+shared checkpoint/idempotency convention · router→planner seam · cloud fallback ladder + recipe-quality gate · parametric-memory stance ·
+prospective-memory home. **ADR-027 resolved** = intentional Artemis numbering skip (it is an APEX-system ADR; runtime routing = ADR-022, coder = ADR-026).
+(2) **M9 Task Executor DESIGNED** → ADR-024 §Refinement 2026-06-23: supervised long-horizon · owner per-task unattended/supervised flag ·
+plan-preview trigger · deterministic-read-back verification (never self-judged) · linear plans + reserved parallel-groups · plan-fresh +
+compose **atomic recipe primitives** (reshapes M7-a1/a2 at spec time — banner added) · two-tier task-memory w/ sensitivity-defer guardrail ·
+risk+milestone **agent-inbox** check-ins · per-task deadline+token budgets + **intra-GPT model tiering** (confirmed in-subscription: `codex --model`
+gpt-5.5/5.4/5.4-mini, no metered API) + token-bucket retries + circuit-breaker · GPU residency priority. M9 stays post-spoke-wave.
+(3) **Client re-scope DESIGNED** → ADR-028 §Refinement 2026-06-23: the CLIENT specs are stale on **3 axes** (Swift→**Tauri** ADR-023 · auth→
+P-256/TPM/SE ADR-025 · tabs→**map** ADR-028) = a rewrite, only contracts carry over. **Functional-cluster, user-arrangeable + persisted** map ·
+**WebKit-safe** build discipline · **7-spec Tauri carve** (core/auth/world/card/ask/screens/theme; CLIENT-f retires to a build target). Spec rewrite PENDING.
+(4) **Dev-machine local-model stack DESIGNED + specced** → ready `docs/changes/dev-model-stack-ollama.md`: Ollama on the 8GB Windows box
+(embedder Qwen3-0.6B + reranker 0.6B + 4B responder/classifier ≈4GB); swaps the validation slice off FakeEmbedder onto **real local models**; its
+ACs (tool-calling + structured-output via Ollama/Qwen3) **answer ADR-022 parked (b)**. New memory: **dev-machine-first build/test lens**.
+**RESUME — remaining dev-first threads:** sensitivity ingestion-gate · build-wave sequencing (ADR-026 de-gating map) · reservation Bucket-2
+(H1 rung-2 DeepSeek-Pro-API adapter · H2 re-seed · A typed-source-ref migration). Plus the **CLIENT Tauri spec-rewrite pass** when ready.)
+_Prior:_ 2026-06-23 (**CLIENT UI DIRECTION LOCKED → ADR-028 + architecture-validation research.**
 (1) **Client navigation LOCKED = spatial "travel-zoom" command-map** — pannable map + central pulsing brain core; pan +
 eased scroll-zoom with rubber-band bounds; travel-across-then-**expand-open** (shared-element morph) as the **top-most**
 layer over a lightly-dimmed still-visible map; minimal **baseline-aligned, left, vertically-centred** glance cards (list→count,
