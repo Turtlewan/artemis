@@ -129,4 +129,10 @@ RAG-for-recipes keeps the recipe library OUT of model context (only the matched 
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 model.py (Recipe + RecipeClass/ActionClass/RecipeStatus + RECIPE_SCHEMA + SKILL.md round-trip)
+- [x] Task 2 store.py (RecipeStore + RecipeIndex cosine VectorStore, upsert-by-id, numeric version order, RAG-for-recipes)
+- [x] Task 3 signing.py (KeyProvider proto + RecipeSigner HMAC deterministic canonical-bytes + RecipeSignatureError)
+- [x] Task 4 recipes/__init__.py re-exports
+- [x] Task 5 tests/test_recipes_store_signing.py
+- Verify: 203 passed · ruff + mypy --strict clean · scope = 5 spec files (no out-of-scope edits)
+- DEVIATION (minor): `recipes_dir(s)` = `paths.scope_dir(s, "owner-private")/recipes` (M2 dev-stub has no real encrypted volume; resolves to a plain dir on dev). No new Settings field, no new dep (pyyaml already available).
