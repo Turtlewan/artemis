@@ -138,4 +138,9 @@ Silent success = `tick()` returns `HEARTBEAT_OK` with zero hits → no LLM, no d
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 HookSpec extended (tier/delivery, check_ref→HookResult, schedule + Tier-0/owner-private validators)
+- [x] Task 2 proactive/hook_types.py (HookResult, DeliverySpec, Hit, TickResult, HEARTBEAT_OK)
+- [x] Task 3 heartbeat.py rewrite (scheduler, interval+daily-cron due eval, tier gating, skip-and-queue)
+- [x] Task 4/5 tests/test_heartbeat_scheduler.py
+- Verify: 189 passed · ruff + mypy clean · scope = manifest.py + heartbeat.py + proactive/__init__.py + proactive/hook_types.py + test
+- DEVIATION (minor): also created `src/artemis/proactive/__init__.py` (package marker) — M2-c (which normally creates the proactive package) is Mac-gated/unbuilt. Pre-approved; no other out-of-scope files.

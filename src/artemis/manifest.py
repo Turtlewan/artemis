@@ -11,8 +11,16 @@ from __future__ import annotations
 import re
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from artemis.proactive.hook_types import DeliverySpec
+
+if TYPE_CHECKING:
+    from artemis.proactive.hook_types import HookResult
+else:
+    HookResult = object
 
 
 class ActionRisk(StrEnum):
@@ -66,17 +74,25 @@ class ToolSpec(BaseModel):
 
 
 class HookSpec(BaseModel):
-    """Specification for a proactive hook (check-and-act callback)."""
+    """Specification for a proactive hook (deterministic check callback)."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
     interval_seconds: int | None = None
     cron: str | None = None
+    tier: Literal[0, 1] = 1
     urgency: str = "normal"  # Literal["low", "normal", "high"]
     needs_llm: bool = False
     dedup_key: str | None = None
-    check_ref: Callable[[], bool] | None = None
+    delivery: DeliverySpec | None = None
+    check_ref: Callable[[], HookResult] | None = None
+
+    @model_validator(mode="after")
+    def _validate_one_schedule(self) -> HookSpec:
+        if (self.interval_seconds is None) == (self.cron is None):
+            raise ValueError("hook needs exactly one of interval_seconds or cron")
+        return self
 
 
 class UiSurface(BaseModel):
@@ -119,3 +135,13 @@ class ModuleManifest(BaseModel):
         if len(names) != len(set(names)):
             raise ValueError(f"Duplicate tool names in manifest: {names}")
         return v
+
+    @model_validator(mode="after")
+    def _validate_owner_private_hooks_are_tier1(self) -> ModuleManifest:
+        if self.data_scope is DataScope.OWNER_PRIVATE:
+            for hook in self.proactive_hooks:
+                if hook.tier == 0:
+                    raise ValueError(
+                        f"Tier-0 hook may not sit on an owner-private module: {hook.name}"
+                    )
+        return self
