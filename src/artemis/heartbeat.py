@@ -52,7 +52,7 @@ class Heartbeat:
         *,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], datetime] = datetime.now,
-        on_hits: Callable[[TickResult], None] | None = None,
+        on_hits: Callable[[TickResult], Awaitable[None]] | None = None,
         tier1_sink: Callable[[Hit], None] | None = None,
         pre_tick_steps: list[Callable[[], Awaitable[None]]] | None = None,
         interval_seconds: float = 60.0,
@@ -131,7 +131,7 @@ class Heartbeat:
             return True
         return False
 
-    def tick(self) -> str:
+    def tick(self) -> TickResult:
         """Execute one scheduler tick and return its ``TickResult``."""
         now_mono = self._clock()
         now_wall = self._wall_clock()
@@ -172,12 +172,7 @@ class Heartbeat:
             hits=tuple(hits), summary=summary, tier1_skipped=tuple(tier1_skipped)
         )
 
-        if hits and self._on_hits is not None:
-            try:
-                self._on_hits(tick_result)
-            except Exception:
-                self._log.exception("heartbeat on_hits handler failed")
-        elif not hits:
+        if not hits:
             self._log.debug("heartbeat tick: silent success")
 
         return tick_result
@@ -225,7 +220,12 @@ class Heartbeat:
                         await step()
                     except Exception:
                         self._log.exception("heartbeat pre-tick step failed")
-                self.tick()
+                tr = self.tick()
+                if tr.hits and self._on_hits is not None:
+                    try:
+                        await self._on_hits(tr)
+                    except Exception:
+                        self._log.exception("heartbeat on_hits handler failed")
                 ticks += 1
                 if max_ticks is not None and ticks >= max_ticks:
                     break

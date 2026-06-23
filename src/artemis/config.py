@@ -6,6 +6,7 @@ Uses pydantic-settings with slot-based environment file selection.
 from __future__ import annotations
 
 import os
+import secrets
 import tomllib
 from functools import lru_cache
 from pathlib import Path
@@ -47,6 +48,10 @@ class Settings(BaseSettings):
     brain_port: int = Field(default=8030, ge=1024, le=65535)
     mlx_port: int = Field(default=8040, ge=1024, le=65535)
     ntfy_port: int = Field(default=8050, ge=1024, le=65535)
+    # ntfy egress topic secret: the topic IS the publish/subscribe capability and
+    # must not be guessable. Prod stability comes from M0-f injecting a persisted
+    # ARTEMIS_NTFY_TOPIC_SECRET into the slot .env; absent (dev) -> a random per-process hex.
+    ntfy_topic_secret: str = Field(default_factory=lambda: secrets.token_hex(16), exclude=True)
     audio_sidecar_port: int = Field(default=8060, ge=1024, le=65535)
 
     # Worktree root (the slot's own git worktree path)

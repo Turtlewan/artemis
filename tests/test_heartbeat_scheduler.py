@@ -7,7 +7,6 @@ import hashlib
 import math
 from collections.abc import Sequence
 from datetime import datetime
-from typing import cast
 
 import pytest
 
@@ -70,15 +69,19 @@ def _key_provider(*, owner_unlocked: bool = True) -> FakeKeyProvider:
 
 def test_silent_success_returns_heartbeat_ok_without_on_hits() -> None:
     on_hits: list[TickResult] = []
+
+    async def _record(r: TickResult) -> None:
+        on_hits.append(r)
+
     hook = HookSpec(name="miss", interval_seconds=60, check_ref=HookResult.miss)
     heartbeat = Heartbeat(
         _registry_with(_manifest(hooks=[hook])),
         _key_provider(),
-        on_hits=on_hits.append,
+        on_hits=_record,
         clock=lambda: 0.0,
     )
 
-    result = cast(TickResult, heartbeat.tick())
+    result = heartbeat.tick()
 
     assert result.summary == HEARTBEAT_OK
     assert result.is_silent_success is True
@@ -111,9 +114,7 @@ def test_interval_due_evaluation_uses_fake_clock() -> None:
     assert calls == 2
 
 
-def test_hit_collection_preserves_payload_and_calls_on_hits() -> None:
-    received: list[TickResult] = []
-
+def test_hit_collection_preserves_payload() -> None:
     def check() -> HookResult:
         return HookResult.of({"budget_pct": 92}, dedup_value="2026-06-04")
 
@@ -128,11 +129,10 @@ def test_hit_collection_preserves_payload_and_calls_on_hits() -> None:
     heartbeat = Heartbeat(
         _registry_with(_manifest(name="finance", hooks=[hook])),
         _key_provider(),
-        on_hits=received.append,
         clock=lambda: 0.0,
     )
 
-    result = cast(TickResult, heartbeat.tick())
+    result = heartbeat.tick()
 
     assert result.summary != HEARTBEAT_OK
     assert len(result.hits) == 1
@@ -142,7 +142,43 @@ def test_hit_collection_preserves_payload_and_calls_on_hits() -> None:
     assert hit.urgency == "high"
     assert hit.needs_llm is True
     assert hit.result.payload["budget_pct"] == 92
-    assert received == [result]
+
+
+async def test_run_forever_fires_on_hits_on_hit() -> None:
+    received: list[TickResult] = []
+
+    def check() -> HookResult:
+        return HookResult.of({"budget_pct": 92}, dedup_value="2026-06-04")
+
+    async def on_hits(result: TickResult) -> None:
+        received.append(result)
+
+    hook = HookSpec(
+        name="budget",
+        interval_seconds=60,
+        urgency="high",
+        needs_llm=True,
+        dedup_key="budget",
+        check_ref=check,
+    )
+    heartbeat = Heartbeat(
+        _registry_with(_manifest(name="finance", hooks=[hook])),
+        _key_provider(),
+        on_hits=on_hits,
+        clock=lambda: 0.0,
+    )
+
+    await heartbeat.run_forever(max_ticks=1, sleep_seconds=0.0)
+
+    assert len(received) == 1
+    result = received[0]
+    assert len(result.hits) == 1
+    hit = result.hits[0]
+    assert hit.result.payload["budget_pct"] == 92
+    assert hit.hook_name == "budget"
+    assert hit.module == "finance"
+    assert hit.urgency == "high"
+    assert hit.needs_llm is True
 
 
 def test_daily_cron_fires_once_per_day_and_after_slipped_tick() -> None:
@@ -211,7 +247,7 @@ def test_tier1_hook_skips_and_queues_while_locked_then_runs_when_unlocked() -> N
     registry = _registry_with(_manifest(name="ownerdata", hooks=[hook]))
 
     locked = Heartbeat(registry, _key_provider(owner_unlocked=False), tier1_sink=queued.append)
-    locked_result = cast(TickResult, locked.tick())
+    locked_result = locked.tick()
 
     assert calls == 0
     assert locked_result.tier1_skipped == ("ownerdata.private",)
@@ -220,7 +256,7 @@ def test_tier1_hook_skips_and_queues_while_locked_then_runs_when_unlocked() -> N
     assert queued[0].hook_name == "private"
 
     unlocked = Heartbeat(registry, _key_provider(owner_unlocked=True))
-    unlocked_result = cast(TickResult, unlocked.tick())
+    unlocked_result = unlocked.tick()
 
     assert calls == 1
     assert len(unlocked_result.hits) == 1
@@ -247,7 +283,7 @@ def test_raising_hook_degrades_and_other_hooks_still_run() -> None:
     )
     heartbeat = Heartbeat(registry, _key_provider())
 
-    result = cast(TickResult, heartbeat.tick())
+    result = heartbeat.tick()
 
     assert calls == ["raises", "succeeds"]
     assert len(result.hits) == 1
@@ -279,11 +315,11 @@ def test_next_due_advances_on_exception_to_avoid_retry_storm() -> None:
     assert calls == 2
 
 
-def test_on_hits_exception_does_not_kill_tick() -> None:
+async def test_on_hits_exception_does_not_kill_run_forever() -> None:
     def check() -> HookResult:
         return HookResult.of({"ok": True})
 
-    def on_hits(_result: TickResult) -> None:
+    async def on_hits(_result: TickResult) -> None:
         raise RuntimeError("handler failed")
 
     hook = HookSpec(name="hit", interval_seconds=60, check_ref=check)
@@ -293,9 +329,7 @@ def test_on_hits_exception_does_not_kill_tick() -> None:
         on_hits=on_hits,
     )
 
-    result = cast(TickResult, heartbeat.tick())
-
-    assert len(result.hits) == 1
+    await heartbeat.run_forever(max_ticks=1, sleep_seconds=0.0)
 
 
 @pytest.mark.asyncio
