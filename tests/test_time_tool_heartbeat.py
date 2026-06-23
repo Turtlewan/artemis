@@ -10,6 +10,7 @@ import pytest
 
 from artemis.heartbeat import HEARTBEAT_OK, Heartbeat
 from artemis.manifest import ActionRisk, DataScope
+from artemis.proactive.hook_types import TickResult
 from artemis.tools.time_tool import TimeArgs, get_current_time, manifest
 
 # ── Time tool tests ──────────────────────────────────────────────────────────
@@ -94,10 +95,10 @@ def test_heartbeat_tick_returns_ok() -> None:
 @pytest.mark.asyncio
 async def test_heartbeat_run_forever_max_ticks() -> None:
     """run_forever with max_ticks completes exactly that many ticks."""
-    ticks: list[str] = []
+    ticks: list[TickResult] = []
 
     class SpyHeartbeat(Heartbeat):
-        def tick(self) -> str:
+        def tick(self) -> TickResult:
             result = super().tick()
             ticks.append(result)
             return result
