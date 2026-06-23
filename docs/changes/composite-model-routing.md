@@ -28,6 +28,7 @@ depends_on: codex-model-adapter
 3. **modify** `config/roles.toml` — add a `responder_cloud` role (adapter = `codex`). Do NOT repoint `responder` (default stays local until `brain-sensitivity-routing` routes deliberately).
 4. **modify** `src/artemis/gateway.py` — in `compose_brain`, build `CompositeModelPort(settings)` as the default model instead of `OpenAIModelPort(settings)`.
 5. **create** `tests/test_composite_model.py` — dispatch + fallback tests with fakes.
+6. **modify** `tests/test_config.py` — teach the `test_roles_toml_structure` guardrail about the new role: add `responder_cloud` to `expected_roles` and `"codex"` to the allowed-adapter tuple. (Amendment 2026-06-23 — build surfaced that this exact-match guardrail locks `roles.toml`'s role set + adapter allow-list; the deliberate new `codex` role must be reflected here. Not weakening a test — updating an allow-list to match a reviewed change.)
 
 ## Exact changes
 
@@ -176,3 +177,8 @@ uv run --frozen pytest -q
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+- 2026-06-23: BUILT via Codex CLI (gpt-5.5). All 6 files implemented per spec + the
+  `test_config.py` guardrail amendment (file 6). Verify GREEN: ruff format/check clean ·
+  mypy clean (49 files) · 145 passed (139 baseline + 6 new composite tests). `git diff --stat`
+  = only the spec'd files. **🟡 UNCOMMITTED — awaiting owner commit approval (paused).**
+  On resume: approve commit → move spec to done/ → build `brain-sensitivity-routing` (final in batch).

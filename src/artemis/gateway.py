@@ -75,12 +75,14 @@ def compose_brain(
     if settings is None:
         settings = get_settings()
 
-    from artemis.adapters.model_adapters import OpenAIEmbeddingModel, OpenAIModelPort
+    from artemis.adapters.model_adapters import OpenAIEmbeddingModel, OpenAIModelPort  # noqa: F401
 
     if embedder is None:
         embedder = OpenAIEmbeddingModel(settings)
     if model is None:
-        model = OpenAIModelPort(settings)
+        from artemis.adapters.composite_model import CompositeModelPort
+
+        model = CompositeModelPort(settings)
 
     registry = _register_modules(embedder)
     from artemis.router import SemanticRouter

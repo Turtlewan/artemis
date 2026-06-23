@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Codex CLI reasoning engine (ChatGPT subscription auth managed by codex login).
     codex_binary: str = "codex"
     codex_model: str = "gpt-5.5"
+    codex_fallback_role: str = "sensitive_reasoner"
 
     # Optional API key for authed OpenAI-compatible endpoints (dev: DeepSeek/OpenAI
     # cloud). Local MLX/Ollama servers need none. Sent as `Authorization: Bearer`.

@@ -25,3 +25,8 @@ adapter = "openai"
 endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server, lazy
 model_id = "Qwen3.6-27B"
 adapter = "openai"
+
+[responder_cloud]
+endpoint = "codex"           # logical role - Codex uses the CLI/subscription, not an HTTP endpoint
+model_id = "gpt-5.4"         # informational; CodexModelPort uses settings.codex_model (per-role cloud model is a follow-up)
+adapter = "codex"

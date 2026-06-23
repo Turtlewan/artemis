@@ -47,7 +47,14 @@ def test_roles_toml_structure() -> None:
     with roles_path.open("rb") as f:
         raw = tomllib.load(f)
 
-    expected_roles = {"responder", "teacher", "embedder", "reranker", "sensitive_reasoner"}
+    expected_roles = {
+        "responder",
+        "responder_cloud",
+        "teacher",
+        "embedder",
+        "reranker",
+        "sensitive_reasoner",
+    }
     assert set(raw.keys()) == expected_roles, (
         f"Expected roles {expected_roles}, got {set(raw.keys())}"
     )
@@ -56,7 +63,7 @@ def test_roles_toml_structure() -> None:
         assert "endpoint" in role, f"{name} missing endpoint"
         assert "model_id" in role, f"{name} missing model_id"
         assert "adapter" in role, f"{name} missing adapter"
-        assert role["adapter"] in ("openai", "claude-cli"), (
+        assert role["adapter"] in ("openai", "claude-cli", "codex"), (
             f"{name} has unknown adapter {role['adapter']}"
         )
 
