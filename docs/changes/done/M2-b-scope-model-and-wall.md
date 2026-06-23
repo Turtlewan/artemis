@@ -110,4 +110,10 @@ M2-b is the data-layer half of the crypto wall (ADR-005/004). Invariants the bui
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 scope model (`identity/scope.py` — Identity/Role, owner/guest scopes, scopes_for wall)
+- [x] Task 2 KeyProvider port + SecretKey (redacting) + FakeKeyProvider (`identity/key_provider.py`)
+- [x] Task 3 ScopedStore data-layer wall (`data/scoped_store.py` — CrossScopeError, vector handles, provision)
+- [x] Task 4 Gateway scope-attach + LOCKED (`gateway.py`) — see deviation
+- [x] Task 5 tests/test_scope_wall.py
+- Verify: 176 passed · ruff + mypy --strict clean · scope = gateway.py + 6 new files (cli.py/main.py untouched)
+- DEVIATION (review ⚠️, security-adjacent): Task 4's "compose_brain builds the Gateway w/ KeyProvider" was stale — live `compose_brain` returns a Brain; Gateway is built `Gateway(brain)` in cli.py + main.py (out of scope). Adapted entirely within gateway.py: `Gateway.__init__(brain, key_provider: KeyProvider | None = None)`. `None` ⇒ documented M2-c-pending DEV STUB (single-owner-unlocked, the roadmap-sanctioned dev stub), explicitly flagged in-code for the M2-d security gate. A provided KeyProvider does real `is_owner_unlocked()` gating → owner scope or `LockedError`→LOCKED. cli.py/main.py keep working via the None default (no out-of-scope edit). The real broker-backed provider + the production default arrive in M2-c.

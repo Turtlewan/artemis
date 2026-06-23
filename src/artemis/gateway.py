@@ -1,8 +1,4 @@
-"""Text Gateway — attaches scope before the Brain, plus composition helper.
-
-M1 is a single-owner stub: every request gets ``OWNER_SCOPE = "owner-private"``
-and a fixed ``OWNER_PERSON_ID``. Voice-ID, login, and guest paths arrive in M2.
-"""
+"""Text Gateway -- attaches scope before the Brain, plus composition helper."""
 
 from __future__ import annotations
 
@@ -12,9 +8,18 @@ from typing import TYPE_CHECKING
 
 from artemis.brain import Brain, BrainResponse
 from artemis.config import Settings, get_settings
+from artemis.identity.key_provider import ScopeLockedError
+from artemis.identity.scope import (
+    OWNER_PERSON_ID,
+    OWNER_PRIVATE,
+    Identity,
+    LockedError,
+    primary_scope,
+)
 from artemis.ports.types import PersonId, Scope
 
 if TYPE_CHECKING:
+    from artemis.identity.key_provider import KeyProvider
     from artemis.ports.model import ModelPort
     from artemis.ports.retrieval import EmbeddingModel
     from artemis.registry import ToolRegistry
@@ -22,41 +27,65 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-OWNER_PERSON_ID: PersonId = PersonId("owner")
-"""Fixed owner identity (M1 single-owner stub — M2 replaces with real resolution)."""
-
-OWNER_SCOPE: Scope = "owner-private"
-"""Scope attached to every M1 request."""
+OWNER_SCOPE: Scope = OWNER_PRIVATE
+"""Backward-compatible owner scope alias for existing M1 surface tests."""
 
 
 class Gateway:
-    """Text ingress Gateway — attaches scope before the Brain sees the request.
+    """Text ingress Gateway -- attaches scope before the Brain sees the request.
 
-    The Gateway is the single point that resolves a person → scope and attaches
-    it BEFORE the Brain (brain.md's hard ordering). In M1 it's a constant.
+    The Gateway is the single point that resolves a person to a scope and
+    attaches it before the Brain (brain.md's hard ordering).
     """
 
-    def __init__(self, brain: Brain) -> None:
+    def __init__(self, brain: Brain, key_provider: KeyProvider | None = None) -> None:
         self._brain = brain
+        self._key_provider = key_provider
+
+    def _resolve_identity(self) -> Identity:
+        """Resolve the owner-authenticated text-surface identity."""
+        if self._key_provider is None:
+            # M2-c-pending DEV STUB: until the real broker-backed KeyProvider
+            # is injected by M2-c, the dev text surface is single-owner-unlocked.
+            # This owner-auth seam is flagged for the M2-d security gate.
+            return Identity(OWNER_PERSON_ID, "owner")
+        if self._key_provider.is_owner_unlocked():
+            return Identity(OWNER_PERSON_ID, "owner")
+        raise LockedError("Owner session is locked")
+
+    def _resolve_guest(self, person_id: PersonId) -> Identity:
+        """Return a guest identity for the deferred voice-ID surface."""
+        # M5: voice-ID will call this; no runtime caller in M2.
+        return Identity(person_id, "guest")
 
     async def handle_text(self, request_text: str) -> BrainResponse:
-        """Process a text request through the Brain with single-owner scope."""
-        logger.debug("Gateway: scope resolution stubbed — attaching OWNER_SCOPE")
-        return await self._brain.respond(request_text, OWNER_SCOPE)
+        """Process a text request through the Brain with resolved scope."""
+        try:
+            identity = self._resolve_identity()
+            scope = primary_scope(identity)
+            logger.debug("Gateway: attaching resolved scope %s", scope)
+            return await self._brain.respond(request_text, scope)
+        except (LockedError, ScopeLockedError):
+            return BrainResponse(text="LOCKED", path="locked", tool_used=None, escalated=False)
 
     async def handle_text_stream(self, request_text: str) -> AsyncIterator[str]:
-        """Stream a text response — single chunk for M1 (token streaming slots in later)."""
+        """Stream a text response as a single chunk for the text surface."""
         result = await self.handle_text(request_text)
         yield result.text
 
     async def pre_route(self, request_text: str) -> str | None:
-        """Classify a request — returns the top candidate tool id, if any.
+        """Classify a request and return the top candidate tool id, if any.
 
-        Used by the voice surface (M5-c) to classify Tier pre-serve through
-        the same single-owner scope seam.
+        Used by the voice surface (M5-c) to classify Tier pre-serve through the
+        same scope-attach seam.
         """
-        logger.debug("Gateway: pre_route scope resolution stubbed — attaching OWNER_SCOPE")
-        return await self._brain.pre_route(request_text, OWNER_SCOPE)
+        try:
+            identity = self._resolve_identity()
+            scope = primary_scope(identity)
+            logger.debug("Gateway: pre_route attaching resolved scope %s", scope)
+            return await self._brain.pre_route(request_text, scope)
+        except (LockedError, ScopeLockedError):
+            return None
 
 
 def compose_brain(
@@ -70,7 +99,7 @@ def compose_brain(
     By default constructs the real adapters (``OpenAIEmbeddingModel``,
     ``OpenAIModelPort``). Pass ``embedder`` and/or ``model`` to inject doubles
     (e.g. a dev ``FakeEmbedder`` for an endpoint with no ``/embeddings``, or a
-    fully offline smoke run). Uses lazy ``ToolRegistry.register()`` — no network
+    fully offline smoke run). Uses lazy ``ToolRegistry.register()`` -- no network
     at construction time.
     """
     if settings is None:
@@ -107,19 +136,18 @@ def _register_modules(embedder: object) -> ToolRegistry:
     Silently skips modules not yet built (try/except ImportError), so
     ``compose_brain`` works with a partial build.
 
-    Uses lazy ``ToolRegistry.register()`` — no network at construction time.
+    Uses lazy ``ToolRegistry.register()`` -- no network at construction time.
     """
     from artemis.registry import ToolRegistry
 
     registry = ToolRegistry(embedder)  # type: ignore[arg-type]
 
-    # ── Time tool (M1-d) ──────────────────────────────────────────────
     try:
         from artemis.tools.time_tool import manifest as time_manifest
 
         registry.register(time_manifest())
         logger.debug("Gateway: registered time module manifest")
     except ImportError:
-        logger.debug("Gateway: time module not available — skipping")
+        logger.debug("Gateway: time module not available -- skipping")
 
     return registry
