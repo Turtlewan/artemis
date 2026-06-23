@@ -48,5 +48,5 @@ _Closing out the architecture-validation research (`docs/research/2026-06-23-arc
 
 ## Where I stopped — COMPLETE
 - **All reservations A–J decided AND applied** across the 12 files above. `04-seven-memory-types.md` committed.
-- **Note for commit:** ADR-027 is referenced in CLAUDE.md + report 03 but **has no ADR file** — H landed in ADR-022 (which owns model/runtime routing). Flag whether ADR-027 should be written to formalize the Codex-primary/Opus-fallback + ladder, or whether ADR-022/026 already cover it.
+- **ADR-027 — RESOLVED 2026-06-23 (no Artemis ADR needed).** 027 is an **intentional Artemis numbering skip** — it is an **APEX-system** ADR (the build-system coder policy), documented as such in the overview ADR index ("027 = APEX-system ADR"). On the Artemis side there is no gap: runtime reasoning-engine routing = **ADR-022** (+ the H1 ladder in its §Refinement 2026-06-23); build coder = **ADR-026**; the `composite-model-routing` decision is covered by ADR-022. (The APEX-system ADR-027 file itself doesn't exist either, but that is an APEX-system citation matter, not an Artemis-corpus item; owner left it as-is — CLAUDE.md prose already states the policy.)
 - **Next:** commit the application wave (owner-gated); update status.md In-Flight + Open Question (done this session).
