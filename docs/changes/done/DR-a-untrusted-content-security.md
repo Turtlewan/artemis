@@ -131,4 +131,9 @@ Approving this spec approves all of them.
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 spotlight.py (NFKC + zero-width strip, nonce delimiting, forged-marker strip)
+- [x] Task 2 Extract + EXTRACTION_SCHEMA + QuarantineError
+- [x] Task 3 QuarantinedReader (toolless guard, bounded query in system turn, caller provenance, degrade-don't-crash)
+- [x] Task 4 tests/test_untrusted.py
+- Verify: 170 passed · ruff + mypy --strict clean · scope = 4 spec files
+- DEVIATIONS (review ⚠️, in-place adaptations to live interface): (1) repo-relative paths (spec had stale /Users/artemis-build/ prefixes); (2) `ModelPort.complete` called keyword-only with `Sequence[Message]` not positional dicts (live M0-d interface); (3) degrade WARNING uses stdlib `logging.getLogger("untrusted")` — `artemis.obs` unbuilt (OBS-a not in prereq layer), matches brain.py/sensitivity.py pattern; (4) EXTRACTION_SCHEMA validated manually in-code (no `jsonschema` dep added).
