@@ -33,5 +33,26 @@ The Tauri client (ADR-023) inherited a conventional **tab-shell** home — a mai
 - **Command-palette home · windowed desktop · timeline/day-spine · adaptive briefing** — explored as non-spatial paradigms; not chosen (briefing/command may still inform the Ask pop-up + proactivity later).
 - **Brain-origin "teleport" zoom** (position-independent) — *rejected*: owner wanted to *see* the camera travel across the space.
 
+## Refinement (2026-06-23, map-shell re-scope design)
+Design pass (owner + planning) settling the open map-shell calls and defining the CLIENT spec carve. Direction unchanged.
+
+- **Domain set + grouping = FUNCTIONAL CLUSTERS.** Ten working domains around the brain core in four functional clusters (a **default seed**): **Comms** (Email · People) · **Planning** (Schedule · Tasks · Travel) · **Knowledge** (Memory · Knowledge · Review) · **Self** (Health · Finance). Set + membership adjustable (Review's placement is soft).
+- **The map is USER-ARRANGEABLE + persisted.** The clusters are a default seed, not a cage: the owner drags any card anywhere / between clusters and the layout **persists** as client state (local; optionally brain-synced across devices). A **"reset to default layout"** escape hatch; the **dock + minimap always reflect the current (user) positions**. Spatial memory is strongest when the space is the owner's. → lands in CLIENT-world.
+- **Small shell defaults locked:** subtle hub→card **constellation links = ON** · **reduced-motion = crossfade** · clusters positioned as **four poles** around the core.
+- **Cross-platform watch-item (build discipline).** Tauri uses a different webview engine per OS — WebView2/Chromium on Windows, **WKWebView/WebKit on macOS**. The visually-rich map (animations · liquid-glass `backdrop-filter` · any Canvas/WebGL) MUST be built + tested **WebKit-safe** (no Chromium-only rendering; watch blur perf on WebKit). The **brain→Mini host move is transparent to the client** (it is a Tailscale client of the gateway; the host URL is pairing-captured / Settings-editable); **client→Mac is a Tauri recompile** (`.exe`→`.app`) + the macOS seal path already in ADR-025.
+- **CLIENT spec carve (Swift→Tauri rewrite; only the *contracts* carry over — connection/lock state machine, pairing flow, endpoint shapes, screen content).** The 7 stale SwiftUI specs map to 7 new Tauri specs; **CLIENT-f retires to a build target**:
+
+  | New (Tauri) | Replaces | Scope |
+  |---|---|---|
+  | **CLIENT-core** | CLIENT-c + CLIENT-b | Tauri scaffold (React/Tailwind/Vite + Rust) + gateway HTTP/SSE client + connection/lock state machine + DTOs |
+  | **CLIENT-auth** | CLIENT-a + CLIENT-broker | ADR-025 auth: device P-256 keypair + hardware sealing (TPM/Hello → SE/Touch-ID) + pairing + connect/unlock + recovery passphrase |
+  | **CLIENT-world** | CLIENT-d | Map: world plane + camera (pan/zoom/travel + rubber-band) + functional-cluster default layout + **user-arrange/persist** + Home/Esc recenter + dock + minimap |
+  | **CLIENT-card** | *(new — §3–4)* | Glance-card → detail-overlay (expand-morph, top-most over dimmed map, collapse-back) + per-domain card contract (no internal scroll) |
+  | **CLIENT-ask** | part of CLIENT-e | Floating Ask-Artemis pop-up (⌥Space) + chat/SSE streaming |
+  | **CLIENT-screens** | CLIENT-e | Detail content filling overlays: Review (recipes + GATE pending-actions) · Status · per-domain views (React) |
+  | **CLIENT-theme** | *(new — design-brief.md)* | Holo Tactical design system (tokens, WebKit-safe liquid-glass) + ambient theming (season×time) + bundled photo background |
+
+  **CLIENT-f (Mac app) RETIRED as a spec** → macOS = a Tauri build target (recompile + macOS seal path in CLIENT-auth + Developer-ID notarization in build config). The carve is a target, not a commitment; the spec rewrite is a later pass.
+
 ## Parked (build-phase)
-Dedicated **fonts pass** (deferred). · Final domain set + spatial grouping (work vs life clusters). · Whether to restore subtle hub→card constellation links. · Reduced-motion exact behaviour per transition. · Exact world-plane sizing / responsive bounds.
+Dedicated **fonts pass** (deferred). · Exact world-plane sizing / responsive bounds. · Layout-persistence sync scope (local-only vs brain-synced across devices). · _(Resolved 2026-06-23: domain grouping → functional clusters; constellation links → ON; reduced-motion → crossfade.)_

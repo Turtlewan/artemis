@@ -283,12 +283,16 @@ Mac Mini when it arrives (`ROADMAP.md` §"Build handoff — start here").
   model-agnostic format (skill-shaped, NOT Codex AGENTS.md / vendor-tied) — reshapes M7-a1/a2 at M7 spec time (M7 not built).
   (b) ✅ Intra-GPT tiering **works in-subscription** — Codex CLI `--model` picks `gpt-5.5`/`gpt-5.4`/`gpt-5.4-mini` (no metered
   API; per-model quota → mini ~4× throughput) → `docs/research/2026-06-23-codex-subscription-model-tiering.md`.
-- **🟢 NEW (2026-06-23) — CLIENT-* specs need re-scope to the travel-zoom map shell (ADR-028).** Client UI direction is
-  LOCKED to a spatial command-map (supersedes the tab-shell). CLIENT-a..f must be re-scoped to build: a world/camera layer
-  (pan / eased scroll-zoom / camera-travel + rubber-band bounds), a domain **glance-card + top-most detail-overlay**
-  (expand-open ↔ collapse), a **dock** (complete domain index), a **minimap**, and the distinct **Ask-Artemis pop-up**.
-  Review/Chat/Status *content* is unchanged — only navigation. Plus a deferred **fonts pass**. Refs: ADR-028 ·
-  `design-brief.md` · `app-flow.md` · mockup `docs/research/mockups/travel-zoom-workspace.html`.
+- **🟡 CLIENT re-scope — DESIGNED 2026-06-23 (ADR-028 Refinement); spec rewrite PENDING.** The CLIENT-a..f specs are stale
+  on **three axes** (platform Swift→**Tauri** per ADR-023 · auth → **P-256/TPM/Hello/SE** per ADR-025 · nav tabs→**map** per
+  ADR-028) — so the re-scope is a **rewrite of the client spec layer**, not a nav tweak (only the *contracts* carry over:
+  connection/lock state machine, pairing, endpoint shapes, screen content). **Design DONE this session** → ADR-028 §Refinement
+  2026-06-23: domain set + **functional-cluster** default layout (Comms/Planning/Knowledge/Self) · **user-arrangeable +
+  persisted** map · shell defaults (constellation links ON · reduced-motion crossfade · 4 poles) · **WebKit-safe build**
+  watch-item (Tauri webview differs Win/Mac; brain→Mini is transparent to the client; client→Mac = recompile) · and the
+  **spec carve** (7 SwiftUI specs → 7 new Tauri specs: core·auth·world·card·ask·screens·theme; **CLIENT-f retires** to a
+  build target). **PENDING:** write the 7 new Tauri specs (the rewrite pass) + a deferred **fonts pass**. Refs: ADR-028 ·
+  ADR-023/025 · `design-brief.md` · mockup `docs/research/mockups/travel-zoom-workspace.html`.
 - **✅ RESOLVED 2026-06-23 — architecture-validation reservations: all decided AND applied (A–J).** Research
   (`docs/research/2026-06-23-architecture-validation/`, 3 reports): substrate SOTA-aligned but storage over-built vs the
   cognitive layer. All cheap-now/expensive-later hooks were walked one-by-one and **applied across 12 corpus files**
