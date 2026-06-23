@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message, Scope
 from artemis.registry.registry import ToolRegistry
 from artemis.router import SemanticRouter
+
+if TYPE_CHECKING:
+    from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +50,26 @@ class Brain:
         router: SemanticRouter,
         registry: ToolRegistry,
         model: ModelPort,
+        classifier: SensitivityClassifierProtocol | None = None,
+        cloud_reasoning_enabled: bool = True,
     ) -> None:
         self._router = router
         self._registry = registry
         self._model = model
+        self._classifier = classifier
+        self._cloud_enabled = cloud_reasoning_enabled
+
+    async def _responder_role(self, request_text: str) -> str:
+        """Pick the free-form responder role: local unless classified general."""
+        classifier = self._classifier
+        if not self._cloud_enabled or classifier is None:
+            return "responder"
+        try:
+            sensitivity = await classifier.classify(request_text)
+        except Exception:
+            logger.warning("Brain: sensitivity classifier raised -- failing closed to local")
+            return "responder"
+        return "responder" if sensitivity == "sensitive" else "responder_cloud"
 
     async def respond(self, request_text: str, scope: Scope) -> BrainResponse:
         """Process a single request through the brain loop.
@@ -102,7 +122,8 @@ class Brain:
         # ── Free-form responder path ───────────────────────────────────
         try:
             msg = Message(role="user", content=request_text)
-            result = await self._model.complete(role="responder", messages=[msg])
+            role = await self._responder_role(request_text)
+            result = await self._model.complete(role=role, messages=[msg])
             return BrainResponse(
                 text=result.text,
                 path="local",
@@ -126,7 +147,8 @@ class Brain:
 
         # Stream from the free-form responder
         msg = Message(role="user", content=request_text)
-        async for chunk in self._model.complete_stream(role="responder", messages=[msg]):
+        role = await self._responder_role(request_text)
+        async for chunk in self._model.complete_stream(role=role, messages=[msg]):
             yield chunk
 
     async def pre_route(self, request_text: str, scope: Scope) -> str | None:

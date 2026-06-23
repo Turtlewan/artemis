@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Embedding model dimension (Qwen3-Embedding-0.6B → 1024)
     embedding_dimension: int = Field(default=1024, ge=128, le=4096)
 
+    # Privacy kill-switch: False = force ALL reasoning local (no cloud routing)
+    cloud_reasoning_enabled: bool = True
+
     # Codex CLI reasoning engine (ChatGPT subscription auth managed by codex login).
     codex_binary: str = "codex"
     codex_model: str = "gpt-5.5"

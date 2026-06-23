@@ -30,3 +30,8 @@ adapter = "openai"
 endpoint = "codex"           # logical role - Codex uses the CLI/subscription, not an HTTP endpoint
 model_id = "gpt-5.4"         # informational; CodexModelPort uses settings.codex_model (per-role cloud model is a follow-up)
 adapter = "codex"
+
+[sensitivity_classifier]
+endpoint = "http://127.0.0.1:8040/v1"   # MUST stay loopback (privacy gate enforces this) -- keep in sync with mlx_port
+model_id = "Qwen3-4B-Instruct-2507"     # reuses the small local instruct model (no extra resident model)
+adapter = "openai"

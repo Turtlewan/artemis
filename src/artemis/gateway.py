@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from artemis.ports.model import ModelPort
     from artemis.ports.retrieval import EmbeddingModel
     from artemis.registry import ToolRegistry
+    from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +80,25 @@ def compose_brain(
 
     if embedder is None:
         embedder = OpenAIEmbeddingModel(settings)
+    classifier: SensitivityClassifierProtocol | None = None
     if model is None:
         from artemis.adapters.composite_model import CompositeModelPort
+        from artemis.sensitivity import SensitivityClassifier
 
         model = CompositeModelPort(settings)
+        classifier = SensitivityClassifier(OpenAIModelPort(settings), settings)
 
     registry = _register_modules(embedder)
     from artemis.router import SemanticRouter
 
     router = SemanticRouter(registry, embedder)
-    return Brain(router, registry, model)
+    return Brain(
+        router,
+        registry,
+        model,
+        classifier=classifier,
+        cloud_reasoning_enabled=settings.cloud_reasoning_enabled,
+    )
 
 
 def _register_modules(embedder: object) -> ToolRegistry:

@@ -299,4 +299,10 @@ uv run --frozen pytest -q
 ```
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1 `sensitivity.py` — SensitivityClassifier (loopback-guarded, fail-closed)
+- [x] Task 2 config plumbing (`config.py` cloud_reasoning_enabled + `roles.toml` sensitivity_classifier role)
+- [x] Task 3 `brain.py` routing (`_responder_role` fail-closed helper)
+- [x] Task 4 `gateway.py` wiring (classifier built on real-port path only)
+- [x] Task 5 tests (`test_sensitivity.py` + `test_brain_routing.py`)
+- Verify: 161 passed · ruff + mypy clean · scope = 7 spec files
+- DEVIATION (review ⚠️): added `sensitivity_classifier` to `tests/test_config.py` exact-role-set allowlist (not in spec's Files list). Determinate allow-list catch-up — mirrors the planning-blessed precedent for `responder_cloud`/`codex` (status.md). No assertion weakened; per-role structural checks still run.
