@@ -7,11 +7,16 @@ Thin custom orchestrator (brain.md): route → dispatch tool (constrained decodi
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
+from artemis.identity.scope import OWNER_PRIVATE
+from artemis.memory.store import render_inject_block
+from artemis.memory.write_path import MemoryWriteQueue
+from artemis.ports.memory import MemoryStore
 from artemis.ports.model import ModelPort
-from artemis.ports.types import Message, Scope
+from artemis.ports.types import Message, PersonId, Scope
 from artemis.registry.registry import ToolRegistry
 from artemis.router import SemanticRouter
 
@@ -52,12 +57,20 @@ class Brain:
         model: ModelPort,
         classifier: SensitivityClassifierProtocol | None = None,
         cloud_reasoning_enabled: bool = True,
+        memory: MemoryStore | None = None,
+        write_queue: MemoryWriteQueue | None = None,
+        inject_token_budget: int = 512,
+        owner_person_id: PersonId | None = None,
     ) -> None:
         self._router = router
         self._registry = registry
         self._model = model
         self._classifier = classifier
         self._cloud_enabled = cloud_reasoning_enabled
+        self._memory = memory
+        self._write_queue = write_queue
+        self._inject_token_budget = inject_token_budget
+        self._owner_person_id = owner_person_id
 
     async def _responder_role(self, request_text: str) -> str:
         """Pick the free-form responder role: local unless classified general."""
@@ -83,6 +96,17 @@ class Brain:
             return BrainResponse(text="ESCALATION_NOT_AVAILABLE", path="escalate", escalated=True)
 
         # ── Escalation stub ────────────────────────────────────────────
+        # Schedule M4-b extraction once after a successful route; enqueue is non-blocking.
+        if (
+            self._write_queue is not None
+            and self._owner_person_id is not None
+            and scope == OWNER_PRIVATE
+        ):
+            try:
+                self._write_queue.enqueue(request_text, turn_id=uuid.uuid4().hex, role="user")
+            except Exception:
+                logger.warning("Brain: memory write enqueue failed", exc_info=True)
+
         if decision.path == "escalate":
             return BrainResponse(
                 text="ESCALATION_NOT_AVAILABLE",
@@ -121,9 +145,31 @@ class Brain:
 
         # ── Free-form responder path ───────────────────────────────────
         try:
-            msg = Message(role="user", content=request_text)
             role = await self._responder_role(request_text)
-            result = await self._model.complete(role=role, messages=[msg])
+            messages = [Message(role="user", content=request_text)]
+            # SECURITY: inject owner facts ONLY into the LOCAL responder, never the cloud one.
+            if (
+                self._memory is not None
+                and self._owner_person_id is not None
+                and scope == OWNER_PRIVATE
+                and role == "responder"
+            ):
+                try:
+                    facts = await self._memory.inject_context(
+                        self._owner_person_id, self._inject_token_budget
+                    )
+                    block = render_inject_block(facts)
+                    if block:
+                        messages = [
+                            Message(role="system", content=block),
+                            Message(role="user", content=request_text),
+                        ]
+                except Exception:
+                    logger.warning(
+                        "Brain: memory inject failed -- proceeding without memory block",
+                        exc_info=True,
+                    )
+            result = await self._model.complete(role=role, messages=messages)
             return BrainResponse(
                 text=result.text,
                 path="local",

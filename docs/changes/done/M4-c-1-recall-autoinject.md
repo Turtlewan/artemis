@@ -114,3 +114,21 @@ Decay is computed **lazily at inject/recall time** (no scheduler, no background 
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: decay.py — decay_score, rank_for_inject, recall_multiplier + constants (pure, no DB)
+- [x] Task 2: store.py SqliteMemoryStore.inject_context + decay-ranked recall + render_inject_block; __init__ re-exports
+- [x] Task 3: brain.py inject (local-only) + post-turn enqueue; gateway.py compose_brain key_provider memory wiring
+- [ ] Task 4: GATED on-traces (decay half-life / inject-threshold sweep) — skipped, needs the Mini + real traces
+- [x] Tests: tests/test_memory_inject_recall.py (+10 tests)
+
+**Built by Codex (gpt-5.5). Independently verified green: ruff format+check clean, mypy clean (91 src files), pytest 237 passed (+10 from 227 baseline); MemoryStore Protocol conformance + import smoke ok.**
+
+**SCOPE EXPANSION (owner-approved 2026-06-24):** the spec assumed M4-a left a `SqliteMemoryStore` stub with `inject_context` raising `NotImplementedError` to "fill" — **it never existed** (M4-a built only `BitemporalRepository` + the `MemoryStore` Protocol). `store.py` (already in Files-to-Change as "modify") was instead CREATED with the full concrete `SqliteMemoryStore` implementing all 5 Protocol methods (`add_fact`/`recall`/`update_fact`/`delete_fact`/`inject_context`) as a thin wrapper over `BitemporalRepository` + the embedder. No file outside the spec's list. Constructor is `SqliteMemoryStore(repo: BitemporalRepository, embedder: EmbeddingModel)` — NOT the spec's fictional `(scoped_conn, key_provider, OWNER_SCOPE, embedder)`.
+
+**Deviations / hardening (pre-approved reality-adaptations):**
+1. Stale `/Users/artemis-build/` paths → repo-relative.
+2. **Security hardening beyond spec:** the spec assumed the free-form responder path is always LOCAL ("path == local"). The live Brain (post brain-sensitivity, this session) routes the free-form path to `responder` OR `responder_cloud` via the sensitivity classifier. To honour the spec's own security invariant (owner facts must NEVER reach a cloud model), injection is gated to `scope == OWNER_PRIVATE AND role == "responder"` (local only) — `responder_cloud` never receives the inject block. Resolves the apex-security FLAG ("confirm the inject block never reaches a cloud path").
+3. Live Brain uses `Message` objects (not dicts) — injection prepends `Message(role="system", content=block)`.
+4. Post-turn write enqueued once right after a successful route (fire-and-forget, owner scope) rather than duplicated across every return branch — behaviourally equivalent for a non-blocking user-turn enqueue.
+5. `compose_brain` gained `key_provider: KeyProvider | None = None`; default (None) path is byte-for-byte behaviour-preserving (cli/main unaffected). The memory-active branch (opens keyed memory.db via the sqlcipher seam + sqlite-vec + create_schema) is wrapped in try/except → degrade-to-memory-off, and is exercised ON-HARDWARE only (no off-hardware caller passes key_provider) — mirrors the `_register_modules` partial-build tolerance.
+6. Task 4 (decay tuning sweep) skipped — GATED on real usage traces / Mini; constants left at drafted defaults (HALF_LIFE_DAYS=14.0, INJECT_THRESHOLD=0.2).

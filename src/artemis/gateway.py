@@ -93,6 +93,7 @@ def compose_brain(
     *,
     embedder: EmbeddingModel | None = None,
     model: ModelPort | None = None,
+    key_provider: KeyProvider | None = None,
 ) -> Brain:
     """Build a wired Brain from settings.
 
@@ -120,6 +121,48 @@ def compose_brain(
     registry = _register_modules(embedder)
     from artemis.router import SemanticRouter
 
+    memory = None
+    write_queue = None
+    owner_person_id = None
+    if key_provider is not None:
+        try:
+            key_provider.dek_for_scope(OWNER_PRIVATE)
+            import sqlite_vec  # type: ignore[import-untyped]
+
+            import artemis.paths as paths
+            from artemis.data.sqlcipher import sqlcipher_open
+            from artemis.memory import build_write_path
+            from artemis.memory.repository import BitemporalRepository
+            from artemis.memory.schema import create_schema
+            from artemis.memory.store import SqliteMemoryStore
+            from artemis.memory.write_path import MemoryWriteQueue
+
+            db_path = paths.scope_dir(settings, OWNER_PRIVATE) / "relational" / "memory.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            dek = key_provider.dek_for_scope(OWNER_PRIVATE)
+            conn = sqlcipher_open(db_path, dek.as_hex())
+            conn.enable_load_extension(True)
+            conn.load_extension(sqlite_vec.loadable_path())
+            conn.enable_load_extension(False)
+            conn.row_factory = __import__("sqlite3").Row
+            create_schema(
+                conn,
+                embedder_model_id=settings.codex_model,
+                dimension=settings.embedding_dimension,
+            )
+            repo = BitemporalRepository(conn, OWNER_PERSON_ID)
+            memory = SqliteMemoryStore(repo, embedder)
+            write_queue = MemoryWriteQueue(build_write_path(repo, embedder, model))
+            owner_person_id = OWNER_PERSON_ID
+        except Exception:
+            logger.warning(
+                "compose_brain: memory unavailable -- building Brain without memory",
+                exc_info=True,
+            )
+            memory = None
+            write_queue = None
+            owner_person_id = None
+
     router = SemanticRouter(registry, embedder)
     return Brain(
         router,
@@ -127,6 +170,9 @@ def compose_brain(
         model,
         classifier=classifier,
         cloud_reasoning_enabled=settings.cloud_reasoning_enabled,
+        memory=memory,
+        write_queue=write_queue,
+        owner_person_id=owner_person_id,
     )
 
 
