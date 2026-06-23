@@ -86,6 +86,7 @@ edges** (third-party / cross-machine / cross-language / risky-isolation).
 - **Per-person:** `person_id` is a hard **partition key** on every node/edge/vector — owner gets full
   episodic+semantic; guests get only a tiny semantic preference profile.
 - **Owner control:** facts atomic + provenance-linked → view/edit/delete; exposed via an OpenMemory-style MCP control surface.
+- **Prospective memory** (future intentions, "remember to do X") is **not a separate store** (J, architecture-validation 2026-06-23). It is represented by trigger type: **time-anchored** intentions → a scheduled Task (M8-d) with a due/remind time; **condition-anchored** intentions → an ADR-021 reaction rule ("when X → then Y"). Both fire through the Heartbeat (M6). The Task Executor's task-memory (ADR-024) holds in-flight *execution* state, not the standing intention. No new "intentions" store.
 
 ### Inference + models
 - **Runtime:** **`mlx-openai-server`** on MLX — one process, multiple resident models, on-demand load +
@@ -95,6 +96,7 @@ edges** (third-party / cross-machine / cross-language / risky-isolation).
 - **Structured output:** **constrained decoding** (Outlines + mlx-lm) for ALL structured output — schema-valid
   JSON/tool-calls even from the 4B; no validate-retry loop.
 - **Latency:** keep responder warm; cache the static system-prompt prefix; stream tokens; instant ack masks TTFT.
+- **Model-residency / portfolio fit (architecture-validation 2026-06-23 → ADR-022 Refinement):** the full local portfolio (reasoner + embeddings + reranker + visual + STT/TTS/speaker-ID) cannot all stay hot on a smaller box — voice models are negligible (<2 GB total); the hog is reasoner + vision. Reserve a **model-residency convention + load/evict policy** (which models stay hot vs load-on-demand), tied to the F durable-exec / GPU-contention work (ADR-024). **64 GB unified memory** is the highest-leverage hardware call — it lets a 27–32B reasoner + vision + voice co-reside without the evict dance. (Dev-box 8 GB VRAM budget + the non-sensitive fallback ladder Codex → DeepSeek-Pro-API → local Qwen3-Instruct live in ADR-022 § Refinement 2026-06-23.)
 
 ### Voice (cascaded, streaming every stage)
 - Wake: openWakeWord ("Hey Jarvis" built-in) → STT: Parakeet-TDT-0.6B (FluidAudio/ANE) + MLX-Whisper-turbo
@@ -128,6 +130,7 @@ answers · recurring topics · staleness) → curriculum picks top gap → Deep-
 self-generated, anti-collapse) → distill to a RAG chunk or a self-verified **recipe** → **stage → owner-gated
 commit** via Heartbeat digest. Hard per-cycle + weekly token caps. Borrows Voyager auto-curriculum + ACE
 delta-merge. Explicitly NOT SEAL weight updates nor self-code-rewrite.
+- **Parametric-memory stance (I, architecture-validation 2026-06-23):** Artemis does **no runtime weight-learning**. The **sole** parametric write-path is the offline Codex-distilled `sensitive_reasoner` (ADR-022) — trained on synthetic data only, off-box, hardware-gated. All other learning is non-parametric (the recipe library + RAG). New capability comes from recipes, not gradient updates. Recorded so it is never re-litigated as an oversight.
 - **Recipe distillation:** recipe format (frontmatter + instructions + optional script); write a
   *candidate* on a verified teacher success; **promote only after the task class recurs (N≥2) or on owner
   command**; verify by replay against the original outcome; embed the *description* for retrieval; rule-based

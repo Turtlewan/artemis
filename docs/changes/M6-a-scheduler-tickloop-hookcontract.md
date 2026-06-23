@@ -28,6 +28,7 @@ Simplicity check: considered keeping `check_ref -> bool` and signalling the payl
 ## Prerequisites
 - Specs that must be complete first: **M1-a** (`HookSpec`/`ModuleManifest`/`DataScope`/`ToolRegistry.manifests`), **M1-d** (the `Heartbeat` skeleton this rewrites), **M2-b** (`KeyProvider.is_owner_unlocked` + `FakeKeyProvider`), **M2-c** (`src/artemis/proactive/` package).
 - Environment setup required: none beyond M0/M1/M2. Fully deterministic off-hardware — injectable clock + `FakeKeyProvider` + in-test fake hooks; no model, no ntfy, no broker. No on-hardware gate in M6-a (the live scheduled run is M6-c's gated task).
+- **Reservation note (architecture-validation 2026-06-23, reservation F — shared durable-exec + idempotency convention; ADR-024 Refinement 2026-06-23):** the heartbeat is one of the three consumers of the **shared checkpoint/replay + idempotency-key convention** (with the Task Executor and recipe-runner). The existing `Hit.dedup_key` is this surface's idempotency key — keep it conformant to the shared convention so a tick that fires the same logical hit twice (overlapping ticks — the named 2026 failure mode) is de-duplicated, and reserve a **per-tick lock** so two overlapping `tick()` runs can't double-advance background work. M6-a builds the dedup_key + tick loop; the durable-replay impl is M9/ADR-024. → impact: Low (dedup_key already exists; this aligns it to the shared convention + reserves the per-tick lock).
 
 ## Files to Change
 | File | Operation | Notes |

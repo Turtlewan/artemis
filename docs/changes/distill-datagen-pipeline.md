@@ -15,6 +15,9 @@ autonomy_level: L2
 
 <!-- WINDOWS-ONLY scope: NO mlx, NO Apple-only deps. All teacher/judge calls go through subprocess or HTTP API. Training run (mlx_lm.lora) is a SEPARATE Mac-side spec — this spec produces the training-ready JSONL; it does not touch mlx. -->
 
+<!-- RESERVATION (architecture-validation 2026-06-23, reservation H2 — recipe re-seed path; ADR-022 Refinement 2026-06-23): besides generating the initial trace dataset, reserve a RE-SEED/REFRESH mode that re-authors traces/recipes flagged `needs_reseed` by M7-b (those distilled under a weak/unavailable teacher) once a stronger teacher rung is available — so a degraded seeding window can't permanently imprint the local recipe library. Pair with the pluggable teacher seam (Claude or Codex) the ADR-022 Refinement 2026-06-22 already adds here. Producer only; M7-b owns the flag/gate. Not built now — reserved mode. -->
+<!-- Also pending (ADR-022 Refinement 2026-06-22): add sensitive-domain (finance/health/journal/memory) reasoning categories to the six task categories + the pluggable Codex teacher, for the Codex-distilled sensitive_reasoner. -->
+
 ## Resolved seams (planning, 2026-06-09)
 All four draft-stage parks are resolved; this spec is `status: ready`.
 

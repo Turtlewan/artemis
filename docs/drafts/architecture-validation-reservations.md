@@ -23,18 +23,30 @@ _Closing out the architecture-validation research (`docs/research/2026-06-23-arc
   - Keep `ModelPort` provider-agnostic; port open to add more rungs.
 - **Recipe-quality gate + re-seed path** — teacher-quality-aware gate before a distilled recipe is promoted (beyond the existing replay-verify + recurrence gate), so a degraded/unavailable teacher during seeding can't permanently imprint the local recipe library; add a refresh/re-seed path for recipes authored under a weak teacher.
 
-## OPEN — not yet decided (resume here)
+## Remaining decisions — RESOLVED 2026-06-23
 
-1. **H · Rung 3 — local reasoner family/sizing.** Leaning: **Qwen3 family**, hardware-tiered (~8B on the current dev box → ~32B-class on the 64GB Mac), **Codex-distilled adapter for the sensitive path** (ADR-022). Undecided checkpoint: **Qwen3-Instruct** (snappy, recommended) vs **DeepSeek-R1-Distill-Qwen** (reasoning-tuned, slower) vs **decide-at-Mac-bring-up** (benchmark on real 64GB). NOTE: "DeepSeek-distilled local" is usually a *Qwen base* anyway → not a foundational fork, just a checkpoint swap behind the same runtime.
-2. **Voice model (M5) + local-model-portfolio fit** — owner raised: the voice stack (STT Whisper-family · TTS Kokoro/Piper · speaker-ID ECAPA/pyannote for the voice-Tier gate) lives in M5 + its own `docs/research/` voice doc (pull it up on resume; don't quote locked picks from memory). The real cross-cutting concern report 03 flagged: **does the whole local-model portfolio (reasoner + embeddings + reranker + visual + STT + TTS + speaker-ID) fit + coexist on 48–64GB** — a VRAM-budget question, strongest argument for the 64GB call.
-3. **I (doc-only) — parametric-memory stance.** Record one line in ADR-004/brain.md: *no runtime weight-learning; the sole parametric write-path is the offline Codex-distilled `sensitive_reasoner` (ADR-022).* So it's never re-litigated as an oversight.
-4. **J (doc-only) — prospective-memory representation.** Confirm one canonical home across heartbeat / ADR-021 reactions / tasks / ADR-024 task-memory; watch-list note, **no new store**.
+| # | Reservation | Decision | Landed in |
+|---|---|---|---|
+| **H·3** | Rung-3 local reasoner | **Qwen3-Instruct = documented default** (snappy, instruction-tuned); tiered ~8B dev → ~32B Mac; the final Instruct-vs-R1-distill checkpoint is **benchmark-confirmed at Mac bring-up** (reversible swap behind `ModelPort`, not a fork) | ADR-022 § Refinement 2026-06-23 |
+| **2** | Voice (M5) + portfolio fit | Voice picks **not re-opened** (Parakeet/Kokoro/FluidAudio-Sortformer/SmartTurn, locked, sound). Real concern = VRAM budget: **64GB reaffirmed** as highest-leverage call + **reserve a model-residency/load-evict convention** (tied to F). Owner directive: **dev-box budget produced** (RTX 5060 Ti 8GB → develops every component + ambient set + one medium model + voice, but NOT heavy reasoner+vision+voice all hot → dev box itself needs the load/evict manager) | ADR-022 § Refinement 2026-06-23 + brain.md § Inference |
+| **I** | Parametric-memory stance | Recorded: **no runtime weight-learning; sole parametric write-path = offline Codex-distilled `sensitive_reasoner` (ADR-022)** | ADR-004 + brain.md § Self-improvement |
+| **J** | Prospective-memory home | **No new store** — time-anchored → scheduled Task (M8-d); condition-anchored → ADR-021 reaction; both fire via Heartbeat (M6); task-memory (ADR-024) = execution state, not the intention | brain.md § Memory |
 
-## Then — APPLY (only after the open items are decided)
-Amend, in one pass: **M3-a** (D, E) · **M4-a** (A) · **M4 MemoryStore port** (B, C) · **ADR-004** (A, B, I) · **ADR-024** (F, G) · **M1** (G) · **M6 + M7** (F notes) · **ADR-022/027 + M7 + distill pipeline** (H) · **brain.md** (I) · prospective note (J).
-Also: **`04-seven-memory-types.md` is committed**; this draft + status row are the live checkpoint.
+## APPLIED 2026-06-23 (all A–J landed)
+- **ADR-004** — A (`derived` provenance enum + `source_ref` list + reserved `derivation_method`/`derivation_confidence`), B (record-type-generic port), I (parametric stance). + Decision-table provenance row updated.
+- **M4-a** — A schema migration note (folds `derived` into the deferred typed-source-ref migration).
+- **M0-d** — B (record-type-generic docstring) + C (async-write-default + scope-on-every-method, with a regression-guard verification).
+- **M3-a** — D (`node_level`/`is_summary`/`parent_chunk_id` reserved on `ChunkRecord` + VectorStore row) · E (`projection_fn` ingest hook + reserved side table).
+- **ADR-024** — F (shared checkpoint/replay + idempotency-key convention across Task Executor / heartbeat / recipe-runner) · G (first-class `router → planner` escalation seam).
+- **M1-b** — G (the `escalate` path reserved as the planner seam; `path` kept an open-set discriminant).
+- **M6-a** — F (dedup_key aligned to the shared convention + per-tick lock reserved).
+- **M7-a2** — F (recipe-runner effect path idempotency-key-ready).
+- **ADR-022 § Refinement 2026-06-23** — H1 (fallback ladder Codex → DeepSeek-Pro-API → local Qwen3-Instruct) · H2 (recipe-quality gate + re-seed) · model-residency budget + 64GB reaffirm + dev-box VRAM table.
+- **M7-b** — H2 (teacher-quality field + `needs_reseed` flag + re-seed path reserved).
+- **distill-datagen-pipeline** — H2 (re-seed/refresh mode reserved) + sensitive-domain-categories pending note.
+- **brain.md** — I (§ Self-improvement) · J (§ Memory) · portfolio/residency pointer (§ Inference).
 
-## Where I stopped
-- **Decided:** A, B, C, D, E, F, G, H (ladder rungs 1–2 + quality gate).
-- **Next question to resolve:** H rung-3 local-model checkpoint (Qwen3-Instruct vs R1-distill-Qwen vs decide-at-Mac).
-- **Open items:** rung-3 local model · voice/portfolio discussion · I · J · then apply all edits.
+## Where I stopped — COMPLETE
+- **All reservations A–J decided AND applied** across the 12 files above. `04-seven-memory-types.md` committed.
+- **Note for commit:** ADR-027 is referenced in CLAUDE.md + report 03 but **has no ADR file** — H landed in ADR-022 (which owns model/runtime routing). Flag whether ADR-027 should be written to formalize the Codex-primary/Opus-fallback + ladder, or whether ADR-022/026 already cover it.
+- **Next:** commit the application wave (owner-gated); update status.md In-Flight + Open Question (done this session).

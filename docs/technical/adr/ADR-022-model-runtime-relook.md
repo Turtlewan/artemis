@@ -39,6 +39,33 @@ A follow-on design pass (owner + planning) pressure-tested the hybrid's two soft
 
 **Effect on specs:** `brain-sensitivity-routing` is **unblocked but its regex mechanism is SUPERSEDED** — it must be re-drafted to a local-model gate at the ingestion seam (regex → model; the `sensitivity.py` content changes). `distill-datagen-pipeline` gains sensitive-domain reasoning categories + the pluggable Codex teacher. `composite-model-routing` / `codex-model-adapter` are unaffected.
 
+## Refinement 2026-06-23 — architecture-validation reservations (H: fallback ladder + recipe-quality gate · model-residency budget)
+Closes the architecture-validation research's two model-layer foundational calls (`docs/research/2026-06-23-architecture-validation/03-holistic-end-state.md` Q5.4 + the portfolio-fit / 64GB lever). All behind the existing `ModelPort` seam — additive.
+
+**H1 — cloud-reasoner fallback LADDER (non-sensitive path only).** The pluggable seam's degrade path is made explicit and structural (not just a quota guard). Sensitive reasoning **never** escalates to cloud (the ADR-022 wall holds); the ladder governs only the non-sensitive surface:
+- **Rung 1 (primary)** = **Codex gpt-5.5** (ChatGPT subscription).
+- **Rung 2 (alt-cloud)** = **DeepSeek Pro API** — pay-per-token (API, *not* a subscription/CLI → dodges the OAuth/undocumented-backend fragility), vendor diversity; only ever sees non-sensitive data.
+- **Rung 3 (local)** = a local **Qwen3-Instruct** model — the **documented default** (snappy, instruction-tuned, fits the reactive reasoner role), **hardware-tiered** (~8B on the RTX 5060 Ti dev box → ~32B-class on the 64GB Mac). The final **Instruct-vs-reasoning-distilled checkpoint** (Qwen3-Instruct vs DeepSeek-R1-Distill-Qwen) is **benchmark-confirmed at Mac bring-up** — both share the same Qwen runtime, so it is a reversible checkpoint swap behind the port, not a structural fork.
+- Keep `ModelPort` provider-agnostic so more rungs can be added; `roles.toml` maps the ladder.
+
+**H2 — recipe-quality gate + re-seed path.** Recipe quality is *baked in from the teacher at seeding time*, so a degraded/unavailable teacher during the bootstrap window would permanently imprint a weak local recipe library. Beyond the existing replay-verify + recurrence gate, add a **teacher-quality-aware gate** before a distilled recipe is promoted, and a **refresh/re-seed path** to re-author recipes that were seeded under a weak teacher once a stronger one is available. (Lands in M7-b promotion policy + `distill-datagen-pipeline`.)
+
+**Model-residency / load-evict budget (portfolio fit · reaffirms 64GB).** The whole local-model portfolio (reasoner + embeddings + reranker + visual + STT/TTS/speaker-ID) must co-exist on one box; the voice models are negligible (Parakeet 0.6B + Kokoro 82M + Sortformer + SmartTurn ≈ <2 GB total), the memory hog is **reasoner + vision**. Decisions:
+- **64GB unified memory is reaffirmed as the single highest-leverage hardware call** — it lets a 27–32B reasoner + vision + voice co-reside without an evict dance.
+- Reserve a **model-residency convention + load/evict policy seam** (which models stay hot vs load-on-demand), tied to the F durable-exec / GPU-contention work (ADR-024) — the heartbeat + Task Executor + voice loop contend for the GPU. Don't build the manager now; reserve the seam.
+- **Dev-box VRAM budget (RTX 5060 Ti 8 GB, Ryzen 7700, 32 GB RAM)** — estimates to verify at first load (Q4 weights ≈ 0.55 GB/1B + KV):
+
+  | Model set | ~Footprint | On 8 GB |
+  |---|---|---|
+  | Always-hot (embeddings 0.6B + reranker 0.6B + VAD/EOU) | ~1.5 GB | ✅ ample headroom |
+  | + reactive reasoner (Qwen3-4B Q4 +KV) | ~5 GB | ✅ fits |
+  | + sensitive reasoner (Qwen3-8B Q4 +KV) | ~7.5 GB | ✅ fits, tight |
+  | + vision (Qwen3-VL-4B Q4) | ~5.5 GB | ✅ fits |
+  | + voice loop (Parakeet+Kokoro+Sortformer) | ~3 GB | ✅ fits; coexists w/ 4B reasoner (~6.5 GB) |
+  | 8B sensitive + voice concurrent | ~9 GB | ❌ over — evict or CPU-offload |
+
+  Read: 8 GB develops/tests **every** component and runs the ambient set + one medium model + voice together, but **cannot** hold the heavy reasoner + vision + voice all hot at once — so the dev box itself *requires* the load/evict manager (32 GB system RAM = the spill/fast-reload buffer). The dev-box constraint validates building the residency seam early rather than discovering it on the Mac.
+
 ## Consequences
 - **Hybrid (chosen):** non-sensitive reasoning → Codex-subscription; **sensitive → local model** (RTX 5060 Ti 8B in dev / Mac 27B in prod). The privacy wall (M2 / ADR-003/005/006), the local sensitive-reasoner, and the recovery-passphrase/passkey unlock **all stay**; **nothing is retired**. The change is additive — a cloud path for the non-sensitive surface, gated by the sensitivity router.
 - **Either way:** Windows-first build holds · Tauri client (ADR-023) holds · task executor (ADR-024) holds · proactivity = local trigger + on-demand cloud.

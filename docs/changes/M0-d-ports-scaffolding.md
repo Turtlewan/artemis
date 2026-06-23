@@ -56,7 +56,10 @@ Simplicity check: considered defining ports as ABCs with `@abstractmethod` — r
   - `async def update_fact(self, person_id: PersonId, fact_id: str, fact: Fact) -> None: ...` (embeds new fact; close prior interval + insert — semantics doc'd in docstring, no logic)
   - `def delete_fact(self, person_id: PersonId, fact_id: str) -> None: ...` (tombstone, never hard-delete — doc'd; **stays sync** — no embed, local DB write only)
   - `async def inject_context(self, person_id: PersonId, token_budget: int, as_of: AsOf | None = None) -> list[Fact]: ...` (auto-inject the current top facts; may embed/rank)
-  — done when: `uv run mypy --strict src` passes; every method carries `person_id` and the recall/inject methods carry `as_of`; the four embedding methods are `async def`, `delete_fact` is sync.
+  - **Reservation note (ADR-004 Refinement 2026-06-23, architecture-validation reservations B + C):**
+    - **B — record-type-generic.** The port's record type is the `Fact` triple in v1, but the port is **not** contractually triple-only. Document in the `MemoryStore` docstring: "record-type-generic; `Fact` (subject/relation/object) is the v1 record type, not the contract — a future `procedure` record (steps/preconditions/success-criteria) can be added as a new record type without re-shaping the port." No new method now; this is a docstring + intent lock so the port isn't accidentally narrowed to triples.
+    - **C — async-write-by-default + scope-on-every-method (confirm + regression-guard).** The write methods (`add_fact`/`update_fact`) are async by ADR-015 (the 2026-SOTA memory consensus = async writes by default) and `person_id` (the scope partition key) is on **every** method — both are intentional and load-bearing. State both in the docstring so they read as deliberate, and the verification below asserts them so they can't silently regress.
+  — done when: `uv run mypy --strict src` passes; every method carries `person_id` and the recall/inject methods carry `as_of`; the four embedding methods are `async def`, `delete_fact` is sync; the docstring records the record-type-generic + async-write-default intent.
 
 - [ ] Task 4: Define the routing + model ports — files: `/Users/artemis-build/artemis/src/artemis/ports/routing.py`, `/Users/artemis-build/artemis/src/artemis/ports/model.py` —
   - routing.py `Router(Protocol)`: `def route(self, request_text: str, scope: Scope) -> RouteDecision: ...` where `RouteDecision` is a frozen dataclass `{path: Literal["deterministic","local","escalate"], candidate_tools: Sequence[str], confidence: float}` (router-first, brain.md).
@@ -154,6 +157,7 @@ Approving this spec approves all of them.
 - [ ] Run `uv run python -c "from artemis.ports import Retriever, MemoryStore, EmbeddingModel, VectorStore, Reranker, Router, ModelPort, WakeWord, STT, TTS, VAD, SpeakerID, AudioFrontend, RouteDecision, ModelResponse, Message, Usage"` → verify: exit 0 (all ports + types import; F6 — RouteDecision/ModelResponse must be in __all__).
 - [ ] Run `uv run mypy --strict src tests` → verify: exit 0, no errors.
 - [ ] Run `uv run python -c "import inspect; from artemis.ports import MemoryStore; p=inspect.signature(MemoryStore.recall).parameters; assert 'person_id' in p and 'as_of' in p"` → verify: exit 0 (no AssertionError).
+- [ ] Run `uv run python -c "import inspect; from artemis.ports import MemoryStore; assert inspect.iscoroutinefunction(MemoryStore.add_fact) and inspect.iscoroutinefunction(MemoryStore.update_fact); assert all('person_id' in inspect.signature(getattr(MemoryStore,m)).parameters for m in ('add_fact','recall','update_fact','delete_fact','inject_context'))"` → verify: exit 0 (reservation C regression-guard: writes are async, scope on every method).
 - [ ] Run `uv run pytest -q` → verify: test_ports passes; each Protocol confirmed `_is_protocol`.
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 

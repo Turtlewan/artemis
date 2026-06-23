@@ -28,6 +28,7 @@ Simplicity check: considered an LLM-generated explanation per recipe — rejecte
 ## Prerequisites
 - Specs that must be complete first: M7-a1 (`Recipe`/`RecipeStatus`/`ActionClass`/`RecipeStore`/`RecipeSignatureError`), M7-a2 (`task_class_key`). The approve/reject action surface is the client-app Review screen (IG1=B; client-app spec TBD); the M6 digest is informational-only (referenced, not a build dependency here).
 - Environment setup required: none beyond M7-a. Fully deterministic; no on-hardware gate (no model calls in M7-b — promotion + classification + explanation are all rules/templates).
+- **Reservation note (architecture-validation 2026-06-23, reservation H2 — recipe-quality gate + re-seed; ADR-022 Refinement 2026-06-23):** recipe quality is *baked in from the teacher at seeding time*, so a recipe distilled under a degraded/unavailable teacher would imprint that weakness permanently. Beyond the recurrence (N≥2) + replay-verify gates, reserve a **teacher-quality field** on the candidate (e.g. which teacher rung authored it + a quality/confidence stamp) and a **`needs_reseed` flag + a re-seed/refresh path** that re-authors a recipe once a stronger teacher is available — keeping the promotion surface itself token-free/rule-based (the re-seed runs in the distill pipeline, not at review time). M7-b reserves the fields/flag; the re-seed producer lives in `distill-datagen-pipeline`. → impact: Low (additive fields + one flag; no v1 behaviour change).
 
 ## Files to Change
 | File | Operation | Notes |

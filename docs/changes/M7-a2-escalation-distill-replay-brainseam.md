@@ -25,6 +25,7 @@ Simplicity check: considered a heavyweight replay harness — rejected; replay-v
 ## Prerequisites
 - Specs that must be complete first: **M7-a1**, M0-a, M0-d, M1-a, M1-b. Sequenced-with: M2 (the security module that provides the concrete `SandboxPort`; off-hardware uses a `FakeSandbox`).
 - Environment setup required: none beyond the above for the off-hardware suite (fakes for teacher + sandbox). The live `claude-cli` teacher adapter probe is **GATED on-hardware** (`claude` CLI logged in on the Mini).
+- **Reservation note (architecture-validation 2026-06-23, reservation F — shared durable-exec + idempotency convention; ADR-024 Refinement 2026-06-23):** the recipe-runner (`apply_recipe`) is the third consumer of the **shared checkpoint/replay + idempotency-key convention** (with the Task Executor and heartbeat). A recipe that performs external-effect steps must carry an idempotency key conformant to the shared convention so a re-applied / resumed recipe can't double-fire those effects (naïve-retry duplication is the named 2026 failure mode). M7-a2 builds replay-verify against the recorded outcome; the durable cross-surface replay model is M9/ADR-024 — keep `apply_recipe`'s effect path idempotency-key-ready so it slots into that model without reshaping. → impact: Low (no v1 behaviour change; aligns the effect path to the shared convention).
 
 ## Files to Change
 | File | Operation | Notes |

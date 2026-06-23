@@ -27,7 +27,7 @@ Build a **custom bitemporal `MemoryStore`** on a **per-person SQLCipher database
 | **Extraction model** | Local teacher (per the sensitivity router); **constrained decoding** for all structured output. |
 | **Forgetting/decay** | Score `recency × salience × access` (Ebbinghaus-style); **never hard-delete** — demote below the inject threshold / tombstone via `valid_to`. Owner-driven true purge is a separate explicit action. |
 | **Auto-inject** | Each turn, query current (`as_of=now`) facts above the inject threshold, rank, pack into the system prompt within a token budget. |
-| **Provenance + owner control** | Each fact carries a **typed source reference** (`source_kind` ∈ turn\|document\|module + `source_ref`), `extracted_at`, `extractor_model`, `confidence` (see Refinement 2026-06-21); owner edit = a normal bitemporal UPDATE (auditable); owner delete = tombstone (or explicit purge). |
+| **Provenance + owner control** | Each fact carries a **typed source reference** (`source_kind` ∈ turn\|document\|module\|**derived** + `source_ref`), `extracted_at`, `extractor_model`, `confidence` (see Refinements 2026-06-21 + 2026-06-23); owner edit = a normal bitemporal UPDATE (auditable); owner delete = tombstone (or explicit purge). |
 | **Upgradeability** | All behind the `MemoryStore` port → Graphiti / memori swappable later if requirements outgrow the custom store. |
 
 ### Refinement (2026-06-04, M4 review) — fact identity & cardinality
@@ -48,6 +48,12 @@ non-conversational facts. **Applied as part of the M4-b module-push amendment th
 turn rows to `kind="turn"`; M4-b write path + `MemoryStore.add_fact` carry the typed ref; the owner view in
 M4-c-2 renders it). No new build item — it shapes an amendment already on the list. (Apply at M4 finalization /
 the ADR-021 amendment wave.)
+
+### Refinement (2026-06-23, architecture-validation reservations) — additive schema/port hooks
+Cheap-now/expensive-later hooks surfaced by the architecture-validation research (`docs/research/2026-06-23-architecture-validation/`). All **additive** — reserve the hook now, build the producer later. (Decisions A, B, I of the reservation walk; full log in the 2026-06-23 handoff / status.)
+- **A — `derived` provenance (reserve).** Extend the typed source reference above with a fourth kind: `source_kind ∈ {turn, document, module, **derived**}`. For a `derived` fact, `source_ref` is a **list of the parent fact-ids** it was inferred/consolidated from (not a single source row), and two columns are **reserved** (nullable, unpopulated in v1): `derivation_method` (e.g. `"reflection"`, `"consolidation"`) and a derivation `confidence`. This is the schema hook for a future reflection/consolidation loop that writes facts *about* facts; nothing produces `derived` rows until that loop is built. (Apply to M4-a `facts` schema alongside the 2026-06-21 typed-ref migration.)
+- **B — `MemoryStore` port stays record-type-generic (reserve).** The port MUST NOT hard-code `(subject, relation, object)` as the *only* storable record shape. Action-skills/procedures live in the recipe library, not memory — but keep the port open so a future `procedure` record (steps / preconditions / success-criteria) can be added as a new record type without re-shaping the port. Document the port as "record-type-generic; triple is the v1 record type, not the contract." (Apply to M0-d port + the port docstring.)
+- **I — parametric-memory stance (doc line).** Artemis does **no runtime weight-learning**. The sole parametric write-path is the offline Codex-distilled `sensitive_reasoner` (ADR-022); all other learning is non-parametric (the recipe library). New capability comes from recipes, not gradient updates. Recorded here and in `brain.md` so it is never re-litigated as an oversight.
 
 ### Refinement (2026-06-08, brain/AI research sweep) — patterns to absorb
 Memory deep-dive (`docs/research/2026-06-08-agent-memory.md`) re-confirmed **build-custom** — no framework satisfies SQLCipher-at-rest + bitemporal + small-model robustness + per-person partition together (Graphiti needs ~70B for schema-valid extraction; Mem0 OSS lacks bitemporal + at-rest encryption). Absorb three patterns:
