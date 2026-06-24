@@ -16,6 +16,7 @@ from artemis.manifest import HookSpec
 from artemis.proactive.hook_types import HEARTBEAT_OK as HEARTBEAT_OK
 from artemis.proactive.hook_types import Hit, HookResult, TickResult
 from artemis.registry import ToolRegistry
+from artemis.runtime_config import get_runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ class Heartbeat:
         self.pre_tick_steps = list(pre_tick_steps or [])
         self._sleep_seconds = interval_seconds
         self._log = logger or logging.getLogger(__name__)
+        runtime_config = get_runtime_config()
+        self._wake_fallback_time = runtime_config.tasks.morning_digest_fallback_time
+        self._weekend_review_day = runtime_config.tasks.weekend_review_day
+        self._week_ahead_day = runtime_config.tasks.week_ahead_day
+        self._wake_date: date | None = None
         self._hooks = self._build_hook_table()
 
     def _build_hook_table(self) -> list[_ResolvedHook]:
@@ -131,6 +137,38 @@ class Heartbeat:
             return True
         return False
 
+    @staticmethod
+    def _today_at(now_wall: datetime, hhmm: str) -> datetime:
+        """Return today's wall-clock datetime for a validated ``HH:MM`` value."""
+        hour_text, minute_text = hhmm.split(":")
+        return datetime.combine(now_wall.date(), datetime_time(int(hour_text), int(minute_text)))
+
+    def note_wake(self, now_wall: datetime) -> None:
+        """Record the daily wake signal from the gateway's first owner interaction.
+
+        This seam is idempotent within a day. Wake hooks still pass through the
+        normal tier gate; the latch only records that a wake was observed.
+        """
+        self._wake_date = now_wall.date()
+
+    def _wake_due(self, rec: _ResolvedHook, now_wall: datetime) -> bool:
+        """Evaluate a wake hook's wake-or-fallback single-fire invariant."""
+        hook = rec.hook
+        today = now_wall.date()
+        if rec.last_fired_date == today:
+            return False
+        if hook.wake_day_gate is not None and now_wall.weekday() != hook.wake_day_gate:
+            return False
+
+        wake_observed = self._wake_date == today
+        fallback_reached = hook.wake_fallback_time is not None and now_wall >= self._today_at(
+            now_wall, hook.wake_fallback_time
+        )
+        if wake_observed or fallback_reached:
+            rec.last_fired_date = today
+            return True
+        return False
+
     def tick(self) -> TickResult:
         """Execute one scheduler tick and return its ``TickResult``."""
         now_mono = self._clock()
@@ -178,7 +216,11 @@ class Heartbeat:
         return tick_result
 
     def _is_due(self, rec: _ResolvedHook, now_mono: float, now_wall: datetime) -> bool:
-        return self._interval_due(rec, now_mono) or self._cron_due(rec, now_wall)
+        return (
+            self._interval_due(rec, now_mono)
+            or self._cron_due(rec, now_wall)
+            or (rec.hook.wake and self._wake_due(rec, now_wall))
+        )
 
     def _send_tier1_queue_token(self, rec: _ResolvedHook) -> None:
         hook = rec.hook
