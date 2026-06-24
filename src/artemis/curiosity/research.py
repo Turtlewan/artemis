@@ -114,7 +114,7 @@ def registrable_domain(url: str) -> str:
     """Return the eTLD+1 registrable domain for a URL using the bundled PSL."""
 
     extracted = tldextract.extract(url)
-    return extracted.registered_domain
+    return extracted.top_domain_under_public_suffix
 
 
 def grounding_gate(result: ResearchResult, reachability: Reachability) -> bool:

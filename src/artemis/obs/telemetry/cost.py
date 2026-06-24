@@ -24,7 +24,7 @@ def tier_for(role: str, settings: Settings) -> Tier:
     if model_role is None:
         get_logger("obs.cost").warning("unknown_role", extra={"role": role[:64]})
         return Tier.LOCAL
-    if model_role.adapter == "claude-cli":
+    if model_role.adapter in ("claude-cli", "codex"):
         return Tier.SUBSCRIPTION
     host = urlparse(model_role.endpoint).hostname or ""
     if model_role.adapter == "openai" and "deepseek" in host:
