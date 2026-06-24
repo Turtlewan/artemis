@@ -1,7 +1,8 @@
 # AGENTS.md — Artemis (Codex build instructions)
 
 Standing instructions for the **Codex CLI** when building Artemis specs. Auto-loaded by Codex
-each session. Companion to `docs/bring-up/CODEX-BUILD-RUNBOOK.md` (the full per-batch runbook).
+each session. Builds run **inside apex-code mechanic A** (ADR-026 §Refinement 2026-06-24 — Codex
+dispatched as a `codex exec -p apex-coder` subprocess; the standalone `CODEX-BUILD-RUNBOOK.md` is retired).
 
 ## What this repo is
 Artemis — a local-first personal assistant with a RAG second brain. The brain spine is pure
@@ -46,6 +47,19 @@ Green on all + correct `git diff --stat` = spec done.
 - **Sandbox:** building needs `--sandbox workspace-write`. (Artemis's *runtime* use of Codex is
   read-only — that is a different mode, not for building.)
 - **Baseline before building:** run the **full** verify recipe once first — **including `uv sync`** (it installs the `artemis` project + dev group); never run the `--frozen` check-only commands against an un-synced venv, since a missing project install reads as a **false red** (`ModuleNotFoundError: artemis`). If the baseline is genuinely **red**, stop and report — never build on a broken base. **Do NOT stop merely because the working tree has uncommitted changes** — that is the owner's normal state by design (this file forbids committing, so the tree is *expected* to be dirty). Note what is already modified, then proceed.
+
+## Build gotchas (Artemis-specific)
+Hard-won from the 2026-06-24 cluster build — apex-code carries the generic Codex mechanics; these
+are the Artemis-specific ones:
+- **Pre-flight every original-corpus spec against the live tree before building.** The corpus is older
+  than the code: specs carry stale `/Users/artemis-build/` paths and many "modify X" tasks are actually
+  CREATE (the base module was never built — the "stub-never-built" pattern, e.g. `hooks.py`, the whole
+  `calendar/` module). Reconcile the Files-table against `src/` first; adapt paths in place.
+- **CAL specs (and other large specs) are slow** — `CAL-a` (~2500 lines) hit the 10-min Codex timeout.
+  Budget a longer timeout or split. **On timeout, recover by re-verifying the tree, not re-dispatching**
+  — Codex usually finished writing before the timeout fired.
+- **Install deps as the normal user, never inside the Codex sandbox** (Windows artifact-ownership rule):
+  `uv add <pkg>` host-side before/after the build, so the verify reads an unlocked tree.
 
 ## Setup
 `uv sync` installs the `artemis` project **and** the `dev` dependency-group (mypy/pytest/ruff) — it is

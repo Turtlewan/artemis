@@ -6,9 +6,9 @@ token_profile: lean
 autonomy_level: L3
 specialists_default: [apex-security, apex-ai-systems]   # SP4 app defaults applied 2026-06-08
 stack_skills: [apex-python, apex-swift]   # ADR-001 coverage gate. Gaps (no skill, build on base+domain): MLX, LanceDB, voice pipeline
-backends: planning=claude | coding=codex/gpt-5.5   # ADR-026: Codex CLI is the Artemis-core build coder (was deepseek-v4-flash). DeepSeek/Claude-coding remain available APEX modes but non-default. Build host = Windows/WSL2 now (ADR-022); Mini = final host + HW-gated tails.
-coder_tier_policy: retired   # ADR-026: Codex is single-model — coder_tier flash/pro tags on specs are vestigial/ignored; cross_model_review now default-satisfied (Claude plans+reviews → Codex builds = cross-family). Build driver = docs/bring-up/CODEX-BUILD-RUNBOOK.md (per-spec, outside apex-code).
-coder_models: [flash, pro, codex]   # per-spec coder menu (apex-plan model-routing). codex added 2026-06-22 (ADR-026) for the Codex test-build. A spec's `coder_model: <m>` frontmatter pins the WHOLE spec to one coder, bypassing per-task routing.
+backends: planning=claude | coding=codex/gpt-5.5   # ADR-026 §Refinement 2026-06-24: Codex is the Artemis-core build coder, now driven INSIDE apex-code mechanic A (was the standalone runbook). Opus = mechanic-A fallback (gated — see coder_models). Build host = Windows/WSL2 (ADR-022); Mini = final host + HW-gated tails.
+coder_tier_policy: retired   # ADR-026: Codex is single-model — coder_tier flash/pro tags are vestigial/ignored; cross_model_review default-satisfied (Claude plans+reviews → Codex builds = cross-family). Build driver = apex-code mechanic A (ADR-026 §Refinement 2026-06-24; standalone CODEX-BUILD-RUNBOOK retired). Parallel-Codex (APEX ADR-028) + cross-spec (ADR-029) now available.
+coder_models: [codex]   # flash/pro retired (APEX ADR-027). codex = gpt-5.5 via apex-code mechanic A. OPEN (owner): mechanic A defaults to Opus inline-fallback on Codex quota-out; ADR-026 chose stop-and-ask. Kept [codex] (stop-and-ask) — set [codex, opus] to enable the Opus auto-fallback.
 
 _Last updated by planning mode:_ 2026-06-23 (**CONTINUATION — reservations APPLIED · M9 designed · client re-scope designed · dev-model-stack specced.**
 (1) **Architecture-validation reservations A–J decided AND applied** across 12 corpus files (additive schema/port/runtime hooks; 77cab92):

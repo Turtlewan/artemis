@@ -45,3 +45,22 @@ The owner's decision: **make Codex the coder for all Artemis core**, generalisin
 ## Build-time
 
 The per-spec procedure in `CODEX-BUILD-RUNBOOK.md` is the method. The de-gating map sequences the first Windows build waves (NOW specs first, in dependency order; PARTIAL specs build their core now and defer gated tails to the Mini; HW-GATED + BLOCKED-UPSTREAM wait).
+
+## Refinement 2026-06-24 — Codex now runs INSIDE apex-code (mechanic A)
+
+**Reverses the original "Orchestration: outside apex-code" decision (Decision table) and the rejected alternative "Drive Codex through apex-code wave orchestration."**
+
+The original rationale — "apex-code is DeepSeek-shaped wave dispatch, redundant on top of Codex's own agentic loop" — is now obsolete:
+- **apex-code became Codex-native.** APEX **ADR-027** made Codex the primary coder dispatched as a `codex exec -p apex-coder` subprocess from an Opus build host (Opus = inline fallback on quota-out); **ADR-028** added parallel-Codex on git-worktrees within a wave; **ADR-029** added cross-spec parallel build with the file-disjointness invariant + a supervision gate. apex-code no longer carries DeepSeek-shaped dispatch.
+- **The 2026-06-24 cluster build empirically showed the manual runbook flow *was* mechanic A** — Codex per-spec via `apex-coder`, host re-verify (`mypy --strict src tests`/ruff/pytest) + per-spec commit, parallel Codex on disjoint subtrees (`M7-a3 ∥ M4-c-2`, "recipes/ vs memory/ don't import each other"), serialized on shared files (`M4-d-2`/`OBS-a` both touch `brain.py`), timeout → recover-by-reverify. The human was hand-driving mechanic A; apex-code formalizes it and removes the manual orchestration burden.
+
+**Refined decisions:**
+- **Orchestration → apex-code mechanic A.** Replaces the standalone per-spec runbook.
+- **`## Wave plan` sections become executable** (apex-code consumes them), not "informational only."
+- **`CODEX-BUILD-RUNBOOK.md` retired.** Generic Codex mechanics (stdin-pipe, sandbox-artifact ownership, fallback-to-Opus, integrated re-verify) are owned by apex-code; the Artemis-specific gotchas it held (CAL specs large/slow → longer timeout/split; timeout → re-verify-not-redispatch; pre-flight every original-corpus spec against the live tree) move to `AGENTS.md`.
+- **Fallback (OPEN — owner):** mechanic A defaults to Opus inline-fallback on Codex quota-out. ADR-026 chose no-auto-fallback (stop-and-ask). Kept `coder_models: [codex]` (stop-and-ask) pending the owner's call; `[codex, opus]` enables the Opus auto-fallback.
+- **Unchanged:** tier system retired; cross-model review default-satisfied; commits owner-controlled; never push to main.
+
+**Validation:** first real mechanic-A build = the next M3-a-independent wave (`CAL-c` → `M8-d-b` · `M4-d-2` · `OBS-a`), which doubles as the live proving run for APEX ADR-028/029 (the `brain.py`-touching specs must serialize while `CAL-c` runs parallel).
+
+Relates: APEX ADR-027 (Codex-primary/Opus-fallback), ADR-028 (parallel Codex), ADR-029 (cross-spec parallel build).

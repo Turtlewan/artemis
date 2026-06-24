@@ -1,3 +1,8 @@
+> **⛔ RETIRED 2026-06-24 (ADR-026 §Refinement).** Builds now run **inside apex-code mechanic A**
+> (Codex dispatched as a `codex exec -p apex-coder` subprocess; parallel-Codex per APEX ADR-028,
+> cross-spec per ADR-029). Generic Codex mechanics live in apex-code; Artemis-specific build gotchas
+> moved to `AGENTS.md`. Kept for historical reference only — do not drive builds from this file.
+
 # Codex Build Runbook — brain-Codex batch
 
 _How to build the 5-spec brain-Codex batch using the **Codex CLI** (OpenAI, ChatGPT subscription)

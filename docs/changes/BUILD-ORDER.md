@@ -1,6 +1,6 @@
 # BUILD-ORDER — the "build specs" manifest
 
-**Trigger (coding mode):** when the owner says **"build specs"**, build the `status: ready` specs in `docs/changes/` in the dependency-ordered waves below, via the Codex build flow (`docs/bring-up/CODEX-BUILD-RUNBOOK.md` / apex-code). **Verify each wave's acceptance criteria before starting the next** — do not build a later wave on top of an unverified earlier one. Everything here is dev-box-buildable; Mac-gated tasks (flagged per spec) are stubbed/skipped until the Mac.
+**Trigger (coding mode):** when the owner says **"build specs"**, build the `status: ready` specs in `docs/changes/` in the dependency-ordered waves below, via **apex-code mechanic A** (Codex `codex exec -p apex-coder`; parallel per APEX ADR-028/029 — the `CODEX-BUILD-RUNBOOK.md` is retired, ADR-026 §Refinement). **Verify each wave's acceptance criteria before starting the next** — do not build a later wave on top of an unverified earlier one. Everything here is dev-box-buildable; Mac-gated tasks (flagged per spec) are stubbed/skipped until the Mac.
 
 Per-spec detail (prereqs, dev/Mac flags, decision-IDs): `docs/findings/cluster-spec-roadmap.md`. Locked decisions: `docs/findings/cluster-decisions/DECISIONS-LOG.md`.
 
