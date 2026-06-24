@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # Embedding model dimension (Qwen3-Embedding-0.6B → 1024)
     embedding_dimension: int = Field(default=1024, ge=128, le=4096)
 
+    # Gmail read-only connector knobs
+    gmail_backfill_months: int = 12
+    gmail_attachment_max_mb: int = 10
+
     # Privacy kill-switch: False = force ALL reasoning local (no cloud routing)
     cloud_reasoning_enabled: bool = True
 
