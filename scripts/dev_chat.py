@@ -9,7 +9,12 @@ brain loop runs offline; it does not give meaningful semantic routing.
 Usage::
 
     ARTEMIS_MODEL_API_KEY=sk-... uv run python scripts/dev_chat.py
+    uv run python scripts/dev_chat.py --real   # real local embedder (Ollama, per roles.toml)
 
+Without ``--real`` the brain runs with the non-semantic FakeEmbedder (offline).
+With ``--real`` it composes the default real ``OpenAIEmbeddingModel``, which
+config/roles.toml [embedder] points at Ollama on this dev box — see
+docs/bring-up/DEV-MODEL-STACK.md for the install + model pulls.
 (Edit config/roles.toml [responder] endpoint/model_id first.)
 """
 
@@ -34,7 +39,7 @@ class FakeEmbedder:
     def dimension(self) -> int:
         return self._dim
 
-    async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_documents(self, texts: Sequence[str]) -> list[Sequence[float]]:
         return [self._vec(t) for t in texts]
 
     async def embed_query(self, query: str) -> list[float]:
@@ -46,10 +51,19 @@ class FakeEmbedder:
         return [b / 127.5 - 1.0 for b in raw]
 
 
-async def _repl() -> None:
+async def _repl(*, real: bool) -> None:
     settings = get_settings()
-    gateway = Gateway(compose_brain(settings, embedder=FakeEmbedder(settings.embedding_dimension)))
-    print("Artemis dev chat (FakeEmbedder) — type a question, /quit to exit.", flush=True)
+    if real:
+        # Real local embedder (default compose_brain path → OpenAIEmbeddingModel,
+        # pointed at Ollama via config/roles.toml [embedder]). See DEV-MODEL-STACK.md.
+        gateway = Gateway(compose_brain(settings))
+        label = "real Ollama embedder"
+    else:
+        gateway = Gateway(
+            compose_brain(settings, embedder=FakeEmbedder(settings.embedding_dimension))
+        )
+        label = "FakeEmbedder"
+    print(f"Artemis dev chat ({label}) — type a question, /quit to exit.", flush=True)
     for raw in sys.stdin:
         line = raw.strip()
         if not line:
@@ -62,4 +76,4 @@ async def _repl() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(_repl())
+    asyncio.run(_repl(real="--real" in sys.argv[1:]))

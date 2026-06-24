@@ -1,10 +1,12 @@
 # Logical model-port roles — physical endpoint is the swap seam
 # Each role maps to an OpenAI-compatible endpoint or the claude-cli teacher adapter.
+# dev = Ollama (this box, :11434); prod mlx config (:8040) is regenerated at Mini bring-up (M0-c).
 
 [responder]
-endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
-model_id = "Qwen3-4B-Instruct-2507"
+endpoint = "http://127.0.0.1:11434/v1"      # dev: Ollama (this box)
+model_id = "qwen3:4b"                        # verify exact tag at `ollama pull` (see DEV-MODEL-STACK.md)
 adapter = "openai"
+# prod (M0-c, Mac): http://127.0.0.1:8040/v1  model_id = Qwen3-4B-Instruct-2507
 
 [teacher]
 endpoint = "claude-cli"                     # claude CLI teacher adapter
@@ -12,14 +14,16 @@ model_id = "claude-opus"
 adapter = "claude-cli"
 
 [embedder]
-endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
-model_id = "Qwen3-Embedding-0.6B"
+endpoint = "http://127.0.0.1:11434/v1"      # dev: Ollama (this box)
+model_id = "qwen3-embedding:0.6b"            # 1024-dim; verify exact tag at `ollama pull`
 adapter = "openai"
+# prod (M0-c, Mac): http://127.0.0.1:8040/v1  model_id = Qwen3-Embedding-0.6B
 
 [reranker]
-endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server
-model_id = "Qwen3-Reranker-0.6B"
+endpoint = "http://127.0.0.1:11434/v1"      # dev: Ollama (this box)
+model_id = "qwen3-reranker:0.6b"             # verify exact tag at `ollama pull`
 adapter = "openai"
+# prod (M0-c, Mac): http://127.0.0.1:8040/v1  model_id = Qwen3-Reranker-0.6B
 
 [sensitive_reasoner]
 endpoint = "http://127.0.0.1:8040/v1"       # local mlx-openai-server, lazy
