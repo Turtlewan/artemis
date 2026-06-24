@@ -6,10 +6,11 @@ Thin custom orchestrator (brain.md): route → dispatch tool (constrained decodi
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.memory.store import render_inject_block
@@ -17,6 +18,10 @@ from artemis.memory.write_path import MemoryWriteQueue
 from artemis.ports.memory import MemoryStore
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message, PersonId, Scope
+from artemis.recipes.distill import apply_recipe, task_class_key
+from artemis.recipes.model import RecipeStatus
+from artemis.recipes.sandbox import SandboxPort
+from artemis.recipes.store import RecipeStore
 from artemis.registry.registry import ToolRegistry
 from artemis.router import SemanticRouter
 
@@ -24,6 +29,14 @@ if TYPE_CHECKING:
     from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class TelemetryWriter(Protocol):
+    """Minimal telemetry tap for escalation events."""
+
+    def write_event(self, event: str, fields: dict[str, object]) -> None:
+        """Write a telemetry event."""
+        ...
 
 
 class BrainResponse:
@@ -61,6 +74,9 @@ class Brain:
         write_queue: MemoryWriteQueue | None = None,
         inject_token_budget: int = 512,
         owner_person_id: PersonId | None = None,
+        store: RecipeStore | None = None,
+        sandbox: SandboxPort | None = None,
+        telemetry_writer: TelemetryWriter | None = None,
     ) -> None:
         self._router = router
         self._registry = registry
@@ -71,6 +87,9 @@ class Brain:
         self._write_queue = write_queue
         self._inject_token_budget = inject_token_budget
         self._owner_person_id = owner_person_id
+        self._store = store
+        self._sandbox = sandbox
+        self._telemetry_writer = telemetry_writer
 
     async def _responder_role(self, request_text: str) -> str:
         """Pick the free-form responder role: local unless classified general."""
@@ -108,11 +127,55 @@ class Brain:
                 logger.warning("Brain: memory write enqueue failed", exc_info=True)
 
         if decision.path == "escalate":
-            return BrainResponse(
-                text="ESCALATION_NOT_AVAILABLE",
-                path="escalate",
-                escalated=True,
-            )
+            if self._store is None:
+                return BrainResponse(
+                    text="ESCALATION_NOT_AVAILABLE",
+                    path="escalate",
+                    escalated=True,
+                )
+            key = task_class_key(decision, request_text)
+            try:
+                names = await self._store.retrieve_recipes(
+                    request_text,
+                    k=1,
+                    status=RecipeStatus.ENABLED,
+                )
+                if names:
+                    recipe = self._store.get(names[0])
+                    if recipe.task_class_key == key:
+                        applied = await apply_recipe(
+                            recipe,
+                            {
+                                "request_text": request_text,
+                                "scope": scope,
+                                "task_class_key": key,
+                            },
+                            self._model,
+                            sandbox=self._sandbox,
+                        )
+                        return BrainResponse(
+                            text=json.dumps(applied, sort_keys=True),
+                            path="recipe",
+                            tool_used=names[0],
+                            escalated=False,
+                        )
+            except Exception:
+                logger.warning("Brain: recipe apply failed, queueing escalation", exc_info=True)
+
+            telemetry_writer = self._telemetry_writer
+            if telemetry_writer is not None:
+                try:
+                    telemetry_writer.write_event(
+                        "ESCALATION",
+                        {
+                            "task_class_key": key,
+                            "scope": scope,
+                            "request_text": request_text,
+                        },
+                    )
+                except Exception:
+                    logger.warning("Brain: escalation telemetry write failed", exc_info=True)
+            return BrainResponse(text="", path="escalation_queued", escalated=True)
 
         # ── Tool path ──────────────────────────────────────────────────
         if decision.candidate_tools:
