@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { CardPlacement } from "../api/dto";
+import { GlanceHost } from "../card/GlanceFace";
 import type { DomainId } from "../domains";
 import { NeuralWeb } from "../theme/NeuralWeb";
 import { CORE, WORLD_HEIGHT, WORLD_WIDTH } from "./camera";
@@ -118,7 +119,9 @@ export function WorldPlane({ placements, camera, onMovePlacement, onOpen }: Worl
               scale={camera.cam.scale}
               onMove={onMovePlacement}
               onOpen={onOpen}
-            />
+            >
+              <GlanceHost domainId={placement.domain as DomainId} />
+            </CardSlot>
           ))}
         </div>
       </div>
