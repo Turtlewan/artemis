@@ -36,48 +36,33 @@ def test_schema_creates_tables_indexes_and_is_idempotent() -> None:
     tables = _sqlite_names(conn, "table")
     indexes = _sqlite_names(conn, "index")
 
-    assert {
+    assert tables == {
         "meta",
-        "areas",
         "projects",
         "tasks",
         "task_subtasks",
         "task_recurrence",
         "suggestions",
-    } <= tables
+    }
     assert {
-        "idx_areas_archived",
-        "idx_projects_area_id",
         "idx_projects_status",
         "idx_tasks_project_id",
-        "idx_tasks_area_id",
         "idx_tasks_status",
         "idx_tasks_due_at",
         "idx_task_subtasks_task_id",
         "idx_suggestions_status",
     } <= indexes
+    assert "areas" not in tables
+    assert "area_id" not in _table_columns(conn, "projects")
+    assert "area_id" not in _table_columns(conn, "tasks")
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
 
-def test_area_project_and_goal_entity_crud() -> None:
+def test_project_and_goal_entity_crud() -> None:
     repo = _repo()
-    area_id = repo.create_area("Health")
-
-    assert repo.get_area(area_id)["title"] == "Health"  # type: ignore[index]
-    assert [area["id"] for area in repo.list_areas()] == [area_id]
-    assert repo.area_contents(area_id) == {
-        "area": repo.get_area(area_id),
-        "projects": [],
-        "tasks": [],
-    }
-    repo.archive_area(area_id)
-    assert repo.list_areas() == []
-    assert [area["id"] for area in repo.list_areas(include_archived=True)] == [area_id]
-
-    project_id = repo.create_project("Q3 budget", area_id=area_id)
+    project_id = repo.create_project("Q3 budget")
     project = repo.get_project(project_id)
     assert project is not None
-    assert project["area_id"] == area_id
     assert project["project_goal_entity_id"] is None
     assert [project["id"] for project in repo.list_projects(status="active")] == [project_id]
     assert repo.project_tasks(project_id) == []
@@ -98,8 +83,7 @@ def test_area_project_and_goal_entity_crud() -> None:
 
 def test_task_crud_filters_subtasks_and_fk_enforcement() -> None:
     repo = _repo()
-    area_id = repo.create_area("Work")
-    project_id = repo.create_project("Reports", area_id=area_id)
+    project_id = repo.create_project("Reports")
     today = datetime.now(UTC).date()
 
     due_today_id = repo.create_task("Send report", project_id=project_id, due_at=today.isoformat())
@@ -129,6 +113,8 @@ def test_task_crud_filters_subtasks_and_fk_enforcement() -> None:
 
     with pytest.raises(sqlite3.IntegrityError):
         repo.create_task("Bad FK", project_id="missing")
+    with pytest.raises(TypeError):
+        inspect.signature(repo.create_task).bind("Bad arg", area_id="missing")
 
 
 def test_recurrence_fixed_mode_spawns_once_and_carries_rule() -> None:
@@ -191,8 +177,10 @@ def test_suggestion_flow() -> None:
 
 def test_store_lazy_open_round_trip_and_scope_locked_error(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    area_id = store.create_area("Health")
-    assert store.get_area(area_id)["title"] == "Health"  # type: ignore[index]
+    project_id = store.create_project("Health")
+    task_id = store.create_task("Plan workout", project_id=project_id)
+    assert store.get_project(project_id)["title"] == "Health"  # type: ignore[index]
+    assert store.get_task(task_id)["project_id"] == project_id  # type: ignore[index]
     store.close()
 
     locked = ProductivityStore(_settings(tmp_path), FakeKeyProvider(owner_unlocked=False))
@@ -210,14 +198,12 @@ async def test_tools_are_async_and_uninitialised_store_raises() -> None:
 async def test_tools_smoke_with_store(tmp_path: Path) -> None:
     productivity_manifest(_store(tmp_path))
 
-    created = await tools.area_create(tools.AreaCreateArgs(title="Admin"))
-    areas = await tools.area_list(tools.AreaListArgs())
+    project = await tools.project_create(tools.ProjectCreateArgs(title="Admin"))
     task = await tools.task_create(
-        tools.TaskCreateArgs(title="File paperwork", area_id=created.area_id)
+        tools.TaskCreateArgs(title="File paperwork", project_id=project.project_id)
     )
-    tasks = await tools.task_list(tools.TaskListArgs(area_id=created.area_id))
+    tasks = await tools.task_list(tools.TaskListArgs(project_id=project.project_id))
 
-    assert areas.areas[0]["id"] == created.area_id
     assert tasks.tasks[0]["id"] == task.task_id
 
 
@@ -226,12 +212,25 @@ def test_manifest_shape(tmp_path: Path) -> None:
     names = [tool.name for tool in manifest.tools]
 
     assert manifest.name == "productivity"
-    assert len(manifest.tools) == 30
+    assert len(manifest.tools) == 22
     assert len(names) == len(set(names))
+    assert {
+        "area.create",
+        "area.update",
+        "area.archive",
+        "area.list",
+        "area.get",
+        "area.contents",
+        "task.assign_to_area",
+        "project.assign_to_area",
+    }.isdisjoint(names)
+    assert "area_id" not in tools.TaskCreateArgs.model_fields
+    assert "area_id" not in tools.TaskUpdateArgs.model_fields
+    assert "area_id" not in tools.ProjectCreateArgs.model_fields
     assert manifest.data_scope == DataScope.OWNER_PRIVATE
     assert manifest.proactive_hooks == []
-    assert sum(tool.action_risk == "read" for tool in manifest.tools) == 12
-    assert sum(tool.action_risk == "write" for tool in manifest.tools) == 18
+    assert sum(tool.action_risk == "read" for tool in manifest.tools) == 9
+    assert sum(tool.action_risk == "write" for tool in manifest.tools) == 13
 
 
 def _repo() -> ProductivityRepository:
@@ -254,6 +253,11 @@ def _store(tmp_path: Path) -> ProductivityStore:
 def _sqlite_names(conn: sqlite3.Connection, kind: str) -> set[str]:
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type = ?", (kind,)).fetchall()
     return {str(row[0]) for row in rows}
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
 
 
 def _next_monday() -> str:

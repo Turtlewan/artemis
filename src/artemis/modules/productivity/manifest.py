@@ -15,7 +15,7 @@ def productivity_manifest(store: ProductivityStore) -> ModuleManifest:
     return ModuleManifest(
         name="productivity",
         version="0.1.0",
-        description="Owned tasks, projects, and areas - Artemis is the source of truth.",
+        description="Owned tasks and projects - Artemis is the source of truth.",
         tools=_tool_specs(),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
@@ -79,17 +79,6 @@ def _tool_specs() -> list[ToolSpec]:
             tools.TaskListResult,
             tools.project_tasks,
         ),
-        _spec(
-            "area.list", "List areas.", tools.AreaListArgs, tools.AreaListResult, tools.area_list
-        ),
-        _spec("area.get", "Get an area.", tools.AreaGetArgs, tools.AreaResult, tools.area_get),
-        _spec(
-            "area.contents",
-            "Get area contents.",
-            tools.AreaContentsArgs,
-            tools.AreaContentsResult,
-            tools.area_contents,
-        ),
     ]
     write_tools = [
         _spec(
@@ -141,14 +130,6 @@ def _tool_specs() -> list[ToolSpec]:
             ActionRisk.WRITE,
         ),
         _spec(
-            "task.assign_to_area",
-            "Assign a task to an area.",
-            tools.TaskAssignToAreaArgs,
-            tools.OkResult,
-            tools.task_assign_to_area,
-            ActionRisk.WRITE,
-        ),
-        _spec(
             "project.create",
             "Create a project.",
             tools.ProjectCreateArgs,
@@ -170,38 +151,6 @@ def _tool_specs() -> list[ToolSpec]:
             tools.ProjectArchiveArgs,
             tools.OkResult,
             tools.project_archive,
-            ActionRisk.WRITE,
-        ),
-        _spec(
-            "project.assign_to_area",
-            "Assign a project to an area.",
-            tools.ProjectAssignToAreaArgs,
-            tools.OkResult,
-            tools.project_assign_to_area,
-            ActionRisk.WRITE,
-        ),
-        _spec(
-            "area.create",
-            "Create an area.",
-            tools.AreaCreateArgs,
-            tools.AreaCreatedResult,
-            tools.area_create,
-            ActionRisk.WRITE,
-        ),
-        _spec(
-            "area.update",
-            "Update an area.",
-            tools.AreaUpdateArgs,
-            tools.OkResult,
-            tools.area_update,
-            ActionRisk.WRITE,
-        ),
-        _spec(
-            "area.archive",
-            "Archive an area.",
-            tools.AreaArchiveArgs,
-            tools.OkResult,
-            tools.area_archive,
             ActionRisk.WRITE,
         ),
         _spec(

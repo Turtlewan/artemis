@@ -1,4 +1,8 @@
-"""SQLite schema for the owner-private productivity module."""
+"""SQLite schema for the owner-private productivity module.
+
+The productivity model is two-level: Projects own Tasks, and tasks without a
+project float independently. Areas were removed in schema version 2.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,7 @@ import sqlite3
 from datetime import UTC, datetime
 from enum import StrEnum
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 
 class TaskStatus(StrEnum):
@@ -60,19 +64,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS areas (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            notes TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))
-        )
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_areas_archived ON areas(archived)")
-    conn.execute(
-        """
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -80,7 +71,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 CHECK(status IN ('active', 'on_hold', 'done')),
             target_date TEXT,
             notes TEXT,
-            area_id TEXT REFERENCES areas(id),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
@@ -88,7 +78,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_area_id ON projects(area_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)")
     conn.execute(
         """
@@ -102,7 +91,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 CHECK(priority IN ('none', 'low', 'medium', 'high')),
             tags TEXT NOT NULL DEFAULT '[]',
             project_id TEXT REFERENCES projects(id),
-            area_id TEXT REFERENCES areas(id),
             estimate_minutes INTEGER,
             due_at TEXT,
             scheduled_block TEXT,
@@ -114,7 +102,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_area_id ON tasks(area_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     conn.execute(
         """

@@ -53,34 +53,17 @@ class ProductivityStore:
     def _repo(self) -> ProductivityRepository:
         return ProductivityRepository(self._get_conn())
 
-    def create_area(self, title: str, notes: str | None = None) -> str:
-        return self._repo().create_area(title, notes)
-
-    def get_area(self, id: str) -> dict[str, object] | None:
-        return self._repo().get_area(id)
-
-    def list_areas(self, *, include_archived: bool = False) -> list[dict[str, object]]:
-        return self._repo().list_areas(include_archived=include_archived)
-
-    def update_area(self, id: str, *, title: str | None = None, notes: str | None = None) -> None:
-        self._repo().update_area(id, title=title, notes=notes)
-
-    def archive_area(self, id: str) -> None:
-        self._repo().archive_area(id)
-
     def create_project(
         self,
         title: str,
         *,
         notes: str | None = None,
-        area_id: str | None = None,
         target_date: str | None = None,
         entity_repo: GoalEntityRepo | None = None,
     ) -> str:
         return self._repo().create_project(
             title,
             notes=notes,
-            area_id=area_id,
             target_date=target_date,
             entity_repo=entity_repo,
         )
@@ -92,12 +75,10 @@ class ProductivityStore:
         self,
         *,
         status: str | None = None,
-        area_id: str | None = None,
         include_archived: bool = False,
     ) -> list[dict[str, object]]:
         return self._repo().list_projects(
             status=status,
-            area_id=area_id,
             include_archived=include_archived,
         )
 
@@ -109,7 +90,6 @@ class ProductivityStore:
         notes: str | None = None,
         status: str | None = None,
         target_date: str | None = None,
-        area_id: str | None = None,
     ) -> None:
         self._repo().update_project(
             id,
@@ -117,7 +97,6 @@ class ProductivityStore:
             notes=notes,
             status=status,
             target_date=target_date,
-            area_id=area_id,
         )
 
     def archive_project(self, id: str) -> None:
@@ -125,9 +104,6 @@ class ProductivityStore:
 
     def project_tasks(self, project_id: str) -> list[dict[str, object]]:
         return self._repo().project_tasks(project_id)
-
-    def assign_project_to_area(self, project_id: str, area_id: str) -> None:
-        self._repo().assign_project_to_area(project_id, area_id)
 
     def create_task(
         self,
@@ -138,7 +114,6 @@ class ProductivityStore:
         priority: str = "none",
         tags: list[str] | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
         estimate_minutes: int | None = None,
         due_at: str | None = None,
     ) -> str:
@@ -149,7 +124,6 @@ class ProductivityStore:
             priority=priority,
             tags=tags,
             project_id=project_id,
-            area_id=area_id,
             estimate_minutes=estimate_minutes,
             due_at=due_at,
         )
@@ -162,9 +136,8 @@ class ProductivityStore:
         *,
         status: str | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
     ) -> list[dict[str, object]]:
-        return self._repo().list_tasks(status=status, project_id=project_id, area_id=area_id)
+        return self._repo().list_tasks(status=status, project_id=project_id)
 
     def search_tasks(self, query: str) -> list[dict[str, object]]:
         return self._repo().search_tasks(query)
@@ -193,7 +166,6 @@ class ProductivityStore:
         priority: str | None = None,
         tags: list[str] | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
         estimate_minutes: int | None = None,
         due_at: str | None = None,
         scheduled_block: str | None = None,
@@ -206,7 +178,6 @@ class ProductivityStore:
             priority=priority,
             tags=tags,
             project_id=project_id,
-            area_id=area_id,
             estimate_minutes=estimate_minutes,
             due_at=due_at,
             scheduled_block=scheduled_block,
@@ -215,9 +186,6 @@ class ProductivityStore:
 
     def assign_task_to_project(self, task_id: str, project_id: str) -> None:
         self._repo().assign_task_to_project(task_id, project_id)
-
-    def assign_task_to_area(self, task_id: str, area_id: str) -> None:
-        self._repo().assign_task_to_area(task_id, area_id)
 
     def set_recurrence(self, task_id: str, mode: str, rule: str) -> None:
         self._repo().set_recurrence(task_id, mode, rule)
@@ -268,18 +236,13 @@ class ProductivityStore:
         suggestion_id: str,
         *,
         project_id: str | None = None,
-        area_id: str | None = None,
         due_at: str | None = None,
     ) -> str:
         return self._repo().accept_suggestion(
             suggestion_id,
             project_id=project_id,
-            area_id=area_id,
             due_at=due_at,
         )
 
     def reject_suggestion(self, suggestion_id: str) -> None:
         self._repo().reject_suggestion(suggestion_id)
-
-    def area_contents(self, area_id: str) -> dict[str, object]:
-        return self._repo().area_contents(area_id)

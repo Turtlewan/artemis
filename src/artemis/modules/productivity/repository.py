@@ -50,53 +50,17 @@ class GoalEntityRepo(Protocol):
 
 
 class ProductivityRepository:
-    """CRUD repository for areas, projects, tasks, subtasks, and suggestions."""
+    """CRUD repository for projects, tasks, subtasks, and suggestions."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
         self._conn.row_factory = sqlite3.Row
-
-    def create_area(self, title: str, notes: str | None = None) -> str:
-        area_id = _new_id()
-        now = now_iso()
-        with self._conn:
-            self._conn.execute(
-                """INSERT INTO areas (id, title, notes, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (area_id, title, notes, now, now),
-            )
-        return area_id
-
-    def get_area(self, id: str) -> dict[str, object] | None:
-        row = self._conn.execute("SELECT * FROM areas WHERE id = ?", (id,)).fetchone()
-        return _row_to_dict(row)
-
-    def list_areas(self, *, include_archived: bool = False) -> list[dict[str, object]]:
-        if include_archived:
-            rows = self._conn.execute("SELECT * FROM areas ORDER BY title").fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT * FROM areas WHERE archived = 0 ORDER BY title"
-            ).fetchall()
-        return [_require_dict(row) for row in rows]
-
-    def update_area(self, id: str, *, title: str | None = None, notes: str | None = None) -> None:
-        updates: dict[str, object] = {"updated_at": now_iso()}
-        if title is not None:
-            updates["title"] = title
-        if notes is not None:
-            updates["notes"] = notes
-        self._update("areas", id, updates)
-
-    def archive_area(self, id: str) -> None:
-        self._update("areas", id, {"archived": 1, "updated_at": now_iso()})
 
     def create_project(
         self,
         title: str,
         *,
         notes: str | None = None,
-        area_id: str | None = None,
         target_date: str | None = None,
         entity_repo: GoalEntityRepo | None = None,
     ) -> str:
@@ -105,15 +69,14 @@ class ProductivityRepository:
         with self._conn:
             self._conn.execute(
                 """INSERT INTO projects (
-                    id, title, status, target_date, notes, area_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    id, title, status, target_date, notes, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     project_id,
                     title,
                     ProjectStatus.ACTIVE.value,
                     target_date,
                     notes,
-                    area_id,
                     now,
                     now,
                 ),
@@ -138,7 +101,6 @@ class ProductivityRepository:
         self,
         *,
         status: str | None = None,
-        area_id: str | None = None,
         include_archived: bool = False,
     ) -> list[dict[str, object]]:
         clauses: list[str] = []
@@ -147,9 +109,6 @@ class ProductivityRepository:
             ProjectStatus(status)
             clauses.append("status = ?")
             params.append(status)
-        if area_id is not None:
-            clauses.append("area_id = ?")
-            params.append(area_id)
         if not include_archived:
             clauses.append("archived = 0")
         sql = "SELECT * FROM projects"
@@ -167,7 +126,6 @@ class ProductivityRepository:
         notes: str | None = None,
         status: str | None = None,
         target_date: str | None = None,
-        area_id: str | None = None,
     ) -> None:
         updates: dict[str, object] = {"updated_at": now_iso()}
         if title is not None:
@@ -178,8 +136,6 @@ class ProductivityRepository:
             updates["status"] = ProjectStatus(status).value
         if target_date is not None:
             updates["target_date"] = target_date
-        if area_id is not None:
-            updates["area_id"] = area_id
         self._update("projects", id, updates)
 
     def archive_project(self, id: str) -> None:
@@ -194,9 +150,6 @@ class ProductivityRepository:
         ).fetchall()
         return [_task_dict(row, self._conn) for row in rows]
 
-    def assign_project_to_area(self, project_id: str, area_id: str) -> None:
-        self._update("projects", project_id, {"area_id": area_id, "updated_at": now_iso()})
-
     def create_task(
         self,
         title: str,
@@ -206,7 +159,6 @@ class ProductivityRepository:
         priority: str = "none",
         tags: list[str] | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
         estimate_minutes: int | None = None,
         due_at: str | None = None,
     ) -> str:
@@ -217,9 +169,9 @@ class ProductivityRepository:
         with self._conn:
             self._conn.execute(
                 """INSERT INTO tasks (
-                    id, title, notes, status, priority, tags, project_id, area_id,
+                    id, title, notes, status, priority, tags, project_id,
                     estimate_minutes, due_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     task_id,
                     title,
@@ -228,7 +180,6 @@ class ProductivityRepository:
                     priority_value,
                     json.dumps(tags or []),
                     project_id,
-                    area_id,
                     estimate_minutes,
                     due_at,
                     now,
@@ -248,7 +199,6 @@ class ProductivityRepository:
         *,
         status: str | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
     ) -> list[dict[str, object]]:
         clauses: list[str] = []
         params: list[object] = []
@@ -259,9 +209,6 @@ class ProductivityRepository:
         if project_id is not None:
             clauses.append("project_id = ?")
             params.append(project_id)
-        if area_id is not None:
-            clauses.append("area_id = ?")
-            params.append(area_id)
         sql = "SELECT * FROM tasks"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
@@ -341,7 +288,6 @@ class ProductivityRepository:
         priority: str | None = None,
         tags: list[str] | None = None,
         project_id: str | None = None,
-        area_id: str | None = None,
         estimate_minutes: int | None = None,
         due_at: str | None = None,
         scheduled_block: str | None = None,
@@ -358,8 +304,6 @@ class ProductivityRepository:
             updates["tags"] = json.dumps(tags)
         if project_id is not None:
             updates["project_id"] = project_id
-        if area_id is not None:
-            updates["area_id"] = area_id
         if estimate_minutes is not None:
             updates["estimate_minutes"] = estimate_minutes
         if due_at is not None:
@@ -372,9 +316,6 @@ class ProductivityRepository:
 
     def assign_task_to_project(self, task_id: str, project_id: str) -> None:
         self._update("tasks", task_id, {"project_id": project_id, "updated_at": now_iso()})
-
-    def assign_task_to_area(self, task_id: str, area_id: str) -> None:
-        self._update("tasks", task_id, {"area_id": area_id, "updated_at": now_iso()})
 
     def set_recurrence(self, task_id: str, mode: str, rule: str) -> None:
         mode_value = RecurrenceMode(mode).value
@@ -429,7 +370,6 @@ class ProductivityRepository:
             priority=cast(str, task["priority"]),
             tags=cast(list[str], json.loads(cast(str, task["tags"]))),
             project_id=cast(str | None, task["project_id"]),
-            area_id=cast(str | None, task["area_id"]),
             estimate_minutes=cast(int | None, task["estimate_minutes"]),
             due_at=next_due_at,
         )
@@ -508,7 +448,6 @@ class ProductivityRepository:
         suggestion_id: str,
         *,
         project_id: str | None = None,
-        area_id: str | None = None,
         due_at: str | None = None,
     ) -> str:
         suggestion = self._suggestion(suggestion_id)
@@ -516,7 +455,6 @@ class ProductivityRepository:
             cast(str, suggestion["title"]),
             notes=cast(str | None, suggestion["notes"]),
             project_id=project_id,
-            area_id=area_id,
             due_at=due_at,
         )
         with self._conn:
@@ -532,19 +470,6 @@ class ProductivityRepository:
                 "UPDATE suggestions SET status = 'rejected', updated_at = ? WHERE id = ?",
                 (now_iso(), suggestion_id),
             )
-
-    def area_contents(self, area_id: str) -> dict[str, object]:
-        rows = self._conn.execute(
-            """SELECT * FROM tasks
-               WHERE area_id = ? AND project_id IS NULL
-               ORDER BY due_at IS NULL, due_at, created_at""",
-            (area_id,),
-        ).fetchall()
-        return {
-            "area": self.get_area(area_id),
-            "projects": self.list_projects(area_id=area_id),
-            "tasks": [_task_dict(row, self._conn) for row in rows],
-        }
 
     def _suggestion(self, suggestion_id: str) -> dict[str, object]:
         row = self._conn.execute(
@@ -567,7 +492,6 @@ class ProductivityRepository:
             """SELECT * FROM tasks
                WHERE title = ?
                  AND (project_id IS ? OR project_id = ?)
-                 AND (area_id IS ? OR area_id = ?)
                  AND status = 'todo'
                  AND created_at >= ?
                ORDER BY created_at ASC
@@ -576,8 +500,6 @@ class ProductivityRepository:
                 completed_task["title"],
                 completed_task["project_id"],
                 completed_task["project_id"],
-                completed_task["area_id"],
-                completed_task["area_id"],
                 completed_at,
             ),
         ).fetchall()

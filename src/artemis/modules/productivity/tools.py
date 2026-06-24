@@ -22,7 +22,6 @@ class OkResult(BaseModel):
 class TaskListArgs(BaseModel):
     status: str | None = None
     project_id: str | None = None
-    area_id: str | None = None
 
 
 class TaskGetArgs(BaseModel):
@@ -39,7 +38,6 @@ class TaskUpcomingArgs(BaseModel):
 
 class ProjectListArgs(BaseModel):
     status: str | None = None
-    area_id: str | None = None
 
 
 class ProjectGetArgs(BaseModel):
@@ -50,25 +48,12 @@ class ProjectTasksArgs(BaseModel):
     id: str
 
 
-class AreaListArgs(BaseModel):
-    include_archived: bool = False
-
-
-class AreaGetArgs(BaseModel):
-    id: str
-
-
-class AreaContentsArgs(BaseModel):
-    id: str
-
-
 class TaskCreateArgs(BaseModel):
     title: str
     notes: str | None = None
     priority: str = "none"
     tags: list[str] = Field(default_factory=list)
     project_id: str | None = None
-    area_id: str | None = None
     estimate_minutes: int | None = None
     due_at: str | None = None
 
@@ -80,7 +65,6 @@ class TaskUpdateArgs(BaseModel):
     priority: str | None = None
     tags: list[str] | None = None
     project_id: str | None = None
-    area_id: str | None = None
     estimate_minutes: int | None = None
     due_at: str | None = None
 
@@ -104,15 +88,9 @@ class TaskAssignToProjectArgs(BaseModel):
     project_id: str
 
 
-class TaskAssignToAreaArgs(BaseModel):
-    task_id: str
-    area_id: str
-
-
 class ProjectCreateArgs(BaseModel):
     title: str
     notes: str | None = None
-    area_id: str | None = None
     target_date: str | None = None
 
 
@@ -125,26 +103,6 @@ class ProjectUpdateArgs(BaseModel):
 
 
 class ProjectArchiveArgs(BaseModel):
-    id: str
-
-
-class ProjectAssignToAreaArgs(BaseModel):
-    project_id: str
-    area_id: str
-
-
-class AreaCreateArgs(BaseModel):
-    title: str
-    notes: str | None = None
-
-
-class AreaUpdateArgs(BaseModel):
-    id: str
-    title: str | None = None
-    notes: str | None = None
-
-
-class AreaArchiveArgs(BaseModel):
     id: str
 
 
@@ -161,7 +119,6 @@ class SuggestionListArgs(BaseModel):
 class SuggestionAcceptArgs(BaseModel):
     suggestion_id: str
     project_id: str | None = None
-    area_id: str | None = None
     due_at: str | None = None
 
 
@@ -185,20 +142,6 @@ class ProjectResult(BaseModel):
     project: dict[str, object] | None
 
 
-class AreaListResult(BaseModel):
-    areas: list[dict[str, object]]
-
-
-class AreaResult(BaseModel):
-    area: dict[str, object] | None
-
-
-class AreaContentsResult(BaseModel):
-    area: dict[str, object] | None
-    projects: list[dict[str, object]]
-    tasks: list[dict[str, object]]
-
-
 class TaskCreatedResult(BaseModel):
     task_id: str
 
@@ -209,10 +152,6 @@ class TaskCompleteResult(BaseModel):
 
 class ProjectCreatedResult(BaseModel):
     project_id: str
-
-
-class AreaCreatedResult(BaseModel):
-    area_id: str
 
 
 class SuggestionCreatedResult(BaseModel):
@@ -237,9 +176,7 @@ def _get_store() -> ProductivityStore:
 
 async def task_list(args: TaskListArgs) -> TaskListResult:
     store = _get_store()
-    return TaskListResult(
-        tasks=store.list_tasks(status=args.status, project_id=args.project_id, area_id=args.area_id)
-    )
+    return TaskListResult(tasks=store.list_tasks(status=args.status, project_id=args.project_id))
 
 
 async def task_get(args: TaskGetArgs) -> TaskResult:
@@ -265,9 +202,7 @@ async def task_overdue(args: EmptyArgs) -> TaskListResult:
 
 
 async def project_list(args: ProjectListArgs) -> ProjectListResult:
-    return ProjectListResult(
-        projects=_get_store().list_projects(status=args.status, area_id=args.area_id)
-    )
+    return ProjectListResult(projects=_get_store().list_projects(status=args.status))
 
 
 async def project_get(args: ProjectGetArgs) -> ProjectResult:
@@ -278,23 +213,6 @@ async def project_tasks(args: ProjectTasksArgs) -> TaskListResult:
     return TaskListResult(tasks=_get_store().project_tasks(args.id))
 
 
-async def area_list(args: AreaListArgs) -> AreaListResult:
-    return AreaListResult(areas=_get_store().list_areas(include_archived=args.include_archived))
-
-
-async def area_get(args: AreaGetArgs) -> AreaResult:
-    return AreaResult(area=_get_store().get_area(args.id))
-
-
-async def area_contents(args: AreaContentsArgs) -> AreaContentsResult:
-    contents = _get_store().area_contents(args.id)
-    return AreaContentsResult(
-        area=contents["area"] if isinstance(contents["area"], dict) else None,
-        projects=list(contents["projects"]) if isinstance(contents["projects"], list) else [],
-        tasks=list(contents["tasks"]) if isinstance(contents["tasks"], list) else [],
-    )
-
-
 async def task_create(args: TaskCreateArgs) -> TaskCreatedResult:
     task_id = _get_store().create_task(
         args.title,
@@ -302,7 +220,6 @@ async def task_create(args: TaskCreateArgs) -> TaskCreatedResult:
         priority=args.priority,
         tags=args.tags,
         project_id=args.project_id,
-        area_id=args.area_id,
         estimate_minutes=args.estimate_minutes,
         due_at=args.due_at,
     )
@@ -317,7 +234,6 @@ async def task_update(args: TaskUpdateArgs) -> OkResult:
         priority=args.priority,
         tags=args.tags,
         project_id=args.project_id,
-        area_id=args.area_id,
         estimate_minutes=args.estimate_minutes,
         due_at=args.due_at,
     )
@@ -343,16 +259,10 @@ async def task_assign_to_project(args: TaskAssignToProjectArgs) -> OkResult:
     return OkResult()
 
 
-async def task_assign_to_area(args: TaskAssignToAreaArgs) -> OkResult:
-    _get_store().assign_task_to_area(args.task_id, args.area_id)
-    return OkResult()
-
-
 async def project_create(args: ProjectCreateArgs) -> ProjectCreatedResult:
     project_id = _get_store().create_project(
         args.title,
         notes=args.notes,
-        area_id=args.area_id,
         target_date=args.target_date,
     )
     return ProjectCreatedResult(project_id=project_id)
@@ -374,25 +284,6 @@ async def project_archive(args: ProjectArchiveArgs) -> OkResult:
     return OkResult()
 
 
-async def project_assign_to_area(args: ProjectAssignToAreaArgs) -> OkResult:
-    _get_store().assign_project_to_area(args.project_id, args.area_id)
-    return OkResult()
-
-
-async def area_create(args: AreaCreateArgs) -> AreaCreatedResult:
-    return AreaCreatedResult(area_id=_get_store().create_area(args.title, args.notes))
-
-
-async def area_update(args: AreaUpdateArgs) -> OkResult:
-    _get_store().update_area(args.id, title=args.title, notes=args.notes)
-    return OkResult()
-
-
-async def area_archive(args: AreaArchiveArgs) -> OkResult:
-    _get_store().archive_area(args.id)
-    return OkResult()
-
-
 async def suggestion_create(args: SuggestionCreateArgs) -> SuggestionCreatedResult:
     suggestion_id = _get_store().create_suggestion(args.title, notes=args.notes, source=args.source)
     return SuggestionCreatedResult(suggestion_id=suggestion_id)
@@ -406,7 +297,6 @@ async def suggestion_accept(args: SuggestionAcceptArgs) -> TaskCreatedResult:
     task_id = _get_store().accept_suggestion(
         args.suggestion_id,
         project_id=args.project_id,
-        area_id=args.area_id,
         due_at=args.due_at,
     )
     return TaskCreatedResult(task_id=task_id)
