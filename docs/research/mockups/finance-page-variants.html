@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis — Finance detail (variants)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* register ambient tokens as typed colours so they interpolate (smooth cross-fade) */
+  @property --bg{syntax:"<color>";inherits:true;initial-value:#060c14}
+  @property --p{syntax:"<color>";inherits:true;initial-value:#58c6ff}
+  @property --a{syntax:"<color>";inherits:true;initial-value:#fff0d8}
+  :root{
+    --bg:#060c14; --p:#58c6ff; --a:#fff0d8;                 /* ambient — set by the resolver (default Winter·afternoon) */
+    --ok:#67e0a3; --bad:#f08a8a; --text:#eef7ff; --muted:#a8bccb;
+    --glass:color-mix(in srgb,var(--bg) 33%,transparent); --glass2:color-mix(in srgb,var(--bg) 19%,transparent);
+    --hair:color-mix(in srgb,var(--p) 22%,transparent);
+    font-synthesis:none;
+    transition:--bg .8s cubic-bezier(.4,0,.2,1),--p .8s cubic-bezier(.4,0,.2,1),--a .8s cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{color:var(--text);font-family:'Inter',system-ui,'Segoe UI',sans-serif;height:100%;background:var(--bg)}
+  .bg{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:brightness(.66) saturate(1.08) blur(1.5px);transition:opacity .8s ease}
+  .bg-grad{position:fixed;inset:0;z-index:5;pointer-events:none;background:
+    radial-gradient(1200px 820px at 50% -8%, rgba(40,90,120,.16), transparent 60%),
+    linear-gradient(180deg, rgba(7,13,22,.20), rgba(7,13,22,.46) 72%, rgba(7,13,22,.62))}
+  .app{position:fixed;inset:0;z-index:6}
+
+  /* top bar (ambient toggle lives here, like the workspace) */
+  .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:13px;padding:13px 20px;z-index:50}
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand svg{width:23px;height:23px;filter:drop-shadow(0 0 6px var(--p))}
+  .brand b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.2em;font-size:12.5px}
+  .crumb{font-family:'Space Grotesk';font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding-left:13px;border-left:1px solid var(--hair)}
+  .crumb b{color:var(--p);font-weight:500}
+  .top .sp{flex:1}
+  .ghost{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);backdrop-filter:blur(8px);transition:.16s}
+  .ghost:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .ghost svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .amb-pop{position:absolute;top:50px;right:20px;width:344px;z-index:60;padding:13px;border-radius:16px;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 60%,transparent),color-mix(in srgb,var(--bg) 44%,transparent));
+    backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);border:1px solid var(--hair);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 26px -6px color-mix(in srgb,var(--p) 18%,transparent),0 2px 6px -2px rgba(0,0,0,.4),0 32px 80px -28px #000,0 0 40px -16px var(--p);opacity:0;transform:translateY(-8px);pointer-events:none;transition:.2s}
+  .amb-pop.on{opacity:1;transform:none;pointer-events:auto}
+  .amb-pop-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .amb-pop-head b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.16em;font-size:11px;text-transform:uppercase}
+  .amb-pop-head .sub{font-size:10px;color:var(--muted)}
+  .amb-pop-head #ambAuto{margin-left:auto;font-family:'Space Grotesk';font-size:10.5px;color:#eaf7ff;border:1px solid color-mix(in srgb,var(--p) 38%,transparent);border-radius:7px;padding:4px 9px;cursor:pointer;background:color-mix(in srgb,var(--p) 14%,transparent)}
+  .amb-pop-head #ambAuto:hover{background:color-mix(in srgb,var(--p) 24%,transparent)}
+  .amb-grid{display:grid;grid-template-columns:auto repeat(4,1fr);gap:5px;align-items:center}
+  .amb-h{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:center}
+  .amb-rh{font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);padding-right:5px;text-align:right}
+  .amb-cell{position:relative;height:30px;border-radius:8px;border:1px solid var(--hair);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;overflow:hidden;transition:.14s}
+  .amb-cell:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--p) 45%,transparent)}
+  .amb-cell.draft{border-style:dashed;opacity:.85}
+  .amb-cell i{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px -1px rgba(0,0,0,.6)}
+  .amb-cell.act{border-color:#fff;box-shadow:0 0 0 1.5px var(--p),0 0 16px -4px var(--p)}
+  .amb-note{margin-top:11px;font-size:10px;line-height:1.45;color:var(--muted)}
+  .stat{display:flex;align-items:center;gap:11px}
+  .s{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--p);box-shadow:0 0 7px var(--p)}
+  .dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+
+  /* ---------- variant switcher (top-center pill cluster) ---------- */
+  .vswitch{position:absolute;top:11px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:4px;padding:4px;border-radius:12px;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 52%,transparent),color-mix(in srgb,var(--bg) 38%,transparent));
+    backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border:1px solid var(--hair);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 16px 40px -18px #000;max-width:92vw;overflow:auto}
+  .vswitch button{font-family:'Space Grotesk';font-size:11px;letter-spacing:.02em;color:#cfe1ee;padding:5px 11px;cursor:pointer;border:0;border-radius:8px;background:transparent;white-space:nowrap;transition:.14s}
+  .vswitch button:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .vswitch button.on{color:#eaf7ff;background:color-mix(in srgb,var(--p) 22%,transparent);box-shadow:0 0 14px -6px var(--p) inset}
+  .vswitch .vn{font-size:9px;color:var(--muted);margin-right:4px}
+
+  /* ---------- the opened Finance detail panel (top-most overlay) ---------- */
+  .dov-scrim{position:fixed;inset:0;z-index:44;background:rgba(3,7,13,.20)}
+  .dov{position:fixed;z-index:45;left:50%;top:54%;transform:translate(-50%,-50%);
+    width:920px;max-width:95vw;height:632px;max-height:84vh;
+    display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 46%,transparent),color-mix(in srgb,var(--bg) 32%,transparent));
+    backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%);
+    border:1px solid color-mix(in srgb,var(--p) 34%,transparent);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 40px -10px color-mix(in srgb,var(--p) 16%,transparent),0 4px 12px -3px rgba(0,0,0,.5),0 50px 130px -28px #000,0 0 64px -16px var(--p)}
+  .dov::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;background:linear-gradient(162deg,rgba(255,255,255,.12),transparent 30%);mix-blend-mode:screen}
+
+  /* header row (shared chrome) */
+  .chrome{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid var(--hair);position:relative;z-index:2;flex:0 0 auto}
+  .chrome .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:16px;background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 22%,transparent)}
+  .chrome h3{font-family:'Space Grotesk';font-weight:500;font-size:16px;letter-spacing:.01em}
+  .chrome .mtd{font-family:'Space Grotesk';font-size:11px;color:var(--muted);letter-spacing:.02em;display:flex;align-items:baseline;gap:6px}
+  .chrome .mtd b{font-size:14px;color:var(--text);font-weight:500}
+  .chrome .sp{flex:1}
+  .local{font-family:'Space Grotesk';font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 38%,transparent);border-radius:999px;padding:2px 8px;background:color-mix(in srgb,var(--ok) 9%,transparent)}
+  .seg{display:flex;border:1px solid var(--hair);border-radius:9px;overflow:hidden;background:rgba(8,14,22,.35)}
+  .seg button{font-family:'Space Grotesk';font-size:11.5px;color:#cfe1ee;padding:6px 13px;cursor:pointer;border:0;background:transparent;transition:.15s}
+  .seg button:hover{background:color-mix(in srgb,var(--p) 10%,transparent)}
+  .seg button.on{color:#eaf7ff;background:color-mix(in srgb,var(--p) 20%,transparent);box-shadow:0 0 14px -6px var(--p) inset}
+  .pill{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);transition:.16s}
+  .pill:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .pill svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .x{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;cursor:pointer;color:var(--muted);font-size:13px;flex:0 0 auto}
+  .x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+
+  /* body host — each variant injects its own structure */
+  .vbody{flex:1;min-height:0;position:relative;z-index:2;display:flex;flex-direction:column}
+
+  /* ===== shared finance primitives (reused across variants) ===== */
+  .eyebrow{font-family:'Space Grotesk';font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .card{border:1px solid var(--hair);border-radius:13px;padding:13px;background:color-mix(in srgb,var(--p) 4%,transparent);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+  .card.flat{background:transparent;box-shadow:none}
+
+  /* stat tiles */
+  .tiles{display:grid;gap:10px}
+  .tile{border:1px solid var(--hair);border-radius:12px;padding:11px 12px;background:color-mix(in srgb,var(--p) 5%,transparent);min-width:0}
+  .tile .k{font-family:'Space Grotesk';font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .tile .v{font-family:'Space Grotesk';font-size:21px;font-weight:500;margin-top:3px;letter-spacing:-.01em}
+  .tile .v.sm{font-size:17px}
+  .tile .d{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .tile .d .up{color:var(--bad)} .tile .d .dn{color:var(--ok)}
+  .tile.accent{border-color:color-mix(in srgb,var(--p) 40%,transparent);box-shadow:inset 0 0 22px -10px var(--p)}
+
+  /* bar chart */
+  .bars{display:flex;align-items:flex-end;gap:6px;height:130px}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;cursor:default}
+  .bar .col{width:100%;max-width:30px;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,color-mix(in srgb,var(--p) 60%,transparent),color-mix(in srgb,var(--p) 26%,transparent));border:1px solid color-mix(in srgb,var(--p) 34%,transparent);box-shadow:0 0 16px -8px var(--p);transition:.16s}
+  .bar:hover .col{background:linear-gradient(180deg,color-mix(in srgb,var(--p) 78%,transparent),color-mix(in srgb,var(--p) 36%,transparent))}
+  .bar.today .col{background:linear-gradient(180deg,color-mix(in srgb,var(--a) 70%,transparent),color-mix(in srgb,var(--a) 28%,transparent));border-color:color-mix(in srgb,var(--a) 50%,transparent);box-shadow:0 0 18px -7px var(--a)}
+  .bar .wl{font-family:'Space Grotesk';font-size:9px;color:var(--muted)}
+  .bar.today .wl{color:var(--a)}
+  .bar .amt{font-family:'Space Grotesk';font-size:8.5px;color:var(--muted);opacity:.85}
+
+  /* donut legend */
+  .donut-wrap{display:flex;align-items:center;gap:14px}
+  .legend{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+  .leg{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#dceaf4;min-width:0}
+  .leg i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+  .leg .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .leg .pc{font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+
+  /* transactions */
+  .txn{display:flex;align-items:center;gap:11px;padding:8px 0;border-top:1px solid var(--hair);font-size:13px}
+  .txn:first-of-type{border-top:0}
+  .txn .dt{font-family:'Space Grotesk';font-size:10.5px;color:var(--muted);flex:0 0 38px;line-height:1.2}
+  .txn .mb{flex:1;min-width:0}
+  .txn .mn{color:#e7f1fa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .txn .cat{font-family:'Space Grotesk';font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:2px 7px;white-space:nowrap;flex:0 0 auto}
+  .txn .am{font-family:'Space Grotesk';font-size:13px;text-align:right;flex:0 0 auto;white-space:nowrap}
+  .txn .am.in{color:var(--ok)} .txn .am.out{color:var(--bad)}
+  .txn.dense{padding:5px 0;font-size:12px}
+  .txn.flag{border-radius:9px;padding:8px;background:color-mix(in srgb,var(--a) 7%,transparent);border:1px dashed color-mix(in srgb,var(--a) 45%,transparent);margin-top:6px}
+
+  /* bills */
+  .bill{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--hair);font-size:12.5px}
+  .bill:first-of-type{border-top:0}
+  .bill .bi{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:13px;flex:0 0 auto;background:color-mix(in srgb,var(--p) 10%,transparent);border:1px solid var(--hair)}
+  .bill .bb{flex:1;min-width:0}
+  .bill .bn{color:#e7f1fa}
+  .bill .bw{font-family:'Space Grotesk';font-size:10px;color:var(--muted);margin-top:1px}
+  .bill .bw.over{color:var(--bad)}
+  .bill .bam{font-family:'Space Grotesk';font-size:12.5px;color:var(--bad);white-space:nowrap}
+  .bill .paid{font-family:'Space Grotesk';font-size:10px;border:1px solid var(--hair);border-radius:7px;padding:4px 9px;cursor:pointer;color:#cfe1ee;background:transparent;transition:.15s;white-space:nowrap}
+  .bill .paid:hover{background:rgba(255,255,255,.06)}
+
+  /* flag / merge alert blocks */
+  .alert{border:1px solid var(--hair);border-radius:12px;padding:11px;background:color-mix(in srgb,var(--a) 6%,transparent)}
+  .alert.a{border-color:color-mix(in srgb,var(--a) 40%,transparent)}
+  .alert h4{font-size:12.5px;font-weight:600;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .alert .why{color:#bcd0de;font-size:11px;line-height:1.45;margin-top:5px}
+  .alert .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:9px}
+  .tag{font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .tag.a{color:var(--a);border-color:color-mix(in srgb,var(--a) 38%,transparent)}
+  .tag.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 38%,transparent)}
+  .chip-act{font-family:'Space Grotesk';font-size:10.5px;border-radius:7px;padding:5px 12px;cursor:pointer;border:1px solid color-mix(in srgb,var(--p) 45%,transparent);color:#eaf7ff;background:color-mix(in srgb,var(--p) 16%,transparent);transition:.15s}
+  .chip-act:hover{background:color-mix(in srgb,var(--p) 26%,transparent)}
+  .chip-act.ghost{border-color:var(--hair);color:#cfe1ee;background:transparent}
+  .chip-act.ghost:hover{background:rgba(255,255,255,.06)}
+
+  /* action affordance row */
+  .affords{display:flex;flex-wrap:wrap;gap:7px}
+  .aff{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk';font-size:10.5px;color:#cfe1ee;border:1px solid var(--hair);border-radius:8px;padding:5px 10px;cursor:pointer;background:rgba(8,14,22,.3);transition:.15s}
+  .aff:hover{background:color-mix(in srgb,var(--p) 12%,transparent);color:#eaf7ff}
+  .aff svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.7}
+
+  /* generic scroll regions + columns used by variants */
+  .scroll{overflow:auto;min-height:0}
+  .row{display:flex;min-height:0;flex:1}
+  .col{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .pad{padding:14px 16px}
+  .gap{gap:12px}
+  .vdivide{border-right:1px solid var(--hair)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .sectitle{font-family:'Space Grotesk';font-size:13px;font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .sectitle .muted{font-family:'Inter';font-weight:400;font-size:11px;color:var(--muted)}
+  .hrt{height:1px;background:var(--hair);margin:10px 0}
+  .pie-c{flex:0 0 auto}
+
+  /* editorial variant */
+  .ed-num{font-family:'Space Grotesk';font-weight:500;letter-spacing:-.02em;line-height:1}
+  .ed-big{font-size:46px}
+  .ed-mid{font-size:26px}
+  .ed-rule{height:1px;background:color-mix(in srgb,var(--p) 18%,transparent);margin:14px 0}
+
+  @media (prefers-reduced-motion:reduce){
+    :root{transition:none!important}
+    .bg{transition:none!important}
+    .amb-pop{transition:none!important}
+    .bar .col,.aff,.chip-act,.pill,.seg button{transition:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="bg" id="bg2" style="opacity:0"></div>
+<div class="bg-grad"></div>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg><b>ARTEMIS</b></div>
+    <div class="crumb">Home / <b>Finance</b></div>
+    <div class="sp"></div>
+    <button class="ghost amb-btn" id="ambBtn" onclick="toggleAmb()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2 2M16.9 16.9l2 2M18.9 5.1l-2 2M7.1 16.9l-2 2"/></svg> Ambient</button>
+    <div class="stat"><span class="s"><span class="dot"></span> <span id="ambLabel">Winter·afternoon</span></span><span class="s"><span class="dot ok"></span> Local</span></div>
+    <div class="amb-pop" id="ambPop">
+      <div class="amb-pop-head"><b>Ambient</b><span class="sub">season × time</span><button id="ambAuto" onclick="ambNow()">Auto · now</button></div>
+      <div class="amb-grid" id="ambGrid"></div>
+      <div class="amb-note">Auto-shifts with the real clock + calendar — 4 seasons × 4 time-states = 16 palettes. Dashed = draft (not yet hand-tuned). Photo + palette rotate per cell.</div>
+    </div>
+  </div>
+
+  <!-- variant switcher -->
+  <div class="vswitch" id="vswitch"></div>
+
+  <!-- the opened Finance card -->
+  <div class="dov-scrim"></div>
+  <div class="dov">
+    <div class="chrome">
+      <div class="ic">💰</div>
+      <div><h3>Finance</h3></div>
+      <span class="local" title="Finance is always-local — edits apply instantly, no approval gate">local</span>
+      <div class="sp"></div>
+      <div class="mtd">MTD spend <b id="mtdVal">S$2,418</b></div>
+      <div class="seg" id="seg">
+        <button data-pv="week" class="on" onclick="setPeriod('week')">Week</button>
+        <button data-pv="month" onclick="setPeriod('month')">Month</button>
+      </div>
+      <button class="pill" title="awareness-only · edits are instant + local"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Manual entry</button>
+      <div class="x" title="Back to map">✕</div>
+    </div>
+
+    <div class="vbody" id="vbody"><!-- active variant injected here --></div>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   Finance detail — comparison mockup with many layout variants.
+   Today = Tue 23 Jun 2026. Currency SGD. Period default = Week.
+   Finance v1 is AWARENESS-ONLY: edits are instant + local, no approval
+   gate (always-local, hence the `local` tag). Actions are affordances.
+   Visual language (glass / ambient / fonts) copied from calendar-detail.
+   ==================================================================== */
+
+/* ---------- locked content data (continuous with the other mockups) ---------- */
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+// daily spend, this week (Mon–Sun); Tue = today
+const DAILY=[
+  {d:'Mon',v:38.50}, {d:'Tue',v:96.20,today:true}, {d:'Wed',v:21.00},
+  {d:'Thu',v:142.80}, {d:'Fri',v:64.40}, {d:'Sat',v:0}, {d:'Sun',v:0}
+];
+const WEEK_SPENT=DAILY.reduce((s,x)=>s+x.v,0);   // 362.90
+// category split (this week)
+const CATS=[
+  {nm:'Groceries',     v:148.20, c:'#5fee9c'},
+  {nm:'Dining',        v:96.40,  c:'#ffd64a'},
+  {nm:'Transport',     v:41.30,  c:'#58c6ff'},
+  {nm:'Subscriptions', v:42.90,  c:'#c08bff'},
+  {nm:'Bills',         v:34.10,  c:'#f08a8a'}
+];
+const CAT_TOTAL=CATS.reduce((s,x)=>s+x.v,0);
+// recent transactions (date · merchant · category · amount; +income green / -spend red)
+const TXNS=[
+  {dt:'23 Jun',mn:'NTUC FairPrice',     cat:'Groceries',     v:-58.40},
+  {dt:'23 Jun',mn:'Toast Box (coffee)', cat:'Dining',        v:-6.20},
+  {dt:'22 Jun',mn:'Grab — to office',   cat:'Transport',     v:-12.80},
+  {dt:'22 Jun',mn:'Salary — Acme Pte',  cat:'Income',        v:+6200.00},
+  {dt:'21 Jun',mn:'Spotify Premium',    cat:'Subscriptions', v:-12.90},
+  {dt:'20 Jun',mn:'Cold Storage',       cat:'Groceries',     v:-44.10},
+  {dt:'20 Jun',mn:'AirAsia — Penang',   cat:'Travel',        v:-128.00},
+  {dt:'19 Jun',mn:'Coffee Roasters sub',cat:'Subscriptions', v:-18.00}
+];
+// bills strip — upcoming + overdue
+const BILLS=[
+  {nm:'SP Group',      bi:'⚡', when:'due Fri 26 Jun', over:false, v:-84.20, sub:false},
+  {nm:'Coffee sub',    bi:'☕', when:'renews Sat 27 Jun', over:false, v:-18.00, sub:true},
+  {nm:'Spotify',       bi:'🎵', when:'overdue · 2 days', over:true,  v:-12.90, sub:true}
+];
+// unusual-spend outlier + duplicate-merge suggestion
+const FLAG={mn:'AirAsia — Penang', v:-128.00, why:'S$128 on Travel is 3.2× your usual day — first Travel charge in 6 weeks. Likely the Penang trip.'};
+const DUP={mn:'Coffee Roasters', why:'Two coffee subscriptions look like the same merchant — "Coffee Roasters sub" (S$18.00) and "Coffee Roasters Co." (S$18.00) on the same day.'};
+// ambiguous type needing a confirm (PayNow could be income or transfer)
+const AMBIG={mn:'PayNow — D. Ng', v:+45.00, why:'Incoming PayNow of S$45 — confirm whether this is income or a repaid transfer.'};
+
+const money=(v,opt={})=>{
+  const a=Math.abs(v).toLocaleString('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const sign = v>0 ? (opt.plus?'+':'') : (v<0?'−':'');
+  return `${sign}S$${a}`;
+};
+const moneyR=v=>{ // rounded, no cents (for tiles)
+  return `S$${Math.round(Math.abs(v)).toLocaleString('en-SG')}`;
+};
+
+let period='week';
+
+/* ---------- reusable HTML fragment builders ---------- */
+function barsHTML(){
+  const max=Math.max(...DAILY.map(d=>d.v))||1;
+  return `<div class="bars">${DAILY.map(d=>{
+    const h=d.v===0?3:Math.round(12+(d.v/max)*108);
+    return `<div class="bar ${d.today?'today':''}">
+      <div class="amt">${d.v?moneyR(d.v):'—'}</div>
+      <div class="col" style="height:${h}px" title="${d.d}: ${money(-d.v)}"></div>
+      <div class="wl">${d.d}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+// donut: inline SVG, size param
+function donutHTML(size=120){
+  const r=size/2-10, cx=size/2, cy=size/2, C=2*Math.PI*r;
+  let off=0, segs='';
+  CATS.forEach(c=>{
+    const frac=c.v/CAT_TOTAL, len=frac*C;
+    segs+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c.c}" stroke-width="11"
+      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"
+      transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt" opacity=".92"/>`;
+    off+=len;
+  });
+  return `<svg class="pie-c" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="color-mix(in srgb,var(--p) 10%,transparent)" stroke-width="11"/>
+    ${segs}
+    <text x="${cx}" y="${cy-3}" text-anchor="middle" fill="var(--text)" font-family="Space Grotesk" font-size="${size*0.13}" font-weight="500">${moneyR(WEEK_SPENT)}</text>
+    <text x="${cx}" y="${cy+12}" text-anchor="middle" fill="var(--muted)" font-family="Space Grotesk" font-size="${size*0.075}" letter-spacing="1">SPENT</text>
+  </svg>`;
+}
+function legendHTML(){
+  return `<div class="legend">${CATS.map(c=>`<div class="leg">
+    <i style="background:${c.c}"></i><span class="nm">${c.nm}</span>
+    <span class="pc">${Math.round(c.v/CAT_TOTAL*100)}%</span></div>`).join('')}</div>`;
+}
+function txnsHTML(list, dense){
+  return list.map(t=>{
+    const inc=t.v>0;
+    return `<div class="txn ${dense?'dense':''}">
+      <div class="dt">${t.dt}</div>
+      <div class="mb"><span class="mn">${t.mn}</span></div>
+      <span class="cat">${t.cat}</span>
+      <span class="am ${inc?'in':'out'}">${money(t.v,{plus:true})}</span>
+    </div>`;
+  }).join('');
+}
+function billsHTML(){
+  return BILLS.map(b=>`<div class="bill">
+    <div class="bi">${b.bi}</div>
+    <div class="bb"><div class="bn">${b.nm}${b.sub?' <span class="tag">sub</span>':''}</div>
+      <div class="bw ${b.over?'over':''}">${b.when}</div></div>
+    <div class="bam">${money(b.v)}</div>
+    <button class="paid" data-x>${b.over?'Mark paid':'Paid'}</button>
+  </div>`).join('');
+}
+function flagHTML(){
+  return `<div class="alert a">
+    <h4>⚠ Unusual spend <span class="tag a">outlier</span></h4>
+    <div class="why"><b>${FLAG.mn}</b> · ${money(FLAG.v)} — ${FLAG.why}</div>
+    <div class="acts"><button class="chip-act ghost" data-x>Recategorise</button><button class="chip-act" data-x>Looks right</button></div>
+  </div>`;
+}
+function dupHTML(){
+  return `<div class="alert">
+    <h4>Duplicate suggestion <span class="tag">merge</span></h4>
+    <div class="why">${DUP.why}</div>
+    <div class="acts"><button class="chip-act ghost" data-x>Keep both</button><button class="chip-act" data-x>Merge →</button></div>
+  </div>`;
+}
+function ambigHTML(){
+  return `<div class="alert">
+    <h4>Confirm type <span class="tag a">PayNow</span></h4>
+    <div class="why"><b>${AMBIG.mn}</b> · ${money(AMBIG.v,{plus:true})} — ${AMBIG.why}</div>
+    <div class="acts"><button class="chip-act ghost" data-x>Transfer</button><button class="chip-act" data-x>Income</button></div>
+  </div>`;
+}
+function affordsHTML(){
+  const A=[
+    ['Recategorise','M4 7h16M4 12h10M4 17h7'],
+    ['Confirm PayNow','M20 6L9 17l-5-5'],
+    ['Merge duplicate','M8 7h8M8 12h8M10 17l2 2 2-2'],
+    ['Mark bill paid','M5 12l4 4L19 6'],
+    ['Manual entry','M12 5v14M5 12h14'],
+    ['CSV import','M12 15V3M7 8l5-5 5 5M5 21h14']
+  ];
+  return `<div class="affords">${A.map(([t,p])=>`<button class="aff" data-x>
+    <svg viewBox="0 0 24 24"><path d="${p}"/></svg>${t}</button>`).join('')}</div>`;
+}
+
+/* ====================================================================
+   VARIANTS — each returns an HTML string for #vbody.
+   They vary BOTH structure/layout AND density.
+   ==================================================================== */
+const VARIANTS={};
+
+/* 1 — Charts top, list below (classic dashboard). Roomy. */
+VARIANTS.stacked={name:'Charts-top',label:'1', build:()=>`
+  <div class="col pad gap scroll" style="gap:14px">
+    <div class="grid2">
+      <div class="card">
+        <div class="eyebrow">Daily spend · this week</div>
+        ${barsHTML()}
+      </div>
+      <div class="card">
+        <div class="eyebrow">By category</div>
+        <div class="donut-wrap">${donutHTML(124)}${legendHTML()}</div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card flat">
+        <div class="eyebrow">Recent transactions</div>
+        ${txnsHTML(TXNS.slice(0,5))}
+      </div>
+      <div class="col gap">
+        <div class="card"><div class="eyebrow">Bills · upcoming & overdue</div>${billsHTML()}</div>
+        ${flagHTML()}
+      </div>
+    </div>
+    ${affordsHTML()}
+  </div>`};
+
+/* 2 — Split: charts left / list right. Balanced. */
+VARIANTS.split={name:'Charts ▏list',label:'2', build:()=>`
+  <div class="row">
+    <div class="col pad gap vdivide" style="flex:0 0 46%;overflow:auto">
+      <div class="card">
+        <div class="eyebrow">Daily spend</div>${barsHTML()}
+      </div>
+      <div class="card">
+        <div class="eyebrow">By category</div>
+        <div class="donut-wrap">${donutHTML(132)}${legendHTML()}</div>
+      </div>
+      <div class="card"><div class="eyebrow">Bills</div>${billsHTML()}</div>
+    </div>
+    <div class="col pad scroll" style="flex:1;gap:10px">
+      <div class="eyebrow">Recent transactions</div>
+      ${txnsHTML(TXNS)}
+      <div class="hrt"></div>
+      ${flagHTML()}
+      ${dupHTML()}
+    </div>
+  </div>`};
+
+/* 3 — Stat-tile dashboard + mini charts. Dense overview. */
+VARIANTS.tiles={name:'Stat-tiles',label:'3', build:()=>`
+  <div class="col pad gap scroll" style="gap:12px">
+    <div class="grid4 tiles">
+      <div class="tile accent"><div class="k">This week</div><div class="v">${moneyR(WEEK_SPENT)}</div><div class="d"><span class="up">▲ 14%</span> vs last wk</div></div>
+      <div class="tile"><div class="k">MTD spend</div><div class="v">S$2,418</div><div class="d">of ~S$3,400 budget</div></div>
+      <div class="tile"><div class="k">Income (Jun)</div><div class="v" style="color:var(--ok)">S$6,200</div><div class="d"><span class="dn">net +S$3,782</span></div></div>
+      <div class="tile"><div class="k">Top category</div><div class="v sm">Groceries</div><div class="d">${moneyR(CATS[0].v)} this wk</div></div>
+    </div>
+    <div class="grid3">
+      <div class="card" style="grid-column:span 2"><div class="eyebrow">Daily spend</div>${barsHTML()}</div>
+      <div class="card"><div class="eyebrow">Split</div><div class="donut-wrap" style="flex-direction:column;gap:10px;align-items:center">${donutHTML(110)}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card flat"><div class="eyebrow">Recent</div>${txnsHTML(TXNS.slice(0,4),true)}</div>
+      <div class="card flat"><div class="eyebrow">Bills & alerts</div>${billsHTML()}<div class="hrt"></div>${flagHTML()}</div>
+    </div>
+    ${affordsHTML()}
+  </div>`};
+
+/* 4 — List-first, charts in a side rail. Transactions-forward. */
+VARIANTS.listrail={name:'List + rail',label:'4', build:()=>`
+  <div class="row">
+    <div class="col pad scroll" style="flex:1;gap:8px">
+      <div class="sectitle">Recent transactions <span class="muted">· ${TXNS.length} this week</span></div>
+      ${txnsHTML(TXNS)}
+      <div class="hrt"></div>
+      ${ambigHTML()}
+      ${dupHTML()}
+    </div>
+    <div class="col pad gap scroll vdivide" style="flex:0 0 38%;order:-1;border-right:1px solid var(--hair);gap:12px">
+      <div class="tile accent"><div class="k">Spent this week</div><div class="v">${moneyR(WEEK_SPENT)}</div><div class="d"><span class="up">▲ 14%</span> vs last week</div></div>
+      <div class="card"><div class="eyebrow">Daily</div>${barsHTML()}</div>
+      <div class="card"><div class="eyebrow">Category</div><div class="donut-wrap" style="flex-direction:column;align-items:center;gap:10px">${donutHTML(112)}${legendHTML()}</div></div>
+    </div>
+  </div>`};
+
+/* 5 — Bills & flags forward (action-led). Triage layout. */
+VARIANTS.triage={name:'Bills/flags',label:'5', build:()=>`
+  <div class="col pad gap scroll" style="gap:12px">
+    <div class="grid3">
+      <div class="card" style="border-color:color-mix(in srgb,var(--bad) 30%,transparent)">
+        <div class="eyebrow">Needs attention</div>
+        <div class="bill"><div class="bi">🎵</div><div class="bb"><div class="bn">Spotify <span class="tag bad">overdue</span></div><div class="bw over">2 days late</div></div><div class="bam">${money(-12.90)}</div><button class="paid" data-x>Mark paid</button></div>
+        <div class="bill"><div class="bi">⚡</div><div class="bb"><div class="bn">SP Group</div><div class="bw">due Fri 26 Jun</div></div><div class="bam">${money(-84.20)}</div><button class="paid" data-x>Paid</button></div>
+      </div>
+      ${flagHTML()}
+      ${dupHTML()}
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="eyebrow">Daily spend</div>${barsHTML()}</div>
+      <div class="card"><div class="eyebrow">By category</div><div class="donut-wrap">${donutHTML(120)}${legendHTML()}</div></div>
+    </div>
+    <div class="card flat"><div class="eyebrow">Recent transactions</div>${txnsHTML(TXNS.slice(0,4))}</div>
+    ${affordsHTML()}
+  </div>`};
+
+/* 6 — Compact dense (everything visible, tight). High density. */
+VARIANTS.dense={name:'Compact',label:'6', build:()=>`
+  <div class="row">
+    <div class="col scroll vdivide" style="flex:0 0 40%;padding:11px 13px;gap:9px">
+      <div class="grid2" style="gap:8px">
+        <div class="tile" style="padding:8px 9px"><div class="k">Week</div><div class="v sm">${moneyR(WEEK_SPENT)}</div></div>
+        <div class="tile" style="padding:8px 9px"><div class="k">MTD</div><div class="v sm">S$2,418</div></div>
+      </div>
+      <div class="card" style="padding:10px"><div class="eyebrow" style="margin-bottom:6px">Daily</div>
+        <div class="bars" style="height:96px">${DAILY.map(d=>{const max=Math.max(...DAILY.map(x=>x.v));const h=d.v===0?3:Math.round(10+(d.v/max)*80);return `<div class="bar ${d.today?'today':''}"><div class="col" style="height:${h}px"></div><div class="wl">${d.d[0]}</div></div>`;}).join('')}</div>
+      </div>
+      <div class="card" style="padding:10px"><div class="eyebrow" style="margin-bottom:6px">Category</div><div class="donut-wrap">${donutHTML(98)}${legendHTML()}</div></div>
+      <div class="card" style="padding:10px"><div class="eyebrow" style="margin-bottom:6px">Bills</div>${billsHTML()}</div>
+    </div>
+    <div class="col scroll" style="flex:1;padding:11px 13px;gap:7px">
+      <div class="eyebrow" style="margin-bottom:2px">Recent transactions</div>
+      ${txnsHTML(TXNS,true)}
+      <div class="txn flag dense"><div class="dt">⚠</div><div class="mb"><span class="mn">${FLAG.mn} — unusual</span></div><span class="am out">${money(FLAG.v)}</span></div>
+      <div class="hrt" style="margin:6px 0"></div>
+      <div class="affords">${affordsHTML().replace('<div class="affords">','').replace('</div>','')}</div>
+    </div>
+  </div>`};
+
+/* 6b — Compact · no cards (same compact content, flat: hairline dividers + eyebrows, no boxed sub-cards). */
+VARIANTS.denseflat={name:'Compact · no cards',label:'6b', build:()=>`
+  <div class="row">
+    <div class="col scroll vdivide" style="flex:0 0 40%;padding:13px 15px;gap:6px">
+      <div style="display:flex;gap:22px;align-items:baseline">
+        <div><div class="k" style="font-family:'Space Grotesk';font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">Week</div><div class="v sm" style="font-family:'Space Grotesk';font-size:18px;font-weight:500">${moneyR(WEEK_SPENT)}</div></div>
+        <div><div class="k" style="font-family:'Space Grotesk';font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">MTD</div><div class="v sm" style="font-family:'Space Grotesk';font-size:18px;font-weight:500">S$2,418</div></div>
+      </div>
+      <div class="hrt"></div>
+      <div class="eyebrow" style="margin-bottom:6px">Daily</div>
+      <div class="bars" style="height:96px">${DAILY.map(d=>{const max=Math.max(...DAILY.map(x=>x.v));const h=d.v===0?3:Math.round(10+(d.v/max)*80);return `<div class="bar ${d.today?'today':''}"><div class="col" style="height:${h}px"></div><div class="wl">${d.d[0]}</div></div>`;}).join('')}</div>
+      <div class="hrt"></div>
+      <div class="eyebrow" style="margin-bottom:6px">Category</div>
+      <div class="donut-wrap">${donutHTML(98)}${legendHTML()}</div>
+      <div class="hrt"></div>
+      <div class="eyebrow" style="margin-bottom:4px">Bills</div>
+      ${billsHTML()}
+    </div>
+    <div class="col scroll" style="flex:1;padding:13px 15px;gap:7px">
+      <div class="eyebrow" style="margin-bottom:2px">Recent transactions</div>
+      ${txnsHTML(TXNS,true)}
+      <div class="hrt"></div>
+      <div class="eyebrow" style="margin-bottom:4px">Flags</div>
+      <div class="txn flag dense"><div class="dt">⚠</div><div class="mb"><span class="mn">${FLAG.mn} — unusual ${money(FLAG.v)}</span></div></div>
+      <div style="display:flex;gap:7px;margin-top:4px"><button class="chip-act ghost" data-x>Recategorise</button><button class="chip-act" data-x>Looks right</button></div>
+      <div style="font-size:11px;color:#bcd0de;line-height:1.4;margin-top:8px">${DUP.why}</div>
+      <div style="display:flex;gap:7px;margin-top:6px"><button class="chip-act ghost" data-x>Keep both</button><button class="chip-act" data-x>Merge →</button></div>
+      <div style="font-size:11px;color:#bcd0de;line-height:1.4;margin-top:8px"><b>${AMBIG.mn}</b> · ${money(AMBIG.v,{plus:true})} — confirm type</div>
+      <div style="display:flex;gap:7px;margin-top:6px"><button class="chip-act ghost" data-x>Transfer</button><button class="chip-act" data-x>Income</button></div>
+      <div class="hrt"></div>
+      <div class="affords">${affordsHTML().replace('<div class="affords">','').replace('</div>','')}</div>
+    </div>
+  </div>`};
+
+/* 7 — Roomy airy (lots of breathing room, big numbers, few items). Low density. */
+VARIANTS.airy={name:'Airy',label:'7', build:()=>`
+  <div class="col scroll" style="padding:26px 34px;gap:24px">
+    <div style="display:flex;align-items:flex-end;gap:34px;flex-wrap:wrap">
+      <div>
+        <div class="eyebrow" style="margin-bottom:6px">Spent this week</div>
+        <div class="ed-num ed-big">${moneyR(WEEK_SPENT)}</div>
+        <div class="d" style="font-size:12px;color:var(--muted);margin-top:8px"><span style="color:var(--bad)">▲ 14%</span> vs last week · S$2,418 MTD</div>
+      </div>
+      <div style="flex:1;min-width:260px">${barsHTML()}</div>
+    </div>
+    <div class="ed-rule"></div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:center">
+      <div class="donut-wrap" style="gap:22px">${donutHTML(150)}${legendHTML()}</div>
+      <div style="flex:1;min-width:240px">
+        <div class="eyebrow" style="margin-bottom:10px">Recent</div>
+        ${txnsHTML(TXNS.slice(0,3))}
+      </div>
+    </div>
+    <div class="ed-rule"></div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><div class="eyebrow" style="margin-bottom:8px">Next bill</div>
+        <div class="bill" style="border-top:0"><div class="bi">⚡</div><div class="bb"><div class="bn">SP Group</div><div class="bw">due Fri 26 Jun</div></div><div class="bam">${money(-84.20)}</div><button class="paid" data-x>Paid</button></div>
+      </div>
+      <div style="flex:1;min-width:240px">${flagHTML()}</div>
+    </div>
+  </div>`};
+
+/* 8 — Editorial low-chrome (typographic, minimal borders, narrative). */
+VARIANTS.editorial={name:'Editorial',label:'8', build:()=>`
+  <div class="col scroll" style="padding:22px 30px;gap:18px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-family:'Space Grotesk';font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)">This week · 23 Jun</div>
+        <div class="ed-num ed-mid" style="margin-top:6px">You spent ${moneyR(WEEK_SPENT)}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.5;max-width:520px">
+          Mostly <b style="color:var(--text)">Groceries</b> (${moneyR(CATS[0].v)}) and one big <b style="color:var(--text)">Travel</b> charge for Penang. Salary <span style="color:var(--ok)">+S$6,200</span> landed Mon. One bill due Friday, one overdue.
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'Space Grotesk';font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)">Net · June</div>
+        <div class="ed-num" style="font-size:24px;color:var(--ok);margin-top:4px">+S$3,782</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap">
+      <div style="flex:2;min-width:300px">${barsHTML()}</div>
+      <div style="flex:1;min-width:170px">${legendHTML()}</div>
+    </div>
+    <div class="ed-rule"></div>
+    <div style="display:flex;gap:30px;flex-wrap:wrap">
+      <div style="flex:1.4;min-width:280px">
+        <div class="eyebrow" style="margin-bottom:6px">Latest</div>
+        ${txnsHTML(TXNS.slice(0,5),true)}
+      </div>
+      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+        ${flagHTML()}
+        <div class="bill" style="border-top:0"><div class="bi">⚡</div><div class="bb"><div class="bn">SP Group · due Fri</div><div class="bw over">Spotify overdue 2d</div></div><div class="bam">${money(-84.20)}</div><button class="paid" data-x>Paid</button></div>
+      </div>
+    </div>
+  </div>`};
+
+/* ---------- variant order + switching ---------- */
+const ORDER=['stacked','split','tiles','listrail','triage','dense','denseflat','airy','editorial'];
+let curV=null;
+let bodyHandlers=[];   // per-variant listeners to clean up on switch
+
+function clearBodyHandlers(){
+  bodyHandlers.forEach(({el,type,fn})=>el.removeEventListener(type,fn));
+  bodyHandlers=[];
+}
+function on(el,type,fn){el.addEventListener(type,fn);bodyHandlers.push({el,type,fn});}
+
+function renderVariant(id){
+  clearBodyHandlers();
+  curV=id;
+  const host=document.getElementById('vbody');
+  host.innerHTML=VARIANTS[id].build();
+  host.scrollTop=0;
+  // wire affordance/action toggles (mock feedback — awareness-only, instant + local)
+  host.querySelectorAll('[data-x]').forEach(b=>{
+    const fn=()=>{
+      const orig=b.dataset.orig||b.textContent;
+      b.dataset.orig=orig;
+      b.textContent=b.classList.contains('paid')?'✓ done':'✓';
+      b.style.opacity='.7';
+      setTimeout(()=>{b.textContent=orig;b.style.opacity='';},900);
+    };
+    on(b,'click',fn);
+  });
+  // mark active switcher button
+  document.querySelectorAll('#vswitch button').forEach(x=>x.classList.toggle('on',x.dataset.v===id));
+}
+
+(function buildSwitcher(){
+  const sw=document.getElementById('vswitch');
+  sw.innerHTML='<span class="vn">VARIANT</span>'+ORDER.map(id=>
+    `<button data-v="${id}"><b style="font-family:Space Grotesk;color:var(--p)">${VARIANTS[id].label}</b> ${VARIANTS[id].name}</button>`
+  ).join('');
+  sw.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>renderVariant(b.dataset.v)));
+})();
+
+/* period toggle (Week/Month) — cosmetic for the mockup; re-renders active variant */
+function setPeriod(pv){
+  period=pv;
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.pv===pv));
+  document.getElementById('mtdVal').textContent = pv==='month' ? 'S$2,418' : 'S$2,418';
+  renderVariant(curV);
+}
+
+/* ====================================================================
+   AMBIENT THEMING (copied from calendar-detail) — 4 seasons × 4 times
+   ==================================================================== */
+const bg=document.getElementById('bg'), bg2=document.getElementById('bg2');
+bg.style.zIndex='1'; bg2.style.zIndex='0';
+let _front=bg;
+function setPhoto(url,bright){
+  const inc=_front===bg?bg2:bg;
+  inc.style.transition='none'; inc.style.opacity='0';
+  inc.style.backgroundImage=`url(${url})`;
+  inc.style.filter=`brightness(${bright}) saturate(1.08) blur(1.5px)`;
+  inc.style.zIndex='2';
+  void inc.offsetWidth;
+  inc.style.transition='opacity .8s ease';
+  inc.style.opacity='1';
+  _front.style.zIndex='1'; _front=inc;
+}
+const SEASONS=['Spring','Summer','Autumn','Winter'], TIMES=['morning','afternoon','evening','night'];
+const DIM={morning:.70,afternoon:.80,evening:.60,night:.40};
+const PAL={
+  'Spring|morning':{bg:'#08120e',p:'#8fecb8',a:'#ffc2a6',v:1}, 'Spring|afternoon':{bg:'#0a1612',p:'#5fee9c',a:'#84d2ff',v:1},
+  'Spring|evening':{bg:'#0a0c0d',p:'#f2b487',a:'#93d59a',v:1}, 'Spring|night':{bg:'#05080f',p:'#5aa6d0',a:'#8fd0a8',v:0},
+  'Summer|morning':{bg:'#0e0a10',p:'#ff9e6e',a:'#8fb0ff',v:0}, 'Summer|afternoon':{bg:'#11140a',p:'#ffd64a',a:'#58c4f2',v:0},
+  'Summer|evening':{bg:'#0d0908',p:'#ff9f4a',a:'#ff5e8a',v:0}, 'Summer|night':{bg:'#06080f',p:'#4f9fc8',a:'#e3a06f',v:0},
+  'Autumn|morning':{bg:'#0f0c08',p:'#e3b572',a:'#93b39c',v:1}, 'Autumn|afternoon':{bg:'#100a05',p:'#f0a23f',a:'#c2552b',v:1},
+  'Autumn|evening':{bg:'#0d0606',p:'#ff7338',a:'#9a5ab0',v:1}, 'Autumn|night':{bg:'#0a0707',p:'#a06a44',a:'#6a5a7a',v:0},
+  'Winter|morning':{bg:'#080d14',p:'#abe0ff',a:'#ffc7a6',v:1}, 'Winter|afternoon':{bg:'#060c14',p:'#58c6ff',a:'#fff0d8',v:1},
+  'Winter|evening':{bg:'#07091a',p:'#8aa6ff',a:'#ffb479',v:1}, 'Winter|night':{bg:'#05070e',p:'#5a76b0',a:'#b88a5c',v:0}
+};
+let amb={season:'Winter',time:'afternoon'};
+function setAmbient(season,time){
+  amb={season,time}; const c=PAL[season+'|'+time], R=document.documentElement.style;
+  R.setProperty('--bg',c.bg); R.setProperty('--p',c.p); R.setProperty('--a',c.a);
+  setPhoto(`https://picsum.photos/seed/artemis-${season.toLowerCase()}-${time}/1920/1080`,DIM[time]);
+  document.getElementById('ambLabel').textContent=`${season}·${time}`;
+  document.querySelectorAll('.amb-cell').forEach(b=>b.classList.toggle('act',b.dataset.s===season&&b.dataset.t===time));
+}
+(function(){const g=document.getElementById('ambGrid');
+  g.innerHTML='<span></span>'+TIMES.map(t=>`<span class="amb-h">${t}</span>`).join('');
+  SEASONS.forEach(s=>{g.insertAdjacentHTML('beforeend',`<span class="amb-rh">${s}</span>`);
+    TIMES.forEach(t=>{const c=PAL[s+'|'+t];
+      g.insertAdjacentHTML('beforeend',`<button class="amb-cell${c.v?'':' draft'}" data-s="${s}" data-t="${t}" title="${s} · ${t}${c.v?'':' · draft'}" style="background:${c.bg}"><i style="background:${c.p}"></i><i style="background:${c.a}"></i></button>`);});});
+  g.querySelectorAll('.amb-cell').forEach(b=>b.onclick=()=>setAmbient(b.dataset.s,b.dataset.t));})();
+function toggleAmb(){document.getElementById('ambPop').classList.toggle('on');}
+function ambNow(){const d=new Date(), m=d.getMonth(), h=d.getHours()+d.getMinutes()/60;
+  const season=['Winter','Winter','Spring','Spring','Spring','Summer','Summer','Summer','Autumn','Autumn','Autumn','Winter'][m];
+  const time=(h>=23.5||h<7.25)?'night':h<12?'morning':h<17?'afternoon':'evening';
+  setAmbient(season,time);}
+document.addEventListener('click',e=>{const p=document.getElementById('ambPop');
+  if(p.classList.contains('on')&&!p.contains(e.target)&&!e.target.closest('#ambBtn'))p.classList.remove('on');});
+addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('ambPop');if(p.classList.contains('on'))p.classList.remove('on');}});
+
+/* ---------- boot ---------- */
+renderVariant('stacked');
+setAmbient('Winter','afternoon');
+</script>
+</body>
+</html>

@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis — Calendar detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* register ambient tokens as typed colours so they interpolate (smooth cross-fade) */
+  @property --bg{syntax:"<color>";inherits:true;initial-value:#060c14}
+  @property --p{syntax:"<color>";inherits:true;initial-value:#58c6ff}
+  @property --a{syntax:"<color>";inherits:true;initial-value:#fff0d8}
+  :root{
+    --bg:#060c14; --p:#58c6ff; --a:#fff0d8;                 /* ambient — set by the resolver (default Winter·afternoon) */
+    --ok:#67e0a3; --text:#eef7ff; --muted:#a8bccb;
+    --glass:color-mix(in srgb,var(--bg) 33%,transparent); --glass2:color-mix(in srgb,var(--bg) 19%,transparent);
+    --hair:color-mix(in srgb,var(--p) 22%,transparent);
+    font-synthesis:none;
+    transition:--bg .8s cubic-bezier(.4,0,.2,1),--p .8s cubic-bezier(.4,0,.2,1),--a .8s cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{color:var(--text);font-family:'Inter',system-ui,'Segoe UI',sans-serif;height:100%;background:var(--bg)}
+  .bg{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:brightness(.66) saturate(1.08) blur(1.5px);transition:opacity .8s ease}
+  .bg-grad{position:fixed;inset:0;z-index:5;pointer-events:none;background:
+    radial-gradient(1200px 820px at 50% -8%, rgba(40,90,120,.16), transparent 60%),
+    linear-gradient(180deg, rgba(7,13,22,.20), rgba(7,13,22,.46) 72%, rgba(7,13,22,.62))}
+  .app{position:fixed;inset:0;z-index:6}
+
+  /* top bar (ambient toggle lives here, like the workspace) */
+  .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:13px;padding:13px 20px;z-index:50}
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand svg{width:23px;height:23px;filter:drop-shadow(0 0 6px var(--p))}
+  .brand b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.2em;font-size:12.5px}
+  .crumb{font-family:'Space Grotesk';font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding-left:13px;border-left:1px solid var(--hair)}
+  .crumb b{color:var(--p);font-weight:500}
+  .top .sp{flex:1}
+  .ghost{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);backdrop-filter:blur(8px);transition:.16s}
+  .ghost:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .ghost svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .amb-pop{position:absolute;top:50px;right:20px;width:344px;z-index:60;padding:13px;border-radius:16px;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 60%,transparent),color-mix(in srgb,var(--bg) 44%,transparent));
+    backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);border:1px solid var(--hair);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 26px -6px color-mix(in srgb,var(--p) 18%,transparent),0 2px 6px -2px rgba(0,0,0,.4),0 32px 80px -28px #000,0 0 40px -16px var(--p);opacity:0;transform:translateY(-8px);pointer-events:none;transition:.2s}
+  .amb-pop.on{opacity:1;transform:none;pointer-events:auto}
+  .amb-pop-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .amb-pop-head b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.16em;font-size:11px;text-transform:uppercase}
+  .amb-pop-head .sub{font-size:10px;color:var(--muted)}
+  .amb-pop-head #ambAuto{margin-left:auto;font-family:'Space Grotesk';font-size:10.5px;color:#eaf7ff;border:1px solid color-mix(in srgb,var(--p) 38%,transparent);border-radius:7px;padding:4px 9px;cursor:pointer;background:color-mix(in srgb,var(--p) 14%,transparent)}
+  .amb-pop-head #ambAuto:hover{background:color-mix(in srgb,var(--p) 24%,transparent)}
+  .amb-grid{display:grid;grid-template-columns:auto repeat(4,1fr);gap:5px;align-items:center}
+  .amb-h{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:center}
+  .amb-rh{font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);padding-right:5px;text-align:right}
+  .amb-cell{position:relative;height:30px;border-radius:8px;border:1px solid var(--hair);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;overflow:hidden;transition:.14s}
+  .amb-cell:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--p) 45%,transparent)}
+  .amb-cell.draft{border-style:dashed;opacity:.85}
+  .amb-cell i{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px -1px rgba(0,0,0,.6)}
+  .amb-cell.act{border-color:#fff;box-shadow:0 0 0 1.5px var(--p),0 0 16px -4px var(--p)}
+  .amb-note{margin-top:11px;font-size:10px;line-height:1.45;color:var(--muted)}
+  .stat{display:flex;align-items:center;gap:11px}
+  .s{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--p);box-shadow:0 0 7px var(--p)}
+  .dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+
+  /* ---------- the opened Calendar detail panel (top-most overlay) ---------- */
+  .dov-scrim{position:fixed;inset:0;z-index:44;background:rgba(3,7,13,.20)}
+  .dov{position:fixed;z-index:45;left:50%;top:53%;transform:translate(-50%,-50%);
+    width:860px;max-width:94vw;height:600px;max-height:84vh;
+    display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 46%,transparent),color-mix(in srgb,var(--bg) 32%,transparent));
+    backdrop-filter:blur(32px) saturate(150%);-webkit-backdrop-filter:blur(32px) saturate(150%);
+    border:1px solid color-mix(in srgb,var(--p) 34%,transparent);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 40px -10px color-mix(in srgb,var(--p) 16%,transparent),0 4px 12px -3px rgba(0,0,0,.5),0 50px 130px -28px #000,0 0 64px -16px var(--p)}
+  .dov::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;background:linear-gradient(162deg,rgba(255,255,255,.12),transparent 30%);mix-blend-mode:screen}
+
+  /* header row */
+  .chrome{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid var(--hair);position:relative;z-index:2}
+  .chrome .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:16px;background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 22%,transparent)}
+  .chrome h3{font-family:'Space Grotesk';font-weight:500;font-size:16px;letter-spacing:.01em}
+  .chrome .when{font-family:'Space Grotesk';font-size:11px;color:var(--muted);letter-spacing:.04em}
+  .chrome .sp{flex:1}
+  .seg{display:flex;border:1px solid var(--hair);border-radius:9px;overflow:hidden;background:rgba(8,14,22,.35)}
+  .seg button{font-family:'Space Grotesk';font-size:11.5px;color:#cfe1ee;padding:6px 13px;cursor:pointer;border:0;background:transparent;transition:.15s}
+  .seg button:hover{background:color-mix(in srgb,var(--p) 10%,transparent)}
+  .seg button.on{color:#eaf7ff;background:color-mix(in srgb,var(--p) 20%,transparent);box-shadow:0 0 14px -6px var(--p) inset}
+  .pill{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);transition:.16s}
+  .pill:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .pill.accent{border-color:color-mix(in srgb,var(--p) 42%,transparent);color:#eaf7ff;background:color-mix(in srgb,var(--p) 15%,transparent);box-shadow:0 0 18px -8px var(--p)}
+  .pill svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .x{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;cursor:pointer;color:var(--muted);font-size:13px;flex:0 0 auto}
+  .x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+
+  /* body = two panes */
+  .panes{flex:1;display:flex;min-height:0;position:relative;z-index:2}
+  .main{flex:1 1 62%;min-width:0;padding:14px 14px 14px 16px;display:flex;flex-direction:column;border-right:1px solid var(--hair)}
+  .side{flex:0 0 38%;min-width:0;padding:14px 16px;overflow:auto;display:flex;flex-direction:column}
+
+  /* ---- month grid ---- */
+  .mtitle{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .mtitle b{font-family:'Space Grotesk';font-weight:500;font-size:14px}
+  .nav{width:22px;height:22px;display:grid;place-items:center;border-radius:6px;border:1px solid var(--hair);cursor:pointer;color:var(--muted);font-size:12px}
+  .nav:hover{color:var(--text);background:rgba(255,255,255,.06)}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+  .dow span{font-family:'Space Grotesk';font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center}
+  .dow span.we{opacity:.5}
+  .grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:5px;min-height:0}
+  .cell{position:relative;border:1px solid var(--hair);border-radius:9px;padding:5px 6px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;gap:3px;background:rgba(120,180,255,.025);transition:.14s}
+  .cell:hover{border-color:color-mix(in srgb,var(--p) 40%,transparent);background:color-mix(in srgb,var(--p) 7%,transparent)}
+  .cell.we{opacity:.52}
+  .cell.out{opacity:.28}
+  .cell.today{background:color-mix(in srgb,var(--p) 12%,transparent);border-color:color-mix(in srgb,var(--p) 34%,transparent)}
+  .cell.sel{border-color:#fff;box-shadow:0 0 0 1.5px var(--p),0 0 18px -6px var(--p)}
+  .cell .dn{font-family:'Space Grotesk';font-size:12px;color:#dceaf4;display:flex;align-items:center;gap:4px}
+  .cell.today .dn{color:#fff;font-weight:500}
+  .cell .tk{margin-left:auto;width:14px;height:14px;border-radius:4px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--a) 40%,transparent);color:var(--a)}
+  .cell .tk svg{width:9px;height:9px;stroke:var(--a);fill:none;stroke-width:2.4}
+  .chip{font-size:9.5px;line-height:1.25;border-radius:5px;padding:2px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    color:#eaf3fb;background:color-mix(in srgb,var(--p) 18%,transparent);border:1px solid color-mix(in srgb,var(--p) 30%,transparent)}
+  .chip.tent{color:#fff;background:color-mix(in srgb,var(--a) 10%,transparent);border:1px dashed color-mix(in srgb,var(--a) 55%,transparent)}
+  .chip.more{background:transparent;border:0;color:var(--muted);font-family:'Space Grotesk';font-size:9px;padding:0 2px}
+
+  /* ---- week view ---- */
+  .week{flex:1;display:flex;flex-direction:column;min-height:0}
+  .wkhead{display:grid;grid-template-columns:38px repeat(7,1fr);gap:0;margin-bottom:4px}
+  .wkhead .wd{text-align:center;font-family:'Space Grotesk';font-size:10px;color:var(--muted);padding:2px 0;border-radius:6px}
+  .wkhead .wd.we{opacity:.5}
+  .wkhead .wd.today{color:#fff;background:color-mix(in srgb,var(--p) 16%,transparent)}
+  .wkhead .wd.sel{box-shadow:0 0 0 1px var(--p) inset;border-radius:6px}
+  .wkhead .wd b{font-family:'Space Grotesk';font-weight:500;font-size:14px;color:#dceaf4;display:block}
+  .wkallday{display:grid;grid-template-columns:38px repeat(7,1fr);gap:0;margin-bottom:3px}
+  .wkallday .lbl{font-family:'Space Grotesk';font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;align-self:center;text-align:right;padding-right:5px}
+  .wkallday .col{padding:0 2px;min-height:18px;display:flex;flex-direction:column;gap:2px}
+  .allchip{font-size:8.5px;line-height:1.2;border-radius:4px;padding:1px 4px;color:var(--a);border:1px solid color-mix(in srgb,var(--a) 40%,transparent);background:color-mix(in srgb,var(--a) 9%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wkbody{flex:1;display:grid;grid-template-columns:38px repeat(7,1fr);gap:0;position:relative;overflow:auto;min-height:0;border-top:1px solid var(--hair)}
+  .axis{position:relative}
+  .axis .hr{position:absolute;left:0;right:2px;text-align:right;font-family:'Space Grotesk';font-size:8.5px;color:var(--muted);transform:translateY(-5px);padding-right:4px}
+  .wcol{position:relative;border-left:1px solid color-mix(in srgb,var(--hair) 60%,transparent)}
+  .wcol.we{background:rgba(0,0,0,.12)}
+  .wcol.today{background:color-mix(in srgb,var(--p) 5%,transparent)}
+  .gl{position:absolute;left:0;right:0;border-top:1px dashed color-mix(in srgb,var(--hair) 45%,transparent)}
+  .evt{position:absolute;left:3px;right:3px;border-radius:6px;padding:2px 5px;font-size:9px;line-height:1.2;overflow:hidden;
+    color:#eaf3fb;background:color-mix(in srgb,var(--p) 22%,transparent);border:1px solid color-mix(in srgb,var(--p) 34%,transparent)}
+  .evt b{font-family:'Space Grotesk';font-weight:500;font-size:8.5px;display:block;opacity:.8}
+  .evt.tent{color:#fff;background:color-mix(in srgb,var(--a) 9%,transparent);border:1px dashed color-mix(in srgb,var(--a) 55%,transparent)}
+
+  /* ---- right pane (selected-day agenda) ---- */
+  .sidehead{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+  .sidehead b{font-family:'Space Grotesk';font-weight:500;font-size:17px}
+  .sidehead .rel{font-family:'Space Grotesk';font-size:10.5px;color:var(--p)}
+  .sidesub{font-size:11px;color:var(--muted);margin-bottom:12px}
+  .eyebrow{font-family:'Space Grotesk';font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
+  .eyebrow:first-of-type{margin-top:2px}
+  .ev{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--hair);font-size:13px}
+  .ev:first-of-type{border-top:0}
+  .ev .tm{font-family:'Space Grotesk';font-size:11.5px;color:var(--muted);flex:0 0 42px;padding-top:1px}
+  .ev .body{flex:1;min-width:0}
+  .ev .ti{color:#e7f1fa}
+  .ev small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+  .ev.tent{border-left:2px dashed color-mix(in srgb,var(--a) 60%,transparent);padding-left:9px;margin-left:-2px;border-radius:0 8px 8px 0;background:color-mix(in srgb,var(--a) 5%,transparent)}
+  .ev.tent .ti{color:#fff}
+  .approve{display:flex;gap:7px;margin-top:7px}
+  .mini-btn{font-family:'Space Grotesk';font-size:10.5px;border-radius:7px;padding:4px 10px;cursor:pointer;border:1px solid var(--hair);color:#cfe1ee;background:transparent;transition:.15s}
+  .mini-btn:hover{background:rgba(255,255,255,.06)}
+  .mini-btn.primary{border-color:color-mix(in srgb,var(--a) 50%,transparent);color:#fff;background:color-mix(in srgb,var(--a) 14%,transparent)}
+  .mini-btn.primary:hover{background:color-mix(in srgb,var(--a) 24%,transparent)}
+  .tag{font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:2px 8px;white-space:nowrap;align-self:flex-start;margin-top:2px}
+  .tag.a{color:var(--a);border-color:color-mix(in srgb,var(--a) 38%,transparent)}
+  .tag.held{color:var(--a);border:1px dashed color-mix(in srgb,var(--a) 45%,transparent)}
+  .task{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--hair);font-size:13px}
+  .task:first-of-type{border-top:0}
+  .chk{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--hair);flex:0 0 auto;display:grid;place-items:center;margin-top:1px;cursor:pointer}
+  .chk svg{width:11px;height:11px;stroke:var(--ok);fill:none;stroke-width:2.4;opacity:0}
+  .chk.on{border-color:color-mix(in srgb,var(--ok) 50%,transparent)}.chk.on svg{opacity:1}
+  .task .body{flex:1;min-width:0}
+  .rsvp{border:1px solid var(--hair);border-radius:11px;padding:11px;margin-top:4px;background:color-mix(in srgb,var(--p) 6%,transparent)}
+  .rsvp h4{font-size:13px;font-weight:600;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .rsvp .why{color:#bcd0de;font-size:11.5px;line-height:1.4;margin-top:5px}
+  .rsvp .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:9px}
+  .chip-act{font-family:'Space Grotesk';font-size:10.5px;border-radius:7px;padding:5px 12px;cursor:pointer;border:1px solid color-mix(in srgb,var(--p) 45%,transparent);color:#eaf7ff;background:color-mix(in srgb,var(--p) 16%,transparent)}
+  .chip-act:hover{background:color-mix(in srgb,var(--p) 26%,transparent)}
+  .addev{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:12px;color:var(--muted);font-family:'Space Grotesk';font-size:12px;cursor:pointer}
+  .addev:hover{color:#cfe1ee}
+  .addev .pl{width:20px;height:20px;border-radius:6px;border:1px solid var(--hair);display:grid;place-items:center;font-size:13px}
+  .empty{color:var(--muted);font-size:12px;padding:6px 0;font-style:italic}
+
+  @media (prefers-reduced-motion:reduce){:root{transition:none!important}.bg{transition:none!important};.amb-pop{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="bg" id="bg2" style="opacity:0"></div>
+<div class="bg-grad"></div>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg><b>ARTEMIS</b></div>
+    <div class="crumb">Home / <b>Calendar</b></div>
+    <div class="sp"></div>
+    <button class="ghost amb-btn" id="ambBtn" onclick="toggleAmb()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2 2M16.9 16.9l2 2M18.9 5.1l-2 2M7.1 16.9l-2 2"/></svg> Ambient</button>
+    <div class="stat"><span class="s"><span class="dot"></span> <span id="ambLabel">Winter·afternoon</span></span><span class="s"><span class="dot ok"></span> Connected</span></div>
+    <div class="amb-pop" id="ambPop">
+      <div class="amb-pop-head"><b>Ambient</b><span class="sub">season × time</span><button id="ambAuto" onclick="ambNow()">Auto · now</button></div>
+      <div class="amb-grid" id="ambGrid"></div>
+      <div class="amb-note">Auto-shifts with the real clock + calendar — 4 seasons × 4 time-states = 16 palettes. Dashed = draft (not yet hand-tuned). Photo + palette rotate per cell.</div>
+    </div>
+  </div>
+
+  <!-- the opened Calendar card -->
+  <div class="dov-scrim"></div>
+  <div class="dov">
+    <div class="chrome">
+      <div class="ic">📅</div>
+      <div><h3>Calendar</h3></div>
+      <div class="sp"></div>
+      <div class="seg" id="seg">
+        <button data-v="month" class="on" onclick="setView('month')">Month</button>
+        <button data-v="week" onclick="setView('week')">Week</button>
+      </div>
+      <button class="pill" onclick="goToday()"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/></svg> Today</button>
+      <button class="pill accent" title="Artemis proposes a slot — held tentative until you approve"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> find time</button>
+      <div class="x" title="Back to map">✕</div>
+    </div>
+
+    <div class="panes">
+      <div class="main" id="mainPane"><!-- month or week view injected --></div>
+      <div class="side" id="sidePane"><!-- selected-day agenda injected --></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   Calendar detail — standalone. Today = Tue 23 Jun 2026.
+   Engine truths honoured:
+     - self-only edits act inline (+ add event)
+     - external-effect (RSVP/invite) carries a `review` tag → stages to Review
+     - tentatives are HELD in Artemis until approved; approving writes to Google
+     - tasks shown here come from the Tasks module (due-on-day link)
+   ==================================================================== */
+const YEAR=2026, MONTH=5;                 // June (0-based)
+const TODAY={y:2026,m:5,d:23};            // Tue 23 Jun 2026
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const key=(y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+function dow(y,m,d){return (new Date(y,m,d).getDay()+6)%7;}   // 0=Mon … 6=Sun
+const isWE=i=>i>=5;
+
+/* ---------- sample data (continuous with the other mockups' narrative) ---------- */
+// type: 'ev' confirmed (--p) | 'tent' held-tentative (dashed/--a) | 'task' due-on-day | 'rsvp' needs RSVP
+const EVENTS={
+  '2026-06-23':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'ev',s:12,e:13,t:'Lunch — Ashley'},
+                 {type:'tent',s:14,e:15.5,t:'Focus block',sub:'proposed by Artemis · 90m'},
+                 {type:'task',t:'Reply to landlord',sub:'rented flat'},
+                 {type:'rsvp',s:16.5,e:17,t:'Team sync invite',sub:'from Debby · respond'} ],
+  '2026-06-24':[ {type:'ev',s:10,e:11,t:'1:1 — Debby'},
+                 {type:'tent',s:15,e:16,t:'Interview — candidate',sub:'tentative · awaiting confirm'} ],
+  '2026-06-25':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'ev',s:13,e:14,t:'Design review'} ],
+  '2026-06-26':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'task',t:'Pay SP Group bill',sub:'S$84.20 · due Fri'},
+                 {type:'task',t:'Call dentist'} ],
+  '2026-06-29':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'tent',s:14,e:15.5,t:'Focus block',sub:'proposed · weekly'} ],
+  '2026-06-30':[ {type:'ev',s:11,e:12,t:'Quarter wrap'},
+                 {type:'task',t:'Draft Q3 review'} ],
+  '2026-07-01':[ {type:'ev',s:9.5,e:10,t:'Standup'} ],
+  '2026-07-02':[ {type:'task',t:'Book Penang flights',sub:'compare Fri eve vs Sat am'} ],
+  '2026-07-03':[ {type:'ev',s:12,e:13,t:'Lunch — Ashley'} ],
+  '2026-07-06':[ {type:'ev',s:9.5,e:10,t:'Standup'} ],
+  '2026-07-08':[ {type:'ev',s:10,e:11,t:'1:1 — Debby'} ],
+  '2026-07-10':[ {type:'task',t:'Confirm Penang hotel'} ],
+  '2026-07-12':[ {type:'ev',s:18,e:20,t:'Fly to Penang',sub:'with Ashley'} ],
+  '2026-07-13':[ {type:'ev',s:16,e:19,t:'Penang weekend',sub:'return Sun eve'} ],
+  '2026-06-18':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'ev',s:14,e:15,t:'Catch-up — Mum'} ],
+  '2026-06-19':[ {type:'ev',s:9.5,e:10,t:'Standup'},
+                 {type:'task',t:'Renew domain'} ]
+};
+function dayItems(k){return EVENTS[k]||[];}
+const fmtH=h=>{const hr=Math.floor(h),mn=Math.round((h-hr)*60);return `${hr}:${String(mn).padStart(2,'0')}`;};
+
+/* ---------- state ---------- */
+let view='month';
+let sel={...TODAY};
+
+/* ====================================================================
+   MONTH VIEW
+   ==================================================================== */
+function renderMonth(){
+  const pane=document.getElementById('mainPane');
+  const first=dow(YEAR,MONTH,1);                         // weekday index of the 1st (Mon=0)
+  const start=new Date(YEAR,MONTH,1-first);              // grid starts on the Monday on/before the 1st
+  const last=new Date(YEAR,MONTH+1,0).getDate();         // days in month
+  const rowsN=Math.ceil((first+last)/7);                 // 5 or 6 rows to cover the month
+  let cells='';
+  for(let i=0;i<rowsN*7;i++){
+    const dt=new Date(start); dt.setDate(start.getDate()+i);
+    const y=dt.getFullYear(),m=dt.getMonth(),d=dt.getDate();
+    const col=i%7, k=key(y,m,d);
+    const out=(m!==MONTH);
+    const today=(y===TODAY.y&&m===TODAY.m&&d===TODAY.d);
+    const seld=(y===sel.y&&m===sel.m&&d===sel.d);
+    const items=dayItems(k);
+    const evs=items.filter(x=>x.type==='ev'||x.type==='tent'||x.type==='rsvp');
+    const hasTask=items.some(x=>x.type==='task');
+    let chips=evs.slice(0,3).map(e=>{
+      const cls=e.type==='ev'?'chip':'chip tent';
+      return `<div class="${cls}">${e.t}</div>`;
+    }).join('');
+    if(evs.length>3)chips+=`<div class="chip more">+${evs.length-3} more</div>`;
+    const cls=['cell',isWE(col)?'we':'',out?'out':'',today?'today':'',seld?'sel':''].filter(Boolean).join(' ');
+    const tk=hasTask?`<span class="tk" title="task due"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></span>`:'';
+    cells+=`<div class="${cls}" data-y="${y}" data-m="${m}" data-d="${d}"><div class="dn">${d}${tk}</div>${chips}</div>`;
+  }
+  pane.innerHTML=`
+    <div class="mtitle"><div class="nav">‹</div><b>${MON[MONTH]} ${YEAR}</b><div class="nav">›</div></div>
+    <div class="dow">${WD.map((w,i)=>`<span class="${isWE(i)?'we':''}">${w}</span>`).join('')}</div>
+    <div class="grid">${cells}</div>`;
+  pane.querySelectorAll('.cell').forEach(c=>c.addEventListener('click',()=>{
+    selectDay(+c.dataset.y,+c.dataset.m,+c.dataset.d);
+  }));
+}
+
+/* ====================================================================
+   WEEK VIEW (Mon–Sun of the selected day's week; 8:00–20:00 axis)
+   ==================================================================== */
+const H0=8,H1=20,PXH=30;                                 // axis hours + px per hour
+function weekStart(){const i=dow(sel.y,sel.m,sel.d);const dt=new Date(sel.y,sel.m,sel.d-i);return dt;}
+function renderWeek(){
+  const pane=document.getElementById('mainPane');
+  const ws=weekStart();
+  const days=[];
+  for(let i=0;i<7;i++){const dt=new Date(ws);dt.setDate(ws.getDate()+i);days.push(dt);}
+  // head
+  let head='<div class="wd"></div>';
+  days.forEach((dt,i)=>{
+    const today=(dt.getFullYear()===TODAY.y&&dt.getMonth()===TODAY.m&&dt.getDate()===TODAY.d);
+    const seld=(dt.getFullYear()===sel.y&&dt.getMonth()===sel.m&&dt.getDate()===sel.d);
+    head+=`<div class="wd ${isWE(i)?'we':''} ${today?'today':''} ${seld?'sel':''}">${WD[i]}<b>${dt.getDate()}</b></div>`;
+  });
+  // all-day row = tasks-due chips per column
+  let allday='<div class="lbl">due</div>';
+  days.forEach((dt,i)=>{
+    const k=key(dt.getFullYear(),dt.getMonth(),dt.getDate());
+    const tasks=dayItems(k).filter(x=>x.type==='task');
+    allday+=`<div class="col">${tasks.map(t=>`<div class="allchip" title="task due">${t.t}</div>`).join('')}</div>`;
+  });
+  // body: axis + 7 columns
+  const rows=H1-H0;
+  let axis='<div class="axis" style="height:'+(rows*PXH)+'px">';
+  for(let h=H0;h<=H1;h++)axis+=`<div class="hr" style="top:${(h-H0)*PXH}px">${h}:00</div>`;
+  axis+='</div>';
+  let cols='';
+  days.forEach((dt,i)=>{
+    const k=key(dt.getFullYear(),dt.getMonth(),dt.getDate());
+    const today=(dt.getFullYear()===TODAY.y&&dt.getMonth()===TODAY.m&&dt.getDate()===TODAY.d);
+    let lines='';for(let h=H0;h<=H1;h++)lines+=`<div class="gl" style="top:${(h-H0)*PXH}px"></div>`;
+    const evs=dayItems(k).filter(x=>(x.type==='ev'||x.type==='tent'||x.type==='rsvp')&&x.s!=null);
+    let blocks='';
+    evs.forEach(e=>{
+      const top=(Math.max(H0,e.s)-H0)*PXH;
+      const ht=Math.max(16,(Math.min(H1,e.e)-Math.max(H0,e.s))*PXH-2);
+      const cls=e.type==='ev'?'evt':'evt tent';
+      blocks+=`<div class="${cls}" style="top:${top}px;height:${ht}px"><b>${fmtH(e.s)}</b>${e.t}</div>`;
+    });
+    cols+=`<div class="wcol ${isWE(i)?'we':''} ${today?'today':''}" style="height:${rows*PXH}px">${lines}${blocks}</div>`;
+  });
+  const m0=days[0],m1=days[6];
+  const span=`${m0.getDate()} ${MON[m0.getMonth()]} – ${m1.getDate()} ${MON[m1.getMonth()]}`;
+  pane.innerHTML=`
+    <div class="mtitle"><div class="nav">‹</div><b>${span}</b><div class="nav">›</div></div>
+    <div class="week">
+      <div class="wkhead">${head}</div>
+      <div class="wkallday">${allday}</div>
+      <div class="wkbody">${axis}${cols}</div>
+    </div>`;
+  // clicking a column header selects that day
+  pane.querySelectorAll('.wkhead .wd').forEach((el,i)=>{
+    if(i===0)return;const dt=days[i-1];
+    el.style.cursor='pointer';
+    el.addEventListener('click',()=>selectDay(dt.getFullYear(),dt.getMonth(),dt.getDate()));
+  });
+}
+
+/* ====================================================================
+   RIGHT PANE — selected-day agenda
+   ==================================================================== */
+function renderSide(){
+  const pane=document.getElementById('sidePane');
+  const k=key(sel.y,sel.m,sel.d);
+  const items=dayItems(k);
+  const evs=items.filter(x=>x.type==='ev'||x.type==='tent');
+  const tasks=items.filter(x=>x.type==='task');
+  const rsvps=items.filter(x=>x.type==='rsvp');
+  const i=dow(sel.y,sel.m,sel.d);
+  const isToday=(sel.y===TODAY.y&&sel.m===TODAY.m&&sel.d===TODAY.d);
+  const rel=isToday?'today':'';
+  const full=`${WD[i]} ${sel.d} ${MON[sel.m]}`;
+
+  let html=`<div class="sidehead"><b>${full}</b>${rel?`<span class="rel">${rel}</span>`:''}</div>
+    <div class="sidesub">${evs.length} event${evs.length!==1?'s':''} · ${tasks.length} task${tasks.length!==1?'s':''} due${rsvps.length?` · ${rsvps.length} needs RSVP`:''}</div>`;
+
+  // events
+  html+=`<div class="eyebrow">Schedule</div>`;
+  if(!evs.length)html+=`<div class="empty">No events.</div>`;
+  evs.sort((a,b)=>(a.s||0)-(b.s||0)).forEach(e=>{
+    const tent=e.type==='tent';
+    html+=`<div class="ev ${tent?'tent':''}">
+      <div class="tm">${fmtH(e.s)}</div>
+      <div class="body">
+        <div class="ti">${e.t} ${tent?'<span class="tag held">held</span>':''}</div>
+        ${e.sub?`<small>${e.sub}</small>`:''}
+        ${tent?`<div class="approve"><button class="mini-btn primary" title="writes to Google">Approve</button><button class="mini-btn">Dismiss</button></div>`:''}
+      </div>
+    </div>`;
+  });
+
+  // RSVP needed → review chip (external-effect, stages to Review)
+  if(rsvps.length){
+    html+=`<div class="eyebrow">Needs RSVP</div>`;
+    rsvps.forEach(r=>{
+      html+=`<div class="rsvp">
+        <h4>${r.t} <span class="tag a">external</span></h4>
+        <div class="why">${r.sub||'Responding sends an RSVP to the organiser.'} Staged to the Review card before it leaves Artemis.</div>
+        <div class="acts"><button class="chip-act">review →</button></div>
+      </div>`;
+    });
+  }
+
+  // tasks due that day (from the Tasks module)
+  html+=`<div class="eyebrow">Tasks due</div>`;
+  if(!tasks.length)html+=`<div class="empty">Nothing due.</div>`;
+  tasks.forEach((t,idx)=>{
+    html+=`<div class="task">
+      <div class="chk" data-i="${idx}"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></div>
+      <div class="body"><div class="ti">${t.t}</div>${t.sub?`<small>${t.sub}</small>`:''}</div>
+      <span class="tag a">due</span>
+    </div>`;
+  });
+
+  // + add event (self-only = inline)
+  html+=`<div class="addev" title="self-only edit · applied inline"><span class="pl">+</span> add event</div>`;
+
+  pane.innerHTML=html;
+  pane.querySelectorAll('.chk').forEach(c=>c.addEventListener('click',()=>c.classList.toggle('on')));
+}
+
+/* ====================================================================
+   render orchestration
+   ==================================================================== */
+function renderMain(){view==='month'?renderMonth():renderWeek();}
+function rerender(){renderMain();renderSide();}
+function selectDay(y,m,d){sel={y,m,d};rerender();}
+function setView(v){
+  view=v;
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  rerender();
+}
+function goToday(){selectDay(TODAY.y,TODAY.m,TODAY.d);}
+
+/* ====================================================================
+   AMBIENT THEMING (copied from travel-zoom-workspace) — 4 seasons × 4 times
+   ==================================================================== */
+const bg=document.getElementById('bg'), bg2=document.getElementById('bg2');
+bg.style.zIndex='1'; bg2.style.zIndex='0';
+let _front=bg;
+function setPhoto(url,bright){
+  const inc=_front===bg?bg2:bg;
+  inc.style.transition='none'; inc.style.opacity='0';
+  inc.style.backgroundImage=`url(${url})`;
+  inc.style.filter=`brightness(${bright}) saturate(1.08) blur(1.5px)`;
+  inc.style.zIndex='2';
+  void inc.offsetWidth;
+  inc.style.transition='opacity .8s ease';
+  inc.style.opacity='1';
+  _front.style.zIndex='1'; _front=inc;
+}
+const SEASONS=['Spring','Summer','Autumn','Winter'], TIMES=['morning','afternoon','evening','night'];
+const DIM={morning:.70,afternoon:.80,evening:.60,night:.40};
+const PAL={
+  'Spring|morning':{bg:'#08120e',p:'#8fecb8',a:'#ffc2a6',v:1}, 'Spring|afternoon':{bg:'#0a1612',p:'#5fee9c',a:'#84d2ff',v:1},
+  'Spring|evening':{bg:'#0a0c0d',p:'#f2b487',a:'#93d59a',v:1}, 'Spring|night':{bg:'#05080f',p:'#5aa6d0',a:'#8fd0a8',v:0},
+  'Summer|morning':{bg:'#0e0a10',p:'#ff9e6e',a:'#8fb0ff',v:0}, 'Summer|afternoon':{bg:'#11140a',p:'#ffd64a',a:'#58c4f2',v:0},
+  'Summer|evening':{bg:'#0d0908',p:'#ff9f4a',a:'#ff5e8a',v:0}, 'Summer|night':{bg:'#06080f',p:'#4f9fc8',a:'#e3a06f',v:0},
+  'Autumn|morning':{bg:'#0f0c08',p:'#e3b572',a:'#93b39c',v:1}, 'Autumn|afternoon':{bg:'#100a05',p:'#f0a23f',a:'#c2552b',v:1},
+  'Autumn|evening':{bg:'#0d0606',p:'#ff7338',a:'#9a5ab0',v:1}, 'Autumn|night':{bg:'#0a0707',p:'#a06a44',a:'#6a5a7a',v:0},
+  'Winter|morning':{bg:'#080d14',p:'#abe0ff',a:'#ffc7a6',v:1}, 'Winter|afternoon':{bg:'#060c14',p:'#58c6ff',a:'#fff0d8',v:1},
+  'Winter|evening':{bg:'#07091a',p:'#8aa6ff',a:'#ffb479',v:1}, 'Winter|night':{bg:'#05070e',p:'#5a76b0',a:'#b88a5c',v:0}
+};
+let amb={season:'Winter',time:'afternoon'};
+function setAmbient(season,time){
+  amb={season,time}; const c=PAL[season+'|'+time], R=document.documentElement.style;
+  R.setProperty('--bg',c.bg); R.setProperty('--p',c.p); R.setProperty('--a',c.a);
+  setPhoto(`https://picsum.photos/seed/artemis-${season.toLowerCase()}-${time}/1920/1080`,DIM[time]);
+  document.getElementById('ambLabel').textContent=`${season}·${time}`;
+  document.querySelectorAll('.amb-cell').forEach(b=>b.classList.toggle('act',b.dataset.s===season&&b.dataset.t===time));
+}
+(function(){const g=document.getElementById('ambGrid');
+  g.innerHTML='<span></span>'+TIMES.map(t=>`<span class="amb-h">${t}</span>`).join('');
+  SEASONS.forEach(s=>{g.insertAdjacentHTML('beforeend',`<span class="amb-rh">${s}</span>`);
+    TIMES.forEach(t=>{const c=PAL[s+'|'+t];
+      g.insertAdjacentHTML('beforeend',`<button class="amb-cell${c.v?'':' draft'}" data-s="${s}" data-t="${t}" title="${s} · ${t}${c.v?'':' · draft'}" style="background:${c.bg}"><i style="background:${c.p}"></i><i style="background:${c.a}"></i></button>`);});});
+  g.querySelectorAll('.amb-cell').forEach(b=>b.onclick=()=>setAmbient(b.dataset.s,b.dataset.t));})();
+function toggleAmb(){document.getElementById('ambPop').classList.toggle('on');}
+function ambNow(){const d=new Date(), m=d.getMonth(), h=d.getHours()+d.getMinutes()/60;
+  const season=['Winter','Winter','Spring','Spring','Spring','Summer','Summer','Summer','Autumn','Autumn','Autumn','Winter'][m];
+  const time=(h>=23.5||h<7.25)?'night':h<12?'morning':h<17?'afternoon':'evening';
+  setAmbient(season,time);}
+document.addEventListener('click',e=>{const p=document.getElementById('ambPop');
+  if(p.classList.contains('on')&&!p.contains(e.target)&&!e.target.closest('#ambBtn'))p.classList.remove('on');});
+addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('ambPop');if(p.classList.contains('on'))p.classList.remove('on');}});
+
+/* ---------- boot ---------- */
+rerender();
+setAmbient('Winter','afternoon');
+</script>
+</body>
+</html>

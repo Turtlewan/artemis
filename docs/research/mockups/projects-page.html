@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis — Projects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  @property --bg{syntax:"<color>";inherits:true;initial-value:#060c14}
+  @property --p{syntax:"<color>";inherits:true;initial-value:#58c6ff}
+  @property --a{syntax:"<color>";inherits:true;initial-value:#fff0d8}
+  :root{
+    --bg:#060c14; --p:#58c6ff; --a:#fff0d8;
+    --ok:#67e0a3; --warn:#ffb35e; --stop:#ff6f8a; --text:#eef7ff; --muted:#a8bccb;
+    --glass:color-mix(in srgb,var(--bg) 33%,transparent); --glass2:color-mix(in srgb,var(--bg) 19%,transparent);
+    --hair:color-mix(in srgb,var(--p) 22%,transparent);
+    font-synthesis:none;
+    transition:--bg .8s cubic-bezier(.4,0,.2,1),--p .8s cubic-bezier(.4,0,.2,1),--a .8s cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{color:var(--text);font-family:'Inter',system-ui,'Segoe UI',sans-serif;height:100%;background:var(--bg)}
+  .bg{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:brightness(.66) saturate(1.08) blur(1.5px);transition:opacity .8s ease}
+  .bg-grad{position:fixed;inset:0;z-index:5;pointer-events:none;background:
+    radial-gradient(1200px 820px at 50% -8%, rgba(40,90,120,.16), transparent 60%),
+    linear-gradient(180deg, rgba(7,13,22,.20), rgba(7,13,22,.46) 72%, rgba(7,13,22,.62))}
+  .app{position:fixed;inset:0;z-index:6}
+
+  /* top bar */
+  .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:13px;padding:13px 20px;z-index:50}
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand svg{width:23px;height:23px;filter:drop-shadow(0 0 6px var(--p))}
+  .brand b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.2em;font-size:12.5px}
+  .crumb{font-family:'Space Grotesk';font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding-left:13px;border-left:1px solid var(--hair)}
+  .crumb b{color:var(--p);font-weight:500}
+  .top .sp{flex:1}
+  .ghost{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);backdrop-filter:blur(8px);transition:.16s}
+  .ghost:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .ghost svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .amb-pop{position:absolute;top:50px;right:20px;width:344px;z-index:60;padding:13px;border-radius:16px;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 60%,transparent),color-mix(in srgb,var(--bg) 44%,transparent));
+    backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);border:1px solid var(--hair);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 26px -6px color-mix(in srgb,var(--p) 18%,transparent),0 2px 6px -2px rgba(0,0,0,.4),0 32px 80px -28px #000,0 0 40px -16px var(--p);opacity:0;transform:translateY(-8px);pointer-events:none;transition:.2s}
+  .amb-pop.on{opacity:1;transform:none;pointer-events:auto}
+  .amb-pop-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .amb-pop-head b{font-family:'Space Grotesk';font-weight:500;letter-spacing:.16em;font-size:11px;text-transform:uppercase}
+  .amb-pop-head .sub{font-size:10px;color:var(--muted)}
+  .amb-pop-head #ambAuto{margin-left:auto;font-family:'Space Grotesk';font-size:10.5px;color:#eaf7ff;border:1px solid color-mix(in srgb,var(--p) 38%,transparent);border-radius:7px;padding:4px 9px;cursor:pointer;background:color-mix(in srgb,var(--p) 14%,transparent)}
+  .amb-pop-head #ambAuto:hover{background:color-mix(in srgb,var(--p) 24%,transparent)}
+  .amb-grid{display:grid;grid-template-columns:auto repeat(4,1fr);gap:5px;align-items:center}
+  .amb-h{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:center}
+  .amb-rh{font-family:'Space Grotesk';font-size:9.5px;color:var(--muted);padding-right:5px;text-align:right}
+  .amb-cell{position:relative;height:30px;border-radius:8px;border:1px solid var(--hair);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;overflow:hidden;transition:.14s}
+  .amb-cell:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--p) 45%,transparent)}
+  .amb-cell.draft{border-style:dashed;opacity:.85}
+  .amb-cell i{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px -1px rgba(0,0,0,.6)}
+  .amb-cell.act{border-color:#fff;box-shadow:0 0 0 1.5px var(--p),0 0 16px -4px var(--p)}
+  .amb-note{margin-top:11px;font-size:10px;line-height:1.45;color:var(--muted)}
+  .stat{display:flex;align-items:center;gap:11px}
+  .s{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--p);box-shadow:0 0 7px var(--p)}
+  .dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+
+  /* ---------- the opened Projects detail panel (one big glass card) ---------- */
+  .dov-scrim{position:fixed;inset:0;z-index:44;background:rgba(3,7,13,.20)}
+  .dov{position:fixed;z-index:45;left:50%;top:55%;transform:translate(-50%,-50%);
+    width:1080px;max-width:95vw;height:638px;max-height:82vh;
+    display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 46%,transparent),color-mix(in srgb,var(--bg) 32%,transparent));
+    backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%);
+    border:1px solid color-mix(in srgb,var(--p) 34%,transparent);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 40px -10px color-mix(in srgb,var(--p) 16%,transparent),0 4px 12px -3px rgba(0,0,0,.5),0 50px 130px -28px #000,0 0 64px -16px var(--p)}
+  .dov::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;background:linear-gradient(162deg,rgba(255,255,255,.12),transparent 30%);mix-blend-mode:screen}
+
+  /* header row */
+  .chrome{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid var(--hair);position:relative;z-index:2}
+  .chrome .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:16px;background:color-mix(in srgb,var(--p) 12%,transparent);border:1px solid color-mix(in srgb,var(--p) 22%,transparent)}
+  .chrome h3{font-family:'Space Grotesk';font-weight:500;font-size:16px;letter-spacing:.01em}
+  .chrome .sp{flex:1}
+  .pill{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-size:11.5px;color:#dfeefb;border:1px solid var(--hair);border-radius:9px;padding:6px 11px;cursor:pointer;background:rgba(8,14,22,.35);transition:.16s}
+  .pill:hover{background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .pill.accent{border-color:color-mix(in srgb,var(--p) 42%,transparent);color:#eaf7ff;background:color-mix(in srgb,var(--p) 15%,transparent);box-shadow:0 0 18px -8px var(--p)}
+  .pill svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .x{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;cursor:pointer;color:var(--muted);font-size:13px;flex:0 0 auto}
+  .x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+
+  /* body host */
+  .stage{flex:1;min-height:0;position:relative;z-index:2;overflow:hidden;padding:16px}
+
+  /* shared atoms */
+  .eyebrow{font-family:'Space Grotesk';font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 9px}
+  .badge{font-family:'Space Grotesk';font-size:9.5px;letter-spacing:.04em;border-radius:999px;padding:2px 9px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .badge i{width:6px;height:6px;border-radius:50%}
+  .badge.active{color:#cfeefd;border:1px solid color-mix(in srgb,var(--p) 40%,transparent);background:color-mix(in srgb,var(--p) 12%,transparent)}
+  .badge.active i{background:var(--p);box-shadow:0 0 6px var(--p)}
+  .badge.blocked{color:#ffd2dc;border:1px solid color-mix(in srgb,var(--stop) 48%,transparent);background:color-mix(in srgb,var(--stop) 13%,transparent)}
+  .badge.blocked i{background:var(--stop);box-shadow:0 0 6px var(--stop)}
+  .badge.done{color:#bff2d6;border:1px solid color-mix(in srgb,var(--ok) 42%,transparent);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+  .badge.done i{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .glass{border-radius:14px;border:1px solid var(--hair);position:relative;overflow:hidden;
+    background:linear-gradient(160deg,color-mix(in srgb,var(--bg) 30%,transparent),color-mix(in srgb,var(--bg) 16%,transparent));
+    backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 26px -10px color-mix(in srgb,var(--p) 16%,transparent),0 18px 44px -26px #000}
+  .bar{height:6px;border-radius:999px;background:color-mix(in srgb,var(--bg) 50%,#0000);overflow:hidden;position:relative;border:1px solid color-mix(in srgb,var(--p) 14%,transparent)}
+  .bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--p) 70%,#fff),var(--p));box-shadow:0 0 14px -2px var(--p)}
+  .bar.ok > i{background:linear-gradient(90deg,color-mix(in srgb,var(--ok) 70%,#fff),var(--ok));box-shadow:0 0 14px -2px var(--ok)}
+  .bar.stop > i{background:linear-gradient(90deg,color-mix(in srgb,var(--stop) 70%,#fff),var(--stop));box-shadow:0 0 14px -2px var(--stop)}
+  .tasknum{font-family:'Space Grotesk';font-size:11px;color:var(--muted)}
+  .pct{font-family:'Space Grotesk';font-weight:500}
+  .ev{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:#d7e9f6;border:1px solid color-mix(in srgb,var(--a) 36%,transparent);background:color-mix(in srgb,var(--a) 8%,transparent);border-radius:7px;padding:3px 8px}
+  .ev svg{width:11px;height:11px;stroke:var(--a);fill:none;stroke-width:1.9}
+  .chk{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--hair);flex:0 0 auto;display:grid;place-items:center;cursor:pointer}
+  .chk svg{width:10px;height:10px;stroke:var(--ok);fill:none;stroke-width:2.6;opacity:0}
+  .chk.on{border-color:color-mix(in srgb,var(--ok) 55%,transparent);background:color-mix(in srgb,var(--ok) 14%,transparent)}.chk.on svg{opacity:1}
+  .trow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--hair);font-size:13px}
+  .trow:first-of-type{border-top:0}
+  .trow .tt{flex:1;min-width:0}
+  .trow.done .tt{color:var(--muted);text-decoration:line-through}
+  .trow small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+  .empty{color:var(--muted);font-size:12px;font-style:italic}
+
+  /* ring helper */
+  .ring{flex:0 0 auto;position:relative}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .ct{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+  .ring .ct b{font-family:'Space Grotesk';font-size:23px;font-weight:500;line-height:1}
+  .ring .ct small{font-family:'Space Grotesk';font-size:8.5px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+
+  /* ===== RAIL + DETAIL SPLIT ===== */
+  .split{display:flex;gap:14px;height:100%;min-height:0}
+  .split-rail{flex:0 0 244px;display:flex;flex-direction:column;gap:7px;overflow:auto;padding-right:3px}
+  .split-rail::-webkit-scrollbar{width:8px}.split-rail::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--p) 22%,transparent);border-radius:8px}
+  .rail-row{padding:10px 11px;border-radius:11px;cursor:pointer;border:1px solid transparent;transition:.14s}
+  .rail-row:hover{background:color-mix(in srgb,var(--p) 7%,transparent)}
+  .rail-row.sel{border-color:color-mix(in srgb,var(--p) 40%,transparent);background:color-mix(in srgb,var(--p) 12%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+  .rail-row .rn{font-size:13px;color:#eaf3fb;display:flex;align-items:center;gap:7px}
+  .rail-row .rp{display:flex;align-items:center;gap:7px;margin-top:7px;font-family:'Space Grotesk';font-size:10px;color:var(--muted)}
+  .split-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:13px;padding-right:3px}
+  .split-main::-webkit-scrollbar{width:8px}.split-main::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--p) 22%,transparent);border-radius:8px}
+  .hero{display:flex;gap:18px;align-items:center;padding:16px}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  @media (prefers-reduced-motion:reduce){:root{transition:none!important}.bg{transition:none!important}.amb-pop{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="bg" id="bg2" style="opacity:0"></div>
+<div class="bg-grad"></div>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.6"><circle cx="16" cy="16" r="9"/><path d="M16 4a12 12 0 0 0 0 24" stroke-linecap="round"/><circle cx="16" cy="16" r="2.3" fill="#5ec8ff" stroke="none"/></svg><b>ARTEMIS</b></div>
+    <div class="crumb">Home / <b>Projects</b></div>
+    <div class="sp"></div>
+    <button class="ghost amb-btn" id="ambBtn" onclick="toggleAmb()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2 2M16.9 16.9l2 2M18.9 5.1l-2 2M7.1 16.9l-2 2"/></svg> Ambient</button>
+    <div class="stat"><span class="s"><span class="dot"></span> <span id="ambLabel">Winter·afternoon</span></span><span class="s"><span class="dot ok"></span> Connected</span></div>
+    <div class="amb-pop" id="ambPop">
+      <div class="amb-pop-head"><b>Ambient</b><span class="sub">season × time</span><button id="ambAuto" onclick="ambNow()">Auto · now</button></div>
+      <div class="amb-grid" id="ambGrid"></div>
+      <div class="amb-note">Auto-shifts with the real clock + calendar — 4 seasons × 4 time-states = 16 palettes. Dashed = draft (not yet hand-tuned). Photo + palette rotate per cell.</div>
+    </div>
+  </div>
+
+  <!-- the opened Projects card -->
+  <div class="dov-scrim"></div>
+  <div class="dov">
+    <div class="chrome">
+      <div class="ic">🗂️</div>
+      <div><h3>Projects</h3></div>
+      <div class="sp"></div>
+      <button class="pill accent"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> new project</button>
+      <div class="x" title="Back to map">✕</div>
+    </div>
+
+    <div class="stage">
+      <div class="split">
+        <div class="split-rail" id="rail"></div>
+        <div class="split-main" id="main"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   Projects — canonical Rail + detail split. Today = Tue 23 Jun 2026.
+   Content model: Projects -> Tasks (no Area layer). A project has:
+     name, status (Active|Blocked|Done), progress% (derived from tasks),
+     target date, tasks[], linked calendar events[].
+   ==================================================================== */
+const TODAY={y:2026,m:5,d:23};            // Tue 23 Jun 2026
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const STATUS={active:{cls:'active',label:'Active'},blocked:{cls:'blocked',label:'Blocked'},done:{cls:'done',label:'Done'}};
+
+const PROJECTS=[
+  {id:'penang', name:'Penang weekend', status:'active', target:{y:2026,m:6,d:12},
+   tasks:[
+     {t:'Book flights', sub:'compare Fri eve vs Sat am', done:true},
+     {t:'Confirm hotel', sub:'Georgetown, 2 nights', done:false},
+     {t:'Packing list', sub:'light — humid', done:false},
+     {t:'Tell landlord (away)', sub:'self-only note', done:false},
+   ],
+   events:[{t:'Fly to Penang', when:'12 Jul · 18:00'},{t:'Penang weekend', when:'13 Jul · return eve'}]},
+
+  {id:'q3', name:'Q3 review', status:'active', target:{y:2026,m:5,d:30},
+   tasks:[
+     {t:'Pull metrics deck', done:true},
+     {t:'Draft narrative', done:true},
+     {t:'Self-assessment form', done:false},
+     {t:'Book review slot', sub:'with Debby', done:false},
+     {t:'Send for feedback', done:false},
+   ],
+   events:[{t:'Quarter wrap', when:'30 Jun · 11:00'},{t:'1:1 — Debby', when:'24 Jun · 10:00'}]},
+
+  {id:'home', name:'Home / landlord', status:'blocked', target:{y:2026,m:6,d:5},
+   tasks:[
+     {t:'Reply to landlord', sub:'lease renewal terms', done:false},
+     {t:'Get aircon serviced', sub:'blocked — awaiting quote', done:false},
+     {t:'Pay SP Group bill', sub:'S$84.20', done:true},
+     {t:'Renew domain', done:true},
+   ],
+   events:[{t:'Aircon service window', when:'TBD — held'}]},
+
+  {id:'site', name:'Personal site refresh', status:'active', target:{y:2026,m:7,d:20},
+   tasks:[
+     {t:'Pick template', done:true},
+     {t:'Write About copy', done:true},
+     {t:'Port old posts', done:false},
+     {t:'Wire contact form', done:false},
+     {t:'Deploy', done:false},
+   ],
+   events:[]},
+
+  {id:'spring', name:'Spring clean-out', status:'done', target:{y:2026,m:4,d:31},
+   tasks:[
+     {t:'Wardrobe purge', done:true},
+     {t:'Donate boxes', done:true},
+     {t:'Sell desk', done:true},
+   ],
+   events:[{t:'Donation pickup', when:'28 May · done'}]},
+];
+
+function prog(p){const n=p.tasks.length;if(!n)return 0;return Math.round(100*p.tasks.filter(t=>t.done).length/n);}
+function doneN(p){return p.tasks.filter(t=>t.done).length;}
+function fmtTarget(t){return `${t.d} ${MON[t.m]}`;}
+function daysTo(t){const a=new Date(TODAY.y,TODAY.m,TODAY.d),b=new Date(t.y,t.m,t.d);return Math.round((b-a)/86400000);}
+function relTarget(p){const d=daysTo(p.target);if(p.status==='done')return 'shipped';if(d<0)return `${-d}d overdue`;if(d===0)return 'due today';return `${d}d left`;}
+function barCls(p){return p.status==='done'?'ok':p.status==='blocked'?'stop':'';}
+const ev=(t,when)=>`<span class="ev" title="linked calendar event"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/></svg>${t}${when?` · ${when}`:''}</span>`;
+const chk=(on)=>`<span class="chk ${on?'on':''}"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></span>`;
+const badge=(p)=>{const s=STATUS[p.status];return `<span class="badge ${s.cls}"><i></i>${s.label}</span>`;};
+
+function ring(pct,size,sw,col){
+  const r=(size-sw)/2, c=2*Math.PI*r, off=c*(1-pct/100);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="color-mix(in srgb,var(--bg) 40%,#0000)" stroke-width="${sw}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
+      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" style="filter:drop-shadow(0 0 6px ${col})"/>
+  </svg>`;
+}
+function ringCol(p){return p.status==='done'?'var(--ok)':p.status==='blocked'?'var(--stop)':'var(--p)';}
+
+/* ---------- render ---------- */
+const railEl=document.getElementById('rail');
+const mainEl=document.getElementById('main');
+let curHandlers=[];
+
+function wireChecks(root){
+  root.querySelectorAll('.chk').forEach(c=>{
+    const h=()=>c.classList.toggle('on');
+    c.addEventListener('click',h);
+    curHandlers.push([c,h]);
+  });
+}
+
+function renderRail(sel){
+  railEl.innerHTML=PROJECTS.map((p,i)=>`
+    <div class="rail-row ${i===sel?'sel':''}" data-i="${i}">
+      <div class="rn">${p.name}</div>
+      <div class="rp">${badge(p)}<span style="margin-left:auto">${prog(p)}%</span></div>
+      <div class="bar ${barCls(p)}" style="margin-top:7px;height:4px"><i style="width:${prog(p)}%"></i></div>
+    </div>`).join('');
+  railEl.querySelectorAll('.rail-row').forEach(r=>r.addEventListener('click',()=>select(+r.dataset.i)));
+}
+
+function renderDetail(i){
+  // drop old detail-pane listeners
+  curHandlers.forEach(([el,h])=>el.removeEventListener('click',h));
+  curHandlers=[];
+  const p=PROJECTS[i], col=ringCol(p);
+  mainEl.innerHTML=`
+    <div class="hero glass">
+      <div class="ring" style="width:108px;height:108px">${ring(prog(p),108,10,col)}<div class="ct"><b>${prog(p)}</b><small>done</small></div></div>
+      <div style="flex:1;min-width:0">
+        <h2 style="font-family:'Space Grotesk';font-weight:500;font-size:22px;display:flex;gap:10px;align-items:center">${p.name} ${badge(p)}</h2>
+        <div style="display:flex;gap:18px;margin-top:10px;font-family:'Space Grotesk';font-size:12px;color:var(--muted);flex-wrap:wrap">
+          <span>Target <b style="color:#dceaf4">${fmtTarget(p.target)}</b></span>
+          <span><b style="color:#dceaf4">${relTarget(p)}</b></span>
+          <span>Tasks <b style="color:#dceaf4">${doneN(p)}/${p.tasks.length}</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="twocol">
+      <div class="glass" style="padding:14px">
+        <div class="eyebrow">Tasks</div>
+        ${p.tasks.map(t=>`<div class="trow ${t.done?'done':''}">${chk(t.done)}<div class="tt">${t.t}${t.sub?`<small>${t.sub}</small>`:''}</div></div>`).join('')}
+      </div>
+      <div class="glass" style="padding:14px">
+        <div class="eyebrow">Linked events</div>
+        ${p.events.length?p.events.map(e=>`<div class="trow"><div class="tt">${e.t}<small>${e.when}</small></div></div>`).join(''):'<div class="empty">No linked events.</div>'}
+        ${p.events.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">${p.events.map(e=>ev(e.t)).join('')}</div>`:''}
+      </div>
+    </div>`;
+  wireChecks(mainEl);
+}
+
+let curSel=0;
+function select(i){curSel=i;renderRail(i);renderDetail(i);}
+
+/* ====================================================================
+   AMBIENT THEMING (copied from calendar-detail) — 4 seasons × 4 times
+   ==================================================================== */
+const bg=document.getElementById('bg'), bg2=document.getElementById('bg2');
+bg.style.zIndex='1'; bg2.style.zIndex='0';
+let _front=bg;
+function setPhoto(url,bright){
+  const inc=_front===bg?bg2:bg;
+  inc.style.transition='none'; inc.style.opacity='0';
+  inc.style.backgroundImage=`url(${url})`;
+  inc.style.filter=`brightness(${bright}) saturate(1.08) blur(1.5px)`;
+  inc.style.zIndex='2';
+  void inc.offsetWidth;
+  inc.style.transition='opacity .8s ease';
+  inc.style.opacity='1';
+  _front.style.zIndex='1'; _front=inc;
+}
+const SEASONS=['Spring','Summer','Autumn','Winter'], TIMES=['morning','afternoon','evening','night'];
+const DIM={morning:.70,afternoon:.80,evening:.60,night:.40};
+const PAL={
+  'Spring|morning':{bg:'#08120e',p:'#8fecb8',a:'#ffc2a6',v:1}, 'Spring|afternoon':{bg:'#0a1612',p:'#5fee9c',a:'#84d2ff',v:1},
+  'Spring|evening':{bg:'#0a0c0d',p:'#f2b487',a:'#93d59a',v:1}, 'Spring|night':{bg:'#05080f',p:'#5aa6d0',a:'#8fd0a8',v:0},
+  'Summer|morning':{bg:'#0e0a10',p:'#ff9e6e',a:'#8fb0ff',v:0}, 'Summer|afternoon':{bg:'#11140a',p:'#ffd64a',a:'#58c4f2',v:0},
+  'Summer|evening':{bg:'#0d0908',p:'#ff9f4a',a:'#ff5e8a',v:0}, 'Summer|night':{bg:'#06080f',p:'#4f9fc8',a:'#e3a06f',v:0},
+  'Autumn|morning':{bg:'#0f0c08',p:'#e3b572',a:'#93b39c',v:1}, 'Autumn|afternoon':{bg:'#100a05',p:'#f0a23f',a:'#c2552b',v:1},
+  'Autumn|evening':{bg:'#0d0606',p:'#ff7338',a:'#9a5ab0',v:1}, 'Autumn|night':{bg:'#0a0707',p:'#a06a44',a:'#6a5a7a',v:0},
+  'Winter|morning':{bg:'#080d14',p:'#abe0ff',a:'#ffc7a6',v:1}, 'Winter|afternoon':{bg:'#060c14',p:'#58c6ff',a:'#fff0d8',v:1},
+  'Winter|evening':{bg:'#07091a',p:'#8aa6ff',a:'#ffb479',v:1}, 'Winter|night':{bg:'#05070e',p:'#5a76b0',a:'#b88a5c',v:0}
+};
+let amb={season:'Winter',time:'afternoon'};
+function setAmbient(season,time){
+  amb={season,time}; const c=PAL[season+'|'+time], R=document.documentElement.style;
+  R.setProperty('--bg',c.bg); R.setProperty('--p',c.p); R.setProperty('--a',c.a);
+  setPhoto(`https://picsum.photos/seed/artemis-${season.toLowerCase()}-${time}/1920/1080`,DIM[time]);
+  document.getElementById('ambLabel').textContent=`${season}·${time}`;
+  document.querySelectorAll('.amb-cell').forEach(b=>b.classList.toggle('act',b.dataset.s===season&&b.dataset.t===time));
+}
+(function(){const g=document.getElementById('ambGrid');
+  g.innerHTML='<span></span>'+TIMES.map(t=>`<span class="amb-h">${t}</span>`).join('');
+  SEASONS.forEach(s=>{g.insertAdjacentHTML('beforeend',`<span class="amb-rh">${s}</span>`);
+    TIMES.forEach(t=>{const c=PAL[s+'|'+t];
+      g.insertAdjacentHTML('beforeend',`<button class="amb-cell${c.v?'':' draft'}" data-s="${s}" data-t="${t}" title="${s} · ${t}${c.v?'':' · draft'}" style="background:${c.bg}"><i style="background:${c.p}"></i><i style="background:${c.a}"></i></button>`);});});
+  g.querySelectorAll('.amb-cell').forEach(b=>b.onclick=()=>setAmbient(b.dataset.s,b.dataset.t));})();
+function toggleAmb(){document.getElementById('ambPop').classList.toggle('on');}
+function ambNow(){const d=new Date(), m=d.getMonth(), h=d.getHours()+d.getMinutes()/60;
+  const season=['Winter','Winter','Spring','Spring','Spring','Summer','Summer','Summer','Autumn','Autumn','Autumn','Winter'][m];
+  const time=(h>=23.5||h<7.25)?'night':h<12?'morning':h<17?'afternoon':'evening';
+  setAmbient(season,time);}
+document.addEventListener('click',e=>{const p=document.getElementById('ambPop');
+  if(p.classList.contains('on')&&!p.contains(e.target)&&!e.target.closest('#ambBtn'))p.classList.remove('on');});
+addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('ambPop');if(p.classList.contains('on'))p.classList.remove('on');}});
+
+/* ---------- boot ---------- */
+select(0);
+setAmbient('Winter','afternoon');
+</script>
+</body>
+</html>

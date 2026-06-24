@@ -42,6 +42,25 @@ world plane around a central **pulsing "brain" core** (some off-screen by design
 - **Chat** is the Ask-Artemis pop-up above — never a domain card or a tab.
 Reference mockup (the feel = source of truth): `docs/research/mockups/travel-zoom-workspace.html`.
 
+## Locked — connection lines: neural web + two-tier flow (2026-06-23)
+
+The domains are wired into one **neural web** — a calm, living constellation. Canonical implementation (exact CSS/JS) lives in `docs/research/mockups/travel-zoom-workspace.html`. Three layers, all rendered in ONE SVG that sits **behind** the cards (`pointer-events:none`) and **transforms with the world plane** — it MUST share the world's `transform-origin:0 0`, or the lines drift off on zoom.
+
+**1 — Curve skeleton (static).** Gentle quadratic-bezier bows, ambient-tinted via `--p`, restrained:
+- **Spokes** — every domain → the central brain core: `stroke: color-mix(in srgb, var(--p) 20%, transparent)`, `stroke-width: 1.4`, bow ≈ 10% of the chord.
+- **Edges** — domain ↔ related domain: `color-mix(in srgb, var(--p) 16%, transparent)`, `1.3`, bow ≈ 16%.
+- The edge set is the **real relationship map** (Email↔Calendar/Tasks/Finance/People, Calendar↔Tasks/Travel/People, Finance↔Tasks/Travel, People↔Travel, Memory↔People, Review↔Finance/Schedule), mirroring the ADR-021 reaction design — NOT decorative.
+
+**2 — Ambient drift (always-on heartbeat).** A faint **white** current flows slowly along every curve: `stroke: rgba(255,255,255,.15)`, `stroke-width: 1.4`, `stroke-dasharray: 4 14`, dash-march `~9s linear infinite`. Present but quiet — "alive and watching."
+
+**3 — Firing comets (two tiers).** A short comet sweeps the **full length** of a curve — length scales to the curve (`dash = clamp(32, len·0.24, 100)`), gap > path length so exactly one shows, and a **linear full-length sweep** (it travels the whole curve; do NOT hardcode the travel distance, or long curves stall near the start):
+- **White comet = ambient flair only — NOT a reaction.** Fires on a random *edge* ~every 3 s. `stroke: rgba(255,255,255,.95)`, `stroke-width: 2.1`, white glow (`drop-shadow(0 0 5px rgba(255,255,255,.7))`). Pure life/movement.
+- **Gold comet = a lower-level event being sensed** (new email, a memory write…). Fires on a *spoke*, flowing **inward** toward the brain core, ~every 1.7 s. `stroke: rgba(255,201,94,.97)`, gold glow (`drop-shadow(0 0 7px rgba(255,186,74,.82))`). This is the only tier that *means* something today.
+
+**Reserved (not yet built):** a genuine cross-spoke **reaction** has no distinct on-map signal yet (white is decorative). When the reaction layer ships, give a real reaction its OWN treatment (distinct colour / double-pulse) so "Artemis acting" reads apart from the ambient shimmer.
+
+**Reduced-motion:** render the curve skeleton statically — NO drift, NO comets.
+
 ## Locked — ambient theming system
 
 The palette is **not fixed** — it **auto-shifts** with the real clock + calendar (a "living" identity).
@@ -119,3 +138,6 @@ _(A fixed-scheme catalogue of 15 named palettes — Jarvis, Arctic, Nebula… �
 - Do **not** let the overview scroll — the map navigates by **pan + zoom only**; glance cards never
   content-scroll (no scrollbars inside a card). (ADR-028)
 - Do **not** make the chat a domain card or a tab — it is the floating **Ask-Artemis pop-up** (ADR-028).
+- Do **not** render the connection-line SVG with a transform-origin different from the world plane — both must be `transform-origin:0 0`, or the lines drift away from the cards when zooming.
+- Do **not** tokenize the connection **flow/comet** colours to the palette: the curve skeleton is `--p`-tinted (ambient), but the **white** drift/flair and the **gold** event comet are intentional semantic constants — keep them white and gold across all 16 palettes.
+- Do **not** hardcode a comet's travel distance — it sweeps the full measured length of each curve (short *and* long), or long curves visibly stall near the start.

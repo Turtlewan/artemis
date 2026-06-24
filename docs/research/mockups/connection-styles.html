@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Artemis — travel-across zoom (pannable map)</title>
+<title>Artemis — connection-line styles (8 modes)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -68,20 +68,26 @@
   .ask-btn svg{width:16px;height:16px;filter:drop-shadow(0 0 5px var(--p))}
   .ask-btn kbd{font-size:10px;color:var(--muted);border:1px solid var(--hair);border-radius:5px;padding:1px 5px}
 
+  /* ---------- connection-style mode switcher (top-center) ---------- */
+  .modebar{position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:48;display:flex;align-items:center;gap:5px;padding:6px 8px;border-radius:14px;
+    background:linear-gradient(160deg,var(--glass),var(--glass2));backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%);border:1px solid var(--hair);
+    box-shadow:inset 0 1.5px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 22px -6px color-mix(in srgb,var(--p) 20%,transparent),0 2px 6px -2px rgba(0,0,0,.4),0 22px 56px -30px #000}
+  .modebar .lbl{font-family:'Space Grotesk';font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);padding:0 7px 0 4px;border-right:1px solid var(--hair);margin-right:2px;align-self:stretch;display:flex;align-items:center}
+  .mpill{font-family:'Space Grotesk';font-size:11px;color:#cfe1ee;border:1px solid transparent;border-radius:9px;padding:5px 11px;cursor:pointer;background:transparent;white-space:nowrap;transition:.15s}
+  .mpill:hover{background:color-mix(in srgb,var(--p) 10%,transparent);color:#eaf7ff}
+  .mpill.act{color:#eaf7ff;background:color-mix(in srgb,var(--p) 18%,transparent);border-color:color-mix(in srgb,var(--p) 42%,transparent);box-shadow:0 0 16px -6px var(--p)}
+  .mpill .n{font-size:9.5px;color:var(--muted);margin-right:5px}
+  .mpill.act .n{color:var(--p)}
+
   /* ---------- the pannable world ---------- */
   .stage{position:absolute;inset:0;z-index:5;overflow:hidden;cursor:grab}
   .stage.grab{cursor:grabbing}.stage.locked{cursor:default}
   .world{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
-  .links{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;display:block}
-  .links path{fill:none;stroke-linecap:round}
-  /* curve strokes — ambient-aware via --p; restrained, faint */
-  .links .curve{stroke:color-mix(in srgb,var(--p) 16%,transparent);stroke-width:1.3}
-  .links .curve.spoke{stroke:color-mix(in srgb,var(--p) 20%,transparent);stroke-width:1.4}
-  /* white ambient flow — always-alive heartbeat, low luminance */
-  .links .flow{stroke:rgba(255,255,255,.15);stroke-width:1.4;stroke-dasharray:4 14;animation:flow 9s linear infinite}
-  /* bright firing pulse — stands out from the baseline */
-  .links .pulse{stroke:rgba(255,255,255,.95);stroke-width:2.1;filter:drop-shadow(0 0 5px rgba(255,255,255,.7));opacity:0}
-  .links .pulse.gold{stroke:rgba(255,201,94,.97);filter:drop-shadow(0 0 7px rgba(255,186,74,.82))}
+  .links{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;display:block;z-index:4}
+  /* base radial spoke look (also default styling for generic edges) */
+  .links line,.links path{fill:none}
+  .links .spoke{stroke:color-mix(in srgb,var(--p) 20%,transparent);stroke-width:1.5;stroke-dasharray:2 8;stroke-linecap:round}
+  .links .edge{stroke:color-mix(in srgb,var(--p) 16%,transparent);stroke-width:1.1;stroke-linecap:round}
 
   .hub{position:absolute;width:200px;height:200px;display:grid;place-items:center;transform:translate(-50%,-50%);pointer-events:none}
   .hub .orb{position:absolute;width:150px;height:150px;border-radius:50%;filter:blur(2px);background:radial-gradient(circle at 50% 42%, color-mix(in srgb,var(--p) 34%,transparent), transparent 68%);animation:pulse 3.4s ease-in-out infinite}
@@ -206,9 +212,10 @@
   @keyframes ping{0%{transform:scale(.65);opacity:.55}80%,100%{transform:scale(1.7);opacity:0}}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
-  @keyframes flow{to{stroke-dashoffset:-190}}   /* white ambient drift along the curves */
+  /* data-flow: marching dashes along the path (mode 5) */
+  @keyframes dashflow{to{stroke-dashoffset:-120}}
   @media (prefers-reduced-motion:reduce){.card{transition:opacity .2s!important}.hub *{animation:none!important}:root{transition:none!important}.bg{transition:none!important}
-    .links .flow{animation:none!important}.links .pulse{display:none!important}}
+    .links .flow{animation:none!important}.links .spark{display:none!important}}
 </style>
 </head>
 <body>
@@ -231,6 +238,9 @@
       <div class="amb-note">Auto-shifts with the real clock + calendar — 4 seasons × 4 time-states = 16 palettes. Dashed = draft (not yet hand-tuned). Photo + palette rotate per cell.</div>
     </div>
   </div>
+
+  <!-- connection-style mode switcher -->
+  <div class="modebar" id="modebar"><span class="lbl">Links</span></div>
 
   <div class="stage" id="stage">
     <svg class="links" id="links"></svg>
@@ -324,14 +334,13 @@ const CARD={
 const ORDER=['schedule','tasks','finance','fitness','review','people','travel','memory','email'];
 
 /* ---------- inter-domain relationship map (from the reaction design) ---------- */
+/* [a, b, strength 1–3] — genuinely related domain pairs */
 const REL=[
-  ['email','schedule'],['email','tasks'],['email','finance'],['email','people'],
-  ['schedule','tasks'],['schedule','travel'],['schedule','people'],
-  ['finance','tasks'],['finance','travel'],
-  ['people','travel'],['memory','people'],['review','finance'],['review','schedule']
+  ['email','schedule',3],['email','tasks',3],['email','finance',3],['email','people',2],
+  ['schedule','tasks',3],['schedule','travel',2],['schedule','people',2],
+  ['finance','tasks',2],['finance','travel',2],
+  ['people','travel',2],['memory','people',1],['review','finance',1],['review','schedule',1]
 ];
-/* example reactions cycled by the bright-pulse timer (source → target edges that exist above) */
-const REACTIONS=[['email','finance'],['email','tasks'],['finance','tasks'],['email','schedule'],['email','people'],['schedule','travel']];
 
 /* ---------- persist the user's card arrangement across sessions ---------- */
 const LKEY='artemis-card-layout';
@@ -340,71 +349,19 @@ function loadLayout(){try{const s=JSON.parse(localStorage.getItem(LKEY)||'{}');
 function saveLayout(){try{const o={};ORDER.forEach(id=>{o[id]={cx:CARD[id].cx,cy:CARD[id].cy};});localStorage.setItem(LKEY,JSON.stringify(o));}catch(e){}}
 loadLayout();   // apply any saved arrangement BEFORE cards/links/minimap are built from CARD positions
 
+const NS='http://www.w3.org/2000/svg';
 const stage=document.getElementById('stage'), world=document.getElementById('world'),
       links=document.getElementById('links'), crumb=document.getElementById('crumb'),
       dov=document.getElementById('dov'), dovScrim=document.getElementById('dovScrim');
 world.style.width=WORLD.w+'px';world.style.height=WORLD.h+'px';
 links.setAttribute('width',WORLD.w);links.setAttribute('height',WORLD.h);links.style.width=WORLD.w+'px';links.style.height=WORLD.h+'px';
 links.setAttribute('viewBox',`0 0 ${WORLD.w} ${WORLD.h}`);
-
-/* ---------- canonical connection style: neural curves + white data-flow ---------- */
-const NS='http://www.w3.org/2000/svg';
 const reduceMotion=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* a <defs> for per-edge gradients (mode 7) */
+const defs=document.createElementNS(NS,'defs');links.appendChild(defs);
+/* the live link layer (cleared + rebuilt each render) */
 const linkLayer=document.createElementNS(NS,'g');links.appendChild(linkLayer);
-function cardPt(id){const c=CARD[id];return{x:c.cx,y:c.cy};}
-function curvePath(p1,p2,bend){           // gentle quadratic bow perpendicular to the chord
-  const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2,dx=p2.x-p1.x,dy=p2.y-p1.y,len=Math.hypot(dx,dy)||1;
-  const nx=-dy/len,ny=dx/len,off=len*bend;
-  return `M${p1.x},${p1.y} Q${mx+nx*off},${my+ny*off} ${p2.x},${p2.y}`;
-}
-/* every edge = {a,b,kind}; spokes are card→hub, edges are inter-domain (REL) */
-function edgeList(){
-  const out=[];
-  ORDER.forEach((id,i)=>out.push({id,kind:'spoke',p1:{x:HUB.x,y:HUB.y},p2:cardPt(id),bend:(i%2?1:-1)*0.10}));
-  REL.forEach(([a,b],i)=>out.push({a,b,kind:'edge',p1:cardPt(a),p2:cardPt(b),bend:(i%2?1:-1)*0.16}));
-  return out;
-}
-const edgeKey=e=>e.kind==='spoke'?'spoke:'+e.id:'edge:'+e.a+'-'+e.b;
-const pathReg={};          // key → {curve, flow} path nodes, rebuilt on render
-let pulseTimer=null;
-function mkPath(cls,d){const p=document.createElementNS(NS,'path');p.setAttribute('class',cls);p.setAttribute('d',d);return p;}
-function renderLinks(){
-  while(linkLayer.firstChild)linkLayer.removeChild(linkLayer.firstChild);
-  for(const k in pathReg)delete pathReg[k];
-  edgeList().forEach(e=>{
-    const d=curvePath(e.p1,e.p2,e.bend), key=edgeKey(e);
-    const curve=mkPath('curve'+(e.kind==='spoke'?' spoke':''),d);
-    linkLayer.appendChild(curve);
-    let flow=null;
-    if(!reduceMotion){flow=mkPath('flow',d);linkLayer.appendChild(flow);}   // white ambient heartbeat
-    pathReg[key]={curve,flow,d};
-  });
-}
-/* firing pulse along a curve — WHITE = a reaction (inter-domain edge); GOLD = a lower-level event (domain→core) */
-function fireReg(reg,opts){
-  opts=opts||{};
-  if(reduceMotion)return;
-  const len=reg.curve.getTotalLength?reg.curve.getTotalLength():400;
-  const dash=Math.max(32,Math.min(len*0.24,100));            // comet length scales with the curve, bounded
-  const p=mkPath(opts.gold?'pulse gold':'pulse',reg.d);linkLayer.appendChild(p);
-  p.style.strokeDasharray=`${dash} ${len+dash}`;             // gap > path length → exactly ONE comet, never repeats
-  const a0=opts.inward?-len:len+dash, a1=opts.inward?len+dash:-len;   // inward = travel target→source (card→hub)
-  const anim=p.animate(
-    [{strokeDashoffset:a0,opacity:0},{opacity:1,offset:0.12},
-     {opacity:1,offset:0.86},{strokeDashoffset:a1,opacity:0}],
-    {duration:opts.gold?1400:1750,easing:'linear'});         // full-length linear sweep — travels the WHOLE curve
-  anim.onfinish=()=>p.remove();
-}
-function fireEdge(a,b,opts){const reg=pathReg['edge:'+a+'-'+b]||pathReg['edge:'+b+'-'+a];if(reg)fireReg(reg,opts);}
-function fireSpoke(id,opts){const reg=pathReg['spoke:'+id];if(reg)fireReg(reg,opts);}
-let reactionIdx=0, eventIdx=0, pulseTimer2=null;
-function startPulseCycle(){
-  if(reduceMotion)return;
-  if(!pulseTimer)pulseTimer=setInterval(()=>{const r=REL[Math.floor(Math.random()*REL.length)];fireEdge(r[0],r[1]);},3000);                  // white = ambient flair only (for show, NOT a reaction)
-  if(!pulseTimer2)pulseTimer2=setInterval(()=>{const id=ORDER[eventIdx++%ORDER.length];fireSpoke(id,{gold:true,inward:true});},1700);         // gold low-level events flowing into the brain
-}
-function stopPulseCycle(){if(pulseTimer){clearInterval(pulseTimer);pulseTimer=null;}if(pulseTimer2){clearInterval(pulseTimer2);pulseTimer2=null;}}
-window.addEventListener('beforeunload',stopPulseCycle);   // no leaked interval
 
 /* hub */
 const hub=document.createElement('div');hub.className='hub';
@@ -412,7 +369,7 @@ hub.style.left=HUB.x+'px';hub.style.top=HUB.y+'px';
 hub.innerHTML=`<span class="orb"></span><span class="ring"></span><span class="ring b"></span><span class="mk"><svg viewBox="0 0 32 32" fill="none" stroke="#5ec8ff" stroke-width="1.4"><circle cx="16" cy="16" r="9"/><circle cx="16" cy="16" r="13" opacity=".5"/><path d="M16 3a13 13 0 0 0 0 26" stroke-linecap="round"/><circle cx="16" cy="16" r="2.6" fill="#5ec8ff" stroke="none"/></svg></span>`;
 world.appendChild(hub);
 
-/* cards (connection lines are drawn by renderLinks, not per-card) */
+/* cards (links are now drawn by the mode system, not per-card) */
 ORDER.forEach(id=>{
   const c=CARD[id];
   const el=document.createElement('div');el.className='card';el.id='card-'+id;
@@ -420,6 +377,8 @@ ORDER.forEach(id=>{
   el.innerHTML=`<div class="chrome"><div class="ic"><svg viewBox="0 0 24 24">${ICON[id]}</svg></div><h3>${c.title}</h3><div class="grip" title="Drag to move"><svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div><div class="x" onclick="event.stopPropagation();goHome()">✕</div></div>
     <div class="body"><div class="glance">${c.gl}</div><div class="detail">${c.det}</div></div>`;
   el.addEventListener('click',()=>{if(!moved&&!justDragged)activate(id);});
+  el.addEventListener('mouseenter',()=>setHover(id));
+  el.addEventListener('mouseleave',()=>setHover(null));
   const grip=el.querySelector('.grip');
   grip.addEventListener('pointerdown',e=>startCardDrag(e,id));
   grip.addEventListener('click',e=>e.stopPropagation());
@@ -441,6 +400,183 @@ ORDER.forEach(id=>{
 });
 const vp=document.getElementById('vp');
 
+/* =========================================================================
+   CONNECTION-LINE MODE SYSTEM
+   The line layer (#links svg) sits behind the cards and transforms with the
+   world via applyCam(). Endpoints are recomputed from live card positions, so
+   lines follow drags (moveCard calls renderLinks). Animations register a
+   cleanup so switching mode leaks no intervals/RAFs.
+   ========================================================================= */
+const P='var(--p)', A='var(--a)';
+const mix=(tok,pct)=>`color-mix(in srgb,${tok} ${pct}%,transparent)`;
+const MODES=[
+  {key:'radial',  name:'Radial'},
+  {key:'web',     name:'Full web'},
+  {key:'hover',   name:'Hover-reveal'},
+  {key:'neural',  name:'Neural curves'},
+  {key:'flow',    name:'Data-flow'},
+  {key:'weight',  name:'Strength'},
+  {key:'gradient',name:'Gradient'},
+  {key:'constel', name:'Constellation'}
+];
+let curMode='radial';
+let hoverId=null;          // hovered/open card for mode 3
+let animCleanup=null;      // teardown for the current mode's animation
+
+function cardPt(id){const c=CARD[id];return{x:c.cx,y:c.cy};}
+function relEdges(){return REL.map(([a,b,s])=>({a,b,s,p1:cardPt(a),p2:cardPt(b)}));}
+function spokeEdges(){return ORDER.map(id=>({id,p1:{x:HUB.x,y:HUB.y},p2:cardPt(id)}));}
+function mk(tag){return document.createElementNS(NS,tag);}
+function setAttrs(el,o){for(const k in o)el.setAttribute(k,o[k]);return el;}
+function clearLinks(){
+  if(animCleanup){animCleanup();animCleanup=null;}
+  while(linkLayer.firstChild)linkLayer.removeChild(linkLayer.firstChild);
+  while(defs.firstChild)defs.removeChild(defs.firstChild);
+}
+/* gentle quadratic-bezier control point offset perpendicular to the chord */
+function curvePath(p1,p2,bend){
+  const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;
+  const dx=p2.x-p1.x,dy=p2.y-p1.y,len=Math.hypot(dx,dy)||1;
+  const nx=-dy/len,ny=dx/len, off=len*bend;
+  return `M${p1.x},${p1.y} Q${mx+nx*off},${my+ny*off} ${p2.x},${p2.y}`;
+}
+
+const renderers={
+  /* 1. straight dashed spokes hub→card */
+  radial(){
+    spokeEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y}));
+    });
+  },
+  /* 2. spokes + straight inter-domain edges */
+  web(){
+    relEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'edge',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,
+        stroke:mix(P,18)}));
+    });
+    renderers.radial();
+  },
+  /* 3. hover-reveal: everything faint; hovered card's spoke + related edges brighten */
+  hover(){
+    const focus=hoverId;
+    spokeEdges().forEach(e=>{
+      const on=focus&&e.id===focus;
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,
+        stroke:on?mix(P,55):mix(P,8),'stroke-width':on?2:1.2,style:'transition:stroke .3s,stroke-width .3s'}));
+    });
+    relEdges().forEach(e=>{
+      const on=focus&&(e.a===focus||e.b===focus);
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'edge',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,
+        stroke:on?mix(A,50):mix(P,6),'stroke-width':on?1.8:1,style:'transition:stroke .3s,stroke-width .3s'}));
+    });
+  },
+  /* 4. neural curves: same connectivity as web but gentle beziers */
+  neural(){
+    relEdges().forEach((e,i)=>{
+      const bend=(i%2?1:-1)*0.16;
+      linkLayer.appendChild(setAttrs(mk('path'),{class:'edge',d:curvePath(e.p1,e.p2,bend),
+        stroke:mix(P,18),'stroke-width':1.2}));
+    });
+    spokeEdges().forEach((e,i)=>{
+      const bend=(i%2?1:-1)*0.10;
+      linkLayer.appendChild(setAttrs(mk('path'),{class:'spoke',d:curvePath(e.p1,e.p2,bend),
+        'stroke-dasharray':'none',stroke:mix(P,20),'stroke-width':1.4}));
+    });
+  },
+  /* 5. data-flow pulses: dashes marching along each edge + a brighter periodic firing */
+  flow(){
+    const paths=[];
+    relEdges().forEach((e,i)=>{
+      const pth=setAttrs(mk('path'),{class:'flow',d:curvePath(e.p1,e.p2,(i%2?1:-1)*0.12),
+        stroke:mix(P,22),'stroke-width':1.3,'stroke-dasharray':'4 14','stroke-linecap':'round'});
+      if(!reduceMotion){pth.style.animation=`dashflow ${3.2+(i%4)*0.6}s linear infinite`;}
+      linkLayer.appendChild(pth);paths.push(pth);
+    });
+    spokeEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,stroke:mix(P,16)}));
+    });
+    if(reduceMotion)return;   // no motion under reduced-motion (paths drawn, static)
+    // periodic "reaction firing": brighten one or two edges briefly
+    const fire=()=>{
+      const n=1+Math.floor(Math.random()*2);
+      for(let k=0;k<n;k++){
+        const pth=paths[Math.floor(Math.random()*paths.length)];if(!pth)continue;
+        pth.animate([{stroke:mix(A,75),strokeWidth:2.4},{stroke:mix(P,22),strokeWidth:1.3}],
+          {duration:1100,easing:'ease-out'});
+      }
+    };
+    const iv=setInterval(fire,1700);
+    animCleanup=()=>clearInterval(iv);
+  },
+  /* 6. strength-weighted: width + opacity scale with per-edge strength (1–3) */
+  weight(){
+    relEdges().forEach(e=>{
+      const w={1:1,2:1.8,3:2.8}[e.s], op={1:16,2:26,3:40}[e.s];
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'edge',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,
+        stroke:mix(P,op),'stroke-width':w}));
+    });
+    spokeEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,stroke:mix(P,12)}));
+    });
+  },
+  /* 7. directional gradient: each edge --p (source) → --a (target) */
+  gradient(){
+    relEdges().forEach((e,i)=>{
+      const gid='grad'+i;
+      const g=setAttrs(mk('linearGradient'),{id:gid,gradientUnits:'userSpaceOnUse',
+        x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y});
+      g.appendChild(setAttrs(mk('stop'),{offset:'0%','stop-color':P,'stop-opacity':'0.45'}));
+      g.appendChild(setAttrs(mk('stop'),{offset:'100%','stop-color':A,'stop-opacity':'0.45'}));
+      defs.appendChild(g);
+      linkLayer.appendChild(setAttrs(mk('line'),{x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,
+        stroke:`url(#${gid})`,'stroke-width':1.6,'stroke-linecap':'round'}));
+    });
+    spokeEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,stroke:mix(P,12)}));
+    });
+  },
+  /* 8. constellation: edges + glowing waypoint nodes at midpoints (and hub) */
+  constel(){
+    relEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'edge',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,stroke:mix(P,16)}));
+      const mx=(e.p1.x+e.p2.x)/2,my=(e.p1.y+e.p2.y)/2;
+      const node=setAttrs(mk('circle'),{cx:mx,cy:my,r:3.2,fill:mix(A,70),stroke:mix(A,40),'stroke-width':3});
+      node.style.filter='drop-shadow(0 0 4px var(--a))';
+      linkLayer.appendChild(node);
+    });
+    spokeEdges().forEach(e=>{
+      linkLayer.appendChild(setAttrs(mk('line'),{class:'spoke',x1:e.p1.x,y1:e.p1.y,x2:e.p2.x,y2:e.p2.y,stroke:mix(P,14)}));
+    });
+    // hub waypoint
+    const h=setAttrs(mk('circle'),{cx:HUB.x,cy:HUB.y,r:4.5,fill:mix(P,80),stroke:mix(P,40),'stroke-width':4});
+    h.style.filter='drop-shadow(0 0 6px var(--p))';
+    linkLayer.appendChild(h);
+  }
+};
+
+function renderLinks(){
+  clearLinks();
+  (renderers[curMode]||renderers.radial)();
+}
+function setMode(key){
+  curMode=key;
+  document.querySelectorAll('.mpill').forEach(b=>b.classList.toggle('act',b.dataset.m===key));
+  renderLinks();
+}
+function setHover(id){
+  hoverId=id;
+  if(curMode==='hover')renderLinks();   // only mode 3 reacts to hover
+}
+
+/* build the mode-switcher pills */
+(function(){const bar=document.getElementById('modebar');
+  MODES.forEach((m,i)=>{
+    const b=document.createElement('button');b.className='mpill';b.dataset.m=m.key;
+    b.innerHTML=`<span class="n">${i+1}</span>${m.name}`;
+    b.onclick=()=>setMode(m.key);
+    bar.appendChild(b);
+  });})();
+
 /* ---------- camera ---------- */
 let cam={cx:HOME.cx,cy:HOME.cy,scale:HOME.scale}, activeId=null, panEnabled=true, zRAF=null, zTarget=HOME.scale, zAnchor=null;
 const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2, lerp=(a,b,t)=>a+(b-a)*t;  // easeInOutCubic — gentler than quint
@@ -452,7 +588,6 @@ function applyCam(){
   const vw=stage.clientWidth/s, vh=stage.clientHeight/s, vx=cam.cx-vw/2, vy=cam.cy-vh/2;
   vp.style.left=(vx*MS)+'px';vp.style.top=(vy*MS)+'px';vp.style.width=(vw*MS)+'px';vp.style.height=(vh*MS)+'px';
 }
-function focusScale(){return Math.min(1.05,(stage.clientWidth*0.9)/DW,(stage.clientHeight*0.84)/DH);}
 let raf=null;
 function travel(tcx,tcy,tscale,cb){
   if(raf)cancelAnimationFrame(raf);
@@ -505,12 +640,12 @@ function morphClose(id,cb){
 }
 function activate(id){
   if(activeId&&activeId!==id){dov.classList.remove('on');dov.style.opacity='0';dovScrim.classList.remove('on');const pc=document.getElementById('card-'+activeId);if(pc)pc.style.opacity='';}
-  const c=CARD[id]; activeId=id; setChips(id);
+  const c=CARD[id]; activeId=id; setChips(id); setHover(id);   // opening a card also drives hover-reveal mode
   crumb.innerHTML='Home / <b>'+c.title+'</b>';
   travel(c.cx,c.cy,FOCUS,()=>morphOpen(id));                  // fly across, then expand the card open
 }
 function goHome(){
-  if(activeId){const id=activeId; activeId=null;
+  if(activeId){const id=activeId; activeId=null; setHover(null);
     document.querySelectorAll('.dk,.md').forEach(d=>d.classList.remove('act')); crumb.textContent='Home';
     morphClose(id,()=>travel(HOME.cx,HOME.cy,HOME.scale));    // collapse into the card, then fly home
   } else travel(HOME.cx,HOME.cy,HOME.scale);
@@ -535,8 +670,8 @@ function moveCard(id,nx,ny){
   const c=CARD[id]; c.cx=nx; c.cy=ny;
   const el=document.getElementById('card-'+id);
   el.style.left=(nx-GW/2)+'px'; el.style.top=(ny-GH/2)+'px';
-  renderLinks();   // recompute every curve from live CARD positions so lines follow the drag
   const md=document.getElementById('md-'+id); if(md){md.style.left=(nx*MS)+'px';md.style.top=(ny*MS)+'px';}
+  renderLinks();   // recompute every endpoint from live card positions so lines follow the drag
 }
 function startCardDrag(e,id){
   if(activeId)return;                                   // no rearranging while a domain is open
@@ -616,6 +751,9 @@ function setAmbient(season,time){
   setPhoto(`https://picsum.photos/seed/artemis-${season.toLowerCase()}-${time}/1920/1080`,DIM[time]);
   document.getElementById('ambLabel').textContent=`${season}·${time}`;
   document.querySelectorAll('.amb-cell').forEach(b=>b.classList.toggle('act',b.dataset.s===season&&b.dataset.t===time));
+  // links are tokenised to var(--p)/var(--a) so most styles shift automatically; gradient stops are
+  // baked literals, so re-render to re-resolve them against the new palette
+  if(curMode==='gradient')renderLinks();
 }
 (function(){const g=document.getElementById('ambGrid');   // build the 4×4 grid (rows=seasons, cols=times)
   g.innerHTML='<span></span>'+TIMES.map(t=>`<span class="amb-h">${t}</span>`).join('');
@@ -633,7 +771,7 @@ document.addEventListener('click',e=>{const p=document.getElementById('ambPop');
 addEventListener('keydown',e=>{if(e.altKey&&e.code==='Space'){e.preventDefault();toggleChat();}if(e.key==='Escape'){const p=document.getElementById('ambPop');if(p.classList.contains('on'))p.classList.remove('on');else if(app.classList.contains('chat-on'))closeChat();else if(activeId)goHome();}});
 addEventListener('resize',()=>{if(activeId)applyCam();else applyCam();});
 
-applyCam(); setAmbient('Winter','afternoon'); renderLinks(); startPulseCycle();
+applyCam(); setAmbient('Winter','afternoon'); setMode('radial');   // default to mode 1
 /* pre-warm the glass blur + fonts on load so the FIRST open is as smooth as the rest */
 (function(){buildOverlay('schedule');dov.style.transition='none';dov.style.transform='translate(-50%,-50%) scale(1)';dov.style.opacity='0.001';dov.classList.add('on');dov.getBoundingClientRect();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{dov.classList.remove('on');dov.style.opacity='0';dov.style.transform='translate(-50%,-50%) scale(.95)';dov.innerHTML='';}));})();
