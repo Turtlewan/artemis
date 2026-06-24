@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import pyarrow as pa
 
@@ -14,6 +14,7 @@ from artemis.config import Settings
 from artemis.data.scoped_store import assert_same_scope
 from artemis.identity.key_provider import ScopeLockedError
 from artemis.ports.types import Chunk, RetrievedChunk, Scope, Vector
+from artemis.retrieval.rrf import reciprocal_rank_fusion
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class LanceDBVectorStore:
         self._table_name = f"docs_{scope}"
         self._meta_table_name = f"{self._table_name}_metadata"
         self._fts_ok = True
+        self._hybrid_native: bool | None = None
 
         import lancedb
 
@@ -122,6 +124,33 @@ class LanceDBVectorStore:
         )
         return [_row_to_retrieved(row, score=1.0 - float(row["_distance"])) for row in rows]
 
+    def hybrid_search(
+        self,
+        scope: Scope,
+        query_vector: Sequence[float],
+        query_text: str,
+        k: int,
+    ) -> list[RetrievedChunk]:
+        """Search dense+FTS with native LanceDB hybrid when available.
+
+        ``self._hybrid_native`` records the path chosen on first call. Older or
+        unstable LanceDB hybrid APIs fall back to explicit dense + text rankings
+        fused by local RRF.
+        """
+        assert_same_scope(self.scope, scope)
+        if k <= 0 or self._table is None:
+            return []
+        try:
+            results = self._native_hybrid_search(scope, query_vector, query_text, k)
+            if self._hybrid_native is None:
+                self._hybrid_native = True
+            return results
+        except (AttributeError, NotImplementedError, TypeError, ValueError) as exc:
+            if self._hybrid_native is None:
+                self._hybrid_native = False
+            logger.debug("LanceDB native hybrid unavailable; using explicit RRF: %s", exc)
+            return self._fallback_hybrid_search(scope, query_vector, query_text, k)
+
     def has_document(self, document_id: str, content_hash: str) -> bool:
         """Return true when this document hash already exists."""
         if self._table is None:
@@ -154,6 +183,98 @@ class LanceDBVectorStore:
         if self._table is None:
             return []
         return list(self._table.search().limit(1_000_000).to_list())
+
+    def _native_hybrid_search(
+        self,
+        scope: Scope,
+        query_vector: Sequence[float],
+        query_text: str,
+        k: int,
+    ) -> list[RetrievedChunk]:
+        assert self._table is not None
+        query = self._table.search(query_type="hybrid").vector(list(query_vector)).text(query_text)
+        if hasattr(query, "rerank"):
+            query = query.rerank("rrf")
+        rows = query.where(f"scope = '{_quote_sql(scope)}'", prefilter=True).limit(k).to_list()
+        return [_row_to_retrieved(row, score=_score_from_row(row, default=1.0)) for row in rows]
+
+    def _fallback_hybrid_search(
+        self,
+        scope: Scope,
+        query_vector: Sequence[float],
+        query_text: str,
+        k: int,
+    ) -> list[RetrievedChunk]:
+        candidate_k = max(k * 2, k)
+        dense = self.search(scope, query_vector, candidate_k)
+        text_rows = self._text_search_rows(scope, query_text, candidate_k)
+        rankings = [
+            [chunk.chunk.chunk_id for chunk in dense],
+            [str(row["id"]) for row in text_rows],
+        ]
+        fused = reciprocal_rank_fusion(rankings)
+        rows_by_id = {
+            str(row["id"]): row for row in self._rows_by_ids([item_id for item_id, _score in fused])
+        }
+        return [
+            _row_to_retrieved(rows_by_id[item_id], score=score)
+            for item_id, score in fused[:k]
+            if item_id in rows_by_id
+        ]
+
+    def _text_search_rows(
+        self,
+        scope: Scope,
+        query_text: str,
+        k: int,
+    ) -> list[Mapping[str, object]]:
+        assert self._table is not None
+        if not query_text.strip():
+            return []
+        if self._fts_ok:
+            try:
+                return list(
+                    self._table.search(query_text, query_type="fts")
+                    .where(f"scope = '{_quote_sql(scope)}'", prefilter=True)
+                    .limit(k)
+                    .to_list()
+                )
+            except (AttributeError, NotImplementedError, TypeError, ValueError) as exc:
+                self._fts_ok = False
+                logger.debug("LanceDB FTS query unavailable; using lexical fallback: %s", exc)
+        return self._lexical_text_search_rows(scope, query_text, k)
+
+    def _lexical_text_search_rows(
+        self,
+        scope: Scope,
+        query_text: str,
+        k: int,
+    ) -> list[Mapping[str, object]]:
+        tokens = {token.lower() for token in re.findall(r"\w+", query_text)}
+        if not tokens:
+            return []
+        rows = [
+            row
+            for row in self.rows()
+            if str(row.get("scope", "")) == scope
+            and tokens & {token.lower() for token in re.findall(r"\w+", str(row.get("text", "")))}
+        ]
+        return sorted(
+            rows,
+            key=lambda row: (
+                -len(
+                    tokens
+                    & {token.lower() for token in re.findall(r"\w+", str(row.get("text", "")))}
+                ),
+                str(row["id"]),
+            ),
+        )[:k]
+
+    def _rows_by_ids(self, ids: Sequence[str]) -> list[Mapping[str, object]]:
+        if self._table is None or not ids:
+            return []
+        wanted = set(ids)
+        return [row for row in self.rows() if str(row["id"]) in wanted]
 
     def _ensure_metadata(self) -> None:
         tables = self._table_names()
@@ -274,3 +395,13 @@ def _row_to_retrieved(row: Mapping[str, object], score: float) -> RetrievedChunk
         ),
         score=score,
     )
+
+
+def _score_from_row(row: Mapping[str, object], *, default: float) -> float:
+    for key in ("_relevance_score", "_score", "score"):
+        value = row.get(key)
+        if value is not None:
+            return float(cast(float | int | str, value))
+    if "_distance" in row:
+        return 1.0 - float(cast(float | int | str, row["_distance"]))
+    return default
