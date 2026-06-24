@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import atexit
 import base64
+import binascii
 import ctypes
 import ctypes.util
+import hmac
 import json
 import logging
 import socket
@@ -132,13 +134,12 @@ class BrokerClient:
     def request_nonce(self, scope: Scope) -> bytes:
         """Request a single-use broker nonce for ``scope``."""
         reply = self._request({"op": "requestNonce", "scope": scope})
-        nonce_b64 = _string_field(reply, "nonce")
-        return base64.b64decode(nonce_b64)
+        return _decode_b64_field(reply, "nonce")
 
     def get_dek(self, scope: Scope, proof: dict[str, object]) -> bytes:
         """Exchange a proof for the raw 32-byte data encryption key."""
         reply = self._request({"op": "getDEK", "scope": scope, "proof": proof})
-        dek = base64.b64decode(_string_field(reply, "dek"))
+        dek = _decode_b64_field(reply, "dek")
         if len(dek) != DEK_LENGTH_BYTES:
             raise BrokerError("invalid-dek", "broker returned an invalid DEK length")
         return dek
@@ -150,6 +151,10 @@ class BrokerClient:
     def status(self) -> dict[str, object]:
         """Return broker status as a JSON object."""
         return self._request({"op": "status"})
+
+    def pair(self, device_id: str, public_key_b64: str) -> None:
+        """Relay a newly paired device public key to the broker."""
+        self._request({"op": "pair", "device_id": device_id, "public_key": public_key_b64})
 
     def _request(self, payload: dict[str, object]) -> dict[str, object]:
         encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -193,6 +198,7 @@ class BrokerKeyProvider:
         self._session_seconds = session_seconds
         self._clock = clock
         self._cache: dict[Scope, _CachedKey] = {}
+        self._pending_nonce: dict[Scope, bytes] = {}
         self._counter = 0
         atexit.register(self.lock_all)
 
@@ -216,6 +222,27 @@ class BrokerKeyProvider:
                 raise ScopeLockedError(f"Scope is locked: {scope}") from exc
             raise
 
+        return self._cache_dek(scope, dek)
+
+    def begin_unlock(self, scope: Scope) -> bytes:
+        """Request and remember a broker nonce for a phone-relayed unlock."""
+        nonce = self._client.request_nonce(scope)
+        self._pending_nonce[scope] = nonce
+        return nonce
+
+    def complete_unlock(self, scope: Scope, nonce: bytes, proof: dict[str, object]) -> None:
+        """Complete a phone-relayed unlock and cache the returned DEK."""
+        if not hmac.compare_digest(self._pending_nonce.get(scope, b""), nonce):
+            raise BrokerError("stale-nonce", "stale or unknown unlock nonce")
+        try:
+            dek = self._client.get_dek(scope, proof)
+            self._cache_dek(scope, dek)
+        finally:
+            self._pending_nonce.pop(scope, None)
+
+    def _cache_dek(self, scope: Scope, dek: bytes) -> SecretKey:
+        """Copy a broker DEK into the secure cache and zero the transient bytes."""
+        now = self._clock()
         secure_buffer = _SecureBuffer(dek)
         try:
             secret = SecretKey(secure_buffer.bytes)
@@ -253,6 +280,7 @@ class BrokerKeyProvider:
                 self._client.lock(scope)
             except BrokerError as exc:
                 LOGGER.debug("broker lock failed for scope %s: %s", scope, exc.code)
+        self._pending_nonce.clear()
 
 
 def _is_locked_error(error: BrokerError) -> bool:
@@ -275,3 +303,11 @@ def _string_field(reply: dict[str, object], name: str) -> str:
     if not isinstance(value, str):
         raise BrokerError("invalid-response", f"broker response missing {name}")
     return value
+
+
+def _decode_b64_field(reply: dict[str, object], name: str) -> bytes:
+    """Decode a strict-base64 field, mapping malformed input to BrokerError."""
+    try:
+        return base64.b64decode(_string_field(reply, name), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise BrokerError("invalid-response", f"broker {name} is not valid base64") from exc

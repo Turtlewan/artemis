@@ -162,6 +162,7 @@ class DeviceRegistry:
             json.dumps(payload, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        os.chmod(temp_path, 0o600)
         os.replace(temp_path, self._path)
 
 
