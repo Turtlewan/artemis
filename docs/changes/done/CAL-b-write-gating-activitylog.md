@@ -4,6 +4,15 @@ status: ready
 token_profile: balanced
 autonomy_level: L2
 ---
+<!-- amended 2026-06-24 (R1 — gated-twin mechanism pinned): the live registry auto-aliased the
+     `{tool}_execute` twin to the front-door callable, so GATE-a approve() re-ran CAL-b's attendee
+     classifier → re-stage loop (2026-06-10 B1; CAL-b is the first external-effect runtime-gated
+     module). RESOLVED per contracts.md Seam 2 D1 mechanism: `ToolSpec` gains optional
+     `execute_callable_ref`; registry prefers it for the twin (back-compatible fallback to
+     `callable_ref`). CAL-b sets front-door=classify, execute_callable_ref=raw. New Task 0 adds the
+     seam to manifest.py + registry.py; Task 5 rewritten to supply execute_callable_ref (no manual
+     twin registration, no staging_dispatch_only flag). Analysis: docs/progress/CAL-b-write-gating-activitylog.md. -->
+<!-- amended 2026-06-11 per contracts.md (Seams 2, 3, 4) + cal-gate.md BLOCKs B1, B4, B5, B8, B9, B10, F12 -->
 <!-- amended 2026-06-11 per contracts.md (Seams 2, 3, 4) + cal-gate.md BLOCKs B1, B4, B5, B8, B9, B10, F12 -->
 
 # Spec: CAL-b — Calendar write/management tools + STRICT auto-vs-gated classifier + activity log + Review-staging integration
@@ -39,16 +48,47 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 - Environment setup required: none beyond CAL-a. Off-hardware fully testable with fakes. Real Google writes + real SQLCipher + real Review staging round-trip are GATED on-hardware (Task 7).
 
 ## Files to Change
+
+Paths are repo-relative (build runs with the repo root as CWD). The CalendarClient Protocol +
+`GoogleCalendarClient`/`FakeCalendarClient` already declare the write methods (CAL-a, currently
+`raise NotImplementedError`); CAL-b fills the bodies.
+
 | File | Operation | Notes |
 |------|-----------|-------|
-| /Users/artemis-build/artemis/src/artemis/modules/calendar/client.py | modify | add write method bodies to `GoogleCalendarClient` + `FakeCalendarClient` (B5 / Seam 4 — the 9 canonical write methods declared in CalendarClient Protocol by CAL-a; also register `_execute` twins per B1 / Seam 3 D1) |
-| /Users/artemis-build/artemis/src/artemis/modules/calendar/write_tools.py | create | §B ToolSpec definitions, typed args/return schemas, action_risk baselines |
-| /Users/artemis-build/artemis/src/artemis/modules/calendar/gating.py | create | runtime classifier `classify()`, stage-vs-execute dispatch `dispatch()`, `AUTO`/`GATED` enum |
-| /Users/artemis-build/artemis/src/artemis/modules/calendar/activity_log.py | create | SQLCipher append-only activity log of auto-actions |
-| /Users/artemis-build/artemis/src/artemis/modules/calendar/manifest.py | modify | add write ToolSpecs to the existing manifest (CAL-a created it) |
-| /Users/artemis-build/artemis/tests/test_calendar_write.py | create | classifier truth table, AUTO executes+logs, GATED stages-only, recurrence, write-failure, locked-store |
+| src/artemis/manifest.py | modify | **Task 0 (R1 seam):** add optional `execute_callable_ref: Callable[..., Awaitable[BaseModel]] \| None = None` to `ToolSpec` (contracts.md Seam 2 D1 mechanism). Additive, defaults None — back-compatible. |
+| src/artemis/registry/registry.py | modify | **Task 0 (R1 seam):** in `register()`, map `{fq}_execute` → `tool.execute_callable_ref or tool.callable_ref`. Additive — existing modules (no `execute_callable_ref`) keep current behaviour. |
+| src/artemis/modules/calendar/client.py | modify | add write method bodies to `GoogleCalendarClient` + `FakeCalendarClient` (B5 / Seam 4 — the canonical write methods already declared in the CalendarClient Protocol by CAL-a, kw-only signatures). `FakeCalendarClient` records calls + supports raise-on-call for the failure test. |
+| src/artemis/modules/calendar/write_tools.py | create | §B args/return schemas, `CalendarWriteError`, `CalendarWriteTools` (front-door classify methods + `*_raw` execute methods), action_risk baselines |
+| src/artemis/modules/calendar/gating.py | create | runtime classifier `classify()`, stage-vs-execute dispatch `dispatch()`, `GateDecision` enum |
+| src/artemis/modules/calendar/activity_log.py | create | SQLCipher append-only activity log of auto-actions (mirror `SqlCipherTokenStore` at `src/artemis/integrations/google/tokens.py`) |
+| src/artemis/modules/calendar/manifest.py | modify | add write `ToolSpec`s (front-door `callable_ref` + raw `execute_callable_ref`) to the existing manifest factory; wire a `CalendarWriteTools` instance |
+| tests/test_calendar_write.py | create | classifier truth table, AUTO executes+logs, GATED stages-only, approve→raw-twin executes (no re-stage), recurrence, write-failure, locked-store |
+| tests/test_registry.py | modify | **Task 0:** assert `{fq}_execute` resolves to `execute_callable_ref` when set, falls back to `callable_ref` when not (add to the existing registry test file; create if absent) |
 
 ## Tasks
+
+- [ ] Task 0: Add the `execute_callable_ref` seam (R1) — files: `src/artemis/manifest.py`, `src/artemis/registry/registry.py`, `tests/test_manifest_registry.py` —
+
+  **manifest.py:** add to `ToolSpec` an optional field
+  `execute_callable_ref: Callable[..., Awaitable[BaseModel]] | None = None` (after `callable_ref`).
+  Additive, default `None`. Document it: "raw classifier-free twin for runtime-gated tools; the
+  registry maps `{fq}_execute` to it; never a `ToolSpec.name`, so it stays out of `retrieve_tools()`."
+
+  **registry.py:** in `register()`, the existing twin line becomes:
+  ```python
+  if tool.action_risk in (ActionRisk.WRITE, ActionRisk.HIGH_STAKES):
+      exec_id = f"{fq_id}_execute"
+      self._execute_callables[exec_id] = tool.execute_callable_ref or tool.callable_ref
+  ```
+  No other change — `get_tool` already wraps `_execute_callables[fq]` in a synthetic ToolSpec.
+
+  **tests/test_manifest_registry.py:** add two cases — (a) a `WRITE` tool with a distinct
+  `execute_callable_ref` → `get_tool("mod.tool_execute").callable_ref is <the raw fn>` (not the
+  front door); (b) a `WRITE` tool with no `execute_callable_ref` → `{fq}_execute` falls back to
+  `callable_ref` (back-compat).
+
+  Done when: `uv run mypy --strict src` passes; `uv run pytest -q tests/test_manifest_registry.py`
+  passes (incl. the two new cases); existing registry tests unchanged-green.
 
 - [ ] Task 1: Define write-tool args/return schemas and `GatingResult` types — files: `/Users/artemis-build/artemis/src/artemis/modules/calendar/write_tools.py` —
 
@@ -137,7 +177,9 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
   3. The `async def execute_fn` calls the appropriate `CalendarClient` method (see below; sync Seam 4 call, no `await`), then calls `cache.invalidate(event_id, calendar_id)` on success (B4: two-arg signature). On `CalendarClient` error, raises `CalendarWriteError`.
   4. The `async def stage_fn` calls `staging.stage(module="calendar", tool=f"calendar.{tool_name}", args=args.model_dump(), summary=<plain-language description of the external effect>)` (`stage` is sync per Seam 3 — no `await`). The summary must be deterministic and human-readable (e.g. `"Cancel event 'Team sync' — has attendees Alice, Bob; pending owner approval"`). Returns `StagedResult(pending_action_id=action.id, summary=action.summary)` where `action` is the returned `PendingAction`. Does NOT execute the Google write — the action is now PENDING; the owner approves it via the Review screen → GATE-b → `ActionStagingService.approve` dispatches the `_execute` twin via ToolRegistry (NOT the front-door tool — see B1 / Seam 3 D1).
 
-  **CalendarClient method mapping** (one call per tool in `execute_fn`):
+  **Live CalendarClient signatures (CAL-a, Seam 4 — read `client.py`; these are authoritative over the sketch below):** all write methods are **keyword-only** and currently `raise NotImplementedError` (CAL-b fills them). Names: `create_event(*, summary, start, end, description=None, location=None, attendees: tuple[str,...]=(), calendar_id, recurrence: tuple[str,...]=(), reminders: dict[str,object]|None=None, send_updates="all")` (note `start`/`end`, NOT `start_datetime`; `attendees`/`recurrence` are **tuples**; `reminders` is a **dict**), `update_event(event_id, changes: dict, *, recurrence_scope, send_updates="all")`, `move_event(event_id, *, new_start, new_end, recurrence_scope, send_updates="all")`, `cancel_event(event_id, *, recurrence_scope, send_updates="all") -> None`, `respond_to_invite(event_id, response)`, `add_attendees(event_id, attendee_emails: list[str], *, send_updates="all")`, `remove_attendees(...)`, `quick_add(text, calendar_id)`, `set_reminders(event_id, reminders: list[dict])`, `get_event(calendar_id, event_id)` (calendar_id FIRST). The `execute_fn`/`*_raw` body maps the Pydantic `Args` fields → these kwargs (e.g. `args.start_datetime`→`start=`, `tuple(args.attendee_emails)`→`attendees=`, `[r.model_dump() for r in args.reminders]`→`reminders=`). `calendar_id` falls back to `prefs.default_write_calendar` when `args.calendar_id is None`.
+
+  **CalendarClient method mapping** (one call per tool; abstract — adapt to the live kw-only signatures above):
   - `create_event(args)` → `client.create_event(summary, start, end, description, location, attendees, calendar_id, recurrence, reminders, send_updates="all")`
   - `update_event(args)` → `client.update_event(event_id, changes_dict, recurrence_scope, send_updates="all")`
   - `move_event(args)` → `client.move_event(event_id, new_start, new_end, recurrence_scope, send_updates="all")`
@@ -208,7 +250,9 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 
   **B9 / F12 / Seam 2 — ToolSpec.name is BARE:** `ToolSpec.name` must be the bare tool name (e.g. `"create_event"`), NOT the qualified form (NOT `"calendar.create_event"`). The registry composes the fq id as `f"{manifest.name}.{tool.name}"` = `"calendar.create_event"`. `stage(tool=...)` and `get_tool(...)` use the fq id. A literal executor that writes `ToolSpec(name="calendar.create_event")` produces registry id `"calendar.calendar.create_event"` (double-prefix) and GATE-a approve raises `KeyError`. **`ToolSpec.name` is bare; `module.tool` is the registry id used by `stage()`/`get_tool()`.**
 
-  For each §B tool add a `ToolSpec` to the manifest's `tools` list with bare names. Exact `action_risk` baselines (the runtime classifier is the real gate; these are hint-only):
+  **Factory signature:** extend the live `make_calendar_manifest(tools: CalendarTools) -> ModuleManifest` to `make_calendar_manifest(tools: CalendarTools, write_tools: CalendarWriteTools) -> ModuleManifest` (read ToolSpecs from `tools` as today + the 11 write ToolSpecs from `write_tools`). Blast radius is just the `__init__.py` re-export docstring (no composition root calls it yet) + the CAL-b test. Keep read ToolSpecs unchanged.
+
+  For each §B write tool add a `ToolSpec` to the manifest's `tools` list with bare names. Exact `action_risk` baselines (the runtime classifier is the real gate; these are hint-only):
 
   | tool_name (BARE) | action_risk baseline |
   |---|---|
@@ -226,10 +270,12 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 
   Each `ToolSpec` uses the corresponding `Args` and `Return` schema from `write_tools.py`. The `callable_ref` points to the matching `CalendarWriteTools` method (bound method reference; the manifest is constructed with a `CalendarWriteTools` instance by the module factory — `make_calendar_manifest(tools)` factory pattern from CAL-a).
 
-  **B1 / Seam 3 D1 — Register `_execute` twins for each gated tool:** For every tool that can be GATED (`create_event`, `update_event`, `move_event`, `cancel_event`, `respond_to_invite`, `add_attendees`, `remove_attendees`, `create_recurring_event`), register a sibling `_execute` ToolSpec with bare name `f"{tool_name}_execute"` (e.g. `"create_event_execute"`). The `_execute` twin:
-  - `callable_ref` is **`async def`** (ADR-016 — every callable_ref is async; GATE-a's async `approve` dispatches it via `await get_tool(f"{action.tool}_execute").callable_ref(validated_args)`). It performs the raw Google write with **no classification** (calls the sync Seam-4 `CalendarClient` method directly — body has no extra `await`, no `dispatch()` call, no staging).
-  - `args_schema` is the SAME args model as the front-door tool (re-uses `CreateEventArgs`, etc.) so GATE-a's `model_validate(action.args)` works correctly.
-  - **NOT included in `retrieve_tools()`** — add `staging_dispatch_only=True` field to `ToolSpec` (or an equivalent exclude-from-brain flag), OR register twins in a separate internal registry keyed by the module that GATE-a uses but the brain's tool-selection surface does not expose. Whichever mechanism M1-a chooses, document it here; the constraint is that the brain model must never see or call `*_execute` tools directly.
+  **B1 / Seam 2 D1 (R1 mechanism) — supply `execute_callable_ref` for each gated tool:** For every tool that can be GATED (`create_event`, `update_event`, `move_event`, `cancel_event`, `respond_to_invite`, `add_attendees`, `remove_attendees`, `create_recurring_event`), the `ToolSpec`'s `execute_callable_ref` points at the matching **raw** `CalendarWriteTools` method (e.g. `tools.create_event_raw`) while `callable_ref` points at the front-door classify method (e.g. `tools.create_event`). The registry (Task 0) maps `{fq}_execute` → `execute_callable_ref`, so GATE-a's async `approve` dispatches the raw write via `await get_tool(f"{action.tool}_execute").callable_ref(validated_args)` with **no classification**. The raw method:
+  - is **`async def`** (ADR-016), performs the raw Google write directly (sync Seam-4 `CalendarClient` call, then `cache.invalidate(event_id, calendar_id)` on success); **no `dispatch()`, no `classify()`, no `staging.stage`**. It does **NOT** write the activity log — that log is for unattended AUTO actions only (security invariant); an approved write is recorded by its `PendingAction` (status `APPROVED` + `result`). Activity-log writes happen only on the AUTO path (dispatch's `log_fn`). The `*_raw` method is therefore the shared raw-write+invalidate body; the front-door AUTO path reaches it through `dispatch(execute_fn=self.<tool>_raw, log_fn=activity_log.record)`.
+  - takes the SAME args model as the front-door tool (`CreateEventArgs`, etc.) so GATE-a's `args_schema.model_validate(action.args)` works (registry's synthetic twin ToolSpec reuses the base `args_schema`).
+  - is **never** a `ToolSpec.name` in `manifest.tools` — only reachable through `{fq}_execute`, so it stays out of `retrieve_tools()` / the brain surface (security invariant: the model never calls the ungated write directly).
+
+  Always-AUTO tools (`block_focus_time`, `set_reminders`, `quick_add`) need **no** `execute_callable_ref` — they never stage, so their front-door is already the executed path. (The registry still creates a fallback `{fq}_execute` = front-door for the `WRITE`-risk ones; harmless, never dispatched since they never stage.)
 
   Register scopes at module import: `register_google_scopes("calendar_write", {"https://www.googleapis.com/auth/calendar.events"})`.
 
@@ -257,6 +303,15 @@ Simplicity check: considered routing GATED through an HTTP call to the Review en
 
   **GATED path — stages a PendingAction and does NOT execute:**
   - `create_event(CreateEventArgs(..., attendee_emails=["other@x.com"]))` → `FakeCalendarClient.create_event` was NOT called; `FakeActionStagingService.staged` has exactly one entry; assert `staged[0].module == "calendar"`, `staged[0].tool == "calendar.create_event"`, `staged[0].args` contains the bound create-event args dict, `staged[0].summary` is a non-empty string; `activity_log.recent()` is empty (gated = no log entry, never executed).
+
+  **Approve round-trip executes the RAW twin, no re-stage (B1 regression — the load-bearing test):**
+  Using the REAL `ActionStagingService` + REAL `ToolRegistry` (register the calendar manifest built
+  via `make_calendar_manifest`), with a `FakeCalendarClient` and unlocked `FakeKeyProvider`:
+  - `create_event(CreateEventArgs(..., attendee_emails=["other@x.com"]))` → one `PENDING` action in
+    the store, `FakeCalendarClient.create_event` NOT called.
+  - `await staging.approve(action.id)` → `FakeCalendarClient.create_event` **is** called exactly once;
+    the action transitions to `APPROVED`; **no second `PENDING` action is created** (store has zero
+    pending after approve). This proves `{tool}_execute` dispatched the raw twin, not the classifier.
 
   **RSVP always gated:**
   - `respond_to_invite(RespondToInviteArgs(event_id="e1", response="accepted"))` → `FakeCalendarClient.respond_to_invite` NOT called; `FakeActionStagingService.staged` has exactly one entry with `tool == "calendar.respond_to_invite"` and `summary` non-empty.
@@ -365,3 +420,19 @@ Auto-path write-through is synchronous (one Google API call + cache invalidate).
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+**✅ COMPLETE 2026-06-24 (Codex `apex-coder`, host-verified).** Tasks 0–6 done; Task 7 on-hardware-GATED (skipped). Baseline green: mypy `--strict` clean (98 files), ruff clean, **367 tests** (+12).
+
+- [x] Task 0 — `ToolSpec.execute_callable_ref` + registry `tool.execute_callable_ref or tool.callable_ref`; 2 registry tests (distinct twin / fallback).
+- [x] Task 1 — write-tool args/return schemas + `CalendarWriteError` (+`WriteResult.tool_name`).
+- [x] Task 2 — `classify()` (ordered rules, empty-owner fail-closed) + async `dispatch()`.
+- [x] Task 3 — `CalendarWriteTools` front-door (classify) + `*_raw` (raw write + cache.invalidate, no log) methods; mapped to live kw-only CalendarClient signatures; `send_updates="none"` on auto-path, `"all"` on attendee changes.
+- [x] Task 4 — `ActivityLog` SQLCipher (mirrors `SqlCipherTokenStore`; ScopeLockedError propagates; AUTO-only).
+- [x] Task 5 — 11 write ToolSpecs (bare names; 8 gated → `execute_callable_ref=*_raw`, 3 always-auto → none); factory now `make_calendar_manifest(read_tools, write_tools)`; 21 tools total.
+- [x] Task 6 — tests: classifier truth table, AUTO executes+logs, GATED stages-only, **B1 regression (approve→raw twin, no re-stage, real registry+staging+store)**, RSVP always gated, recurrence scope, write-failure→CalendarWriteError, locked-store→ScopeLockedError, cache.invalidate(2-arg), manifest shape.
+
+**Decisions / deviations (review in planning):**
+| Task | Decision | Reason | Review? |
+|------|----------|--------|---------|
+| 0 (fork resolution) | R1 seam `ToolSpec.execute_callable_ref` added; contracts.md Seam 2 D1 mechanism pinned | live registry aliased `{tool}_execute` to the front-door → GATE-a approve re-classified attendee events → re-stage loop (2026-06-10 B1). CAL-b is the first external-effect runtime-gated module. | Yes ⚠️ — contract change ratified inline; confirm in next planning review |
+| 3 | update/move/cancel resolve existing event from `default_write_calendar` only (args carry no calendar_id) | spec args omit calendar_id for these tools; fails closed (lookup miss → error, never silent AUTO) | Minor — resolve at on-hardware Task 7 |

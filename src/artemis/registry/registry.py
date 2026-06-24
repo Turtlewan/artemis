@@ -59,7 +59,7 @@ class ToolRegistry:
             # Register _execute twin for write/high-stakes tools
             if tool.action_risk in (ActionRisk.WRITE, ActionRisk.HIGH_STAKES):
                 exec_id = f"{fq_id}_execute"
-                self._execute_callables[exec_id] = tool.callable_ref
+                self._execute_callables[exec_id] = tool.execute_callable_ref or tool.callable_ref
 
     async def _drain_pending(self) -> None:
         """Embed all pending tool descriptions and add them to the index."""

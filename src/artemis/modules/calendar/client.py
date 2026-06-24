@@ -160,6 +160,26 @@ class _EventsResource(Protocol):
         """Build an events.get request."""
         ...
 
+    def insert(self, **kwargs: object) -> _Executable:
+        """Build an events.insert request."""
+        ...
+
+    def update(self, **kwargs: object) -> _Executable:
+        """Build an events.update request."""
+        ...
+
+    def patch(self, **kwargs: object) -> _Executable:
+        """Build an events.patch request."""
+        ...
+
+    def delete(self, **kwargs: object) -> _Executable:
+        """Build an events.delete request."""
+        ...
+
+    def quickAdd(self, **kwargs: object) -> _Executable:  # noqa: N802 â€” mirrors Google API
+        """Build an events.quickAdd request."""
+        ...
+
 
 class _FreeBusyResource(Protocol):
     def query(self, *, body: dict[str, object]) -> _Executable:
@@ -266,7 +286,30 @@ class GoogleCalendarClient:
         reminders: dict[str, object] | None = None,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        body: dict[str, object] = {
+            "summary": summary,
+            "start": {"dateTime": start},
+            "end": {"dateTime": end},
+        }
+        if description is not None:
+            body["description"] = description
+        if location is not None:
+            body["location"] = location
+        if attendees:
+            body["attendees"] = [{"email": email} for email in attendees]
+        if recurrence:
+            body["recurrence"] = list(recurrence)
+        if reminders is not None:
+            body["reminders"] = reminders
+        return (
+            self.service.events()
+            .insert(
+                calendarId=calendar_id,
+                body=body,
+                sendUpdates=send_updates,
+            )
+            .execute()
+        )
 
     def update_event(
         self,
@@ -276,7 +319,18 @@ class GoogleCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body=changes,
+                sendUpdates=send_updates,
+                sendNotifications=send_updates != "none",
+                scope=recurrence_scope,
+            )
+            .execute()
+        )
 
     def move_event(
         self,
@@ -287,7 +341,22 @@ class GoogleCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        body: dict[str, object] = {
+            "start": {"dateTime": new_start},
+            "end": {"dateTime": new_end},
+        }
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body=body,
+                sendUpdates=send_updates,
+                sendNotifications=send_updates != "none",
+                scope=recurrence_scope,
+            )
+            .execute()
+        )
 
     def cancel_event(
         self,
@@ -296,10 +365,24 @@ class GoogleCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> None:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self.service.events().delete(
+            calendarId="primary",
+            eventId=event_id,
+            sendUpdates=send_updates,
+            scope=recurrence_scope,
+        ).execute()
 
     def respond_to_invite(self, event_id: str, response: str) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body={"attendees": [{"self": True, "responseStatus": response}]},
+                sendUpdates="all",
+            )
+            .execute()
+        )
 
     def add_attendees(
         self,
@@ -308,7 +391,22 @@ class GoogleCalendarClient:
         *,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        event = self.get_event("primary", event_id)
+        attendees = _attendee_dicts(event.get("attendees"))
+        existing = {_optional_email(attendee).casefold() for attendee in attendees}
+        for email in attendee_emails:
+            if email.casefold() not in existing:
+                attendees.append({"email": email})
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body={"attendees": attendees},
+                sendUpdates=send_updates,
+            )
+            .execute()
+        )
 
     def remove_attendees(
         self,
@@ -317,17 +415,50 @@ class GoogleCalendarClient:
         *,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        event = self.get_event("primary", event_id)
+        removed = {email.casefold() for email in attendee_emails}
+        attendees = [
+            attendee
+            for attendee in _attendee_dicts(event.get("attendees"))
+            if _optional_email(attendee).casefold() not in removed
+        ]
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body={"attendees": attendees},
+                sendUpdates=send_updates,
+            )
+            .execute()
+        )
 
     def quick_add(self, text: str, calendar_id: str) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        return (
+            self.service.events()
+            .quickAdd(
+                calendarId=calendar_id,
+                text=text,
+                sendUpdates="none",
+            )
+            .execute()
+        )
 
     def set_reminders(
         self,
         event_id: str,
         reminders: list[dict[str, object]],
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        return (
+            self.service.events()
+            .patch(
+                calendarId="primary",
+                eventId=event_id,
+                body={"reminders": {"useDefault": False, "overrides": reminders}},
+                sendUpdates="none",
+            )
+            .execute()
+        )
 
 
 class FakeCalendarClient:
@@ -345,6 +476,18 @@ class FakeCalendarClient:
         self.incremental_events_by_calendar: dict[str, list[dict[str, object]]] = {}
         self.raise_invalid_sync_token_once = False
         self.list_events_calls: list[dict[str, object]] = []
+        self.write_calls: dict[str, list[dict[str, object]]] = {
+            "create_event": [],
+            "update_event": [],
+            "move_event": [],
+            "cancel_event": [],
+            "respond_to_invite": [],
+            "add_attendees": [],
+            "remove_attendees": [],
+            "quick_add": [],
+            "set_reminders": [],
+        }
+        self.raise_on_write: set[str] = set()
 
     def set_incremental_events(
         self,
@@ -423,7 +566,39 @@ class FakeCalendarClient:
         reminders: dict[str, object] | None = None,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("create_event")
+        call: dict[str, object] = {
+            "summary": summary,
+            "start": start,
+            "end": end,
+            "description": description,
+            "location": location,
+            "attendees": attendees,
+            "calendar_id": calendar_id,
+            "recurrence": recurrence,
+            "reminders": reminders,
+            "send_updates": send_updates,
+        }
+        self.write_calls["create_event"].append(call)
+        event_id = f"fake-event-{len(self.write_calls['create_event'])}"
+        event: dict[str, object] = {
+            "id": event_id,
+            "summary": summary,
+            "start": {"dateTime": start},
+            "end": {"dateTime": end},
+            "status": "confirmed",
+            "attendees": [{"email": email} for email in attendees],
+        }
+        if description is not None:
+            event["description"] = description
+        if location is not None:
+            event["location"] = location
+        if recurrence:
+            event["recurrence"] = list(recurrence)
+        if reminders is not None:
+            event["reminders"] = reminders
+        self.events_by_calendar.setdefault(calendar_id, []).append(event)
+        return event
 
     def update_event(
         self,
@@ -433,7 +608,18 @@ class FakeCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("update_event")
+        self.write_calls["update_event"].append(
+            {
+                "event_id": event_id,
+                "changes": changes,
+                "recurrence_scope": recurrence_scope,
+                "send_updates": send_updates,
+            }
+        )
+        event = self._find_event(event_id)
+        event.update(changes)
+        return event
 
     def move_event(
         self,
@@ -444,7 +630,20 @@ class FakeCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("move_event")
+        self.write_calls["move_event"].append(
+            {
+                "event_id": event_id,
+                "new_start": new_start,
+                "new_end": new_end,
+                "recurrence_scope": recurrence_scope,
+                "send_updates": send_updates,
+            }
+        )
+        event = self._find_event(event_id)
+        event["start"] = {"dateTime": new_start}
+        event["end"] = {"dateTime": new_end}
+        return event
 
     def cancel_event(
         self,
@@ -453,10 +652,22 @@ class FakeCalendarClient:
         recurrence_scope: str,
         send_updates: str = "all",
     ) -> None:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("cancel_event")
+        self.write_calls["cancel_event"].append(
+            {
+                "event_id": event_id,
+                "recurrence_scope": recurrence_scope,
+                "send_updates": send_updates,
+            }
+        )
+        self._find_event(event_id)["status"] = "cancelled"
 
     def respond_to_invite(self, event_id: str, response: str) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("respond_to_invite")
+        self.write_calls["respond_to_invite"].append({"event_id": event_id, "response": response})
+        event = self._find_event(event_id)
+        event["responseStatus"] = response
+        return event
 
     def add_attendees(
         self,
@@ -465,7 +676,22 @@ class FakeCalendarClient:
         *,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("add_attendees")
+        self.write_calls["add_attendees"].append(
+            {
+                "event_id": event_id,
+                "attendee_emails": list(attendee_emails),
+                "send_updates": send_updates,
+            }
+        )
+        event = self._find_event(event_id)
+        attendees = _attendee_dicts(event.get("attendees"))
+        existing = {_optional_email(attendee).casefold() for attendee in attendees}
+        for email in attendee_emails:
+            if email.casefold() not in existing:
+                attendees.append({"email": email})
+        event["attendees"] = attendees
+        return event
 
     def remove_attendees(
         self,
@@ -474,17 +700,59 @@ class FakeCalendarClient:
         *,
         send_updates: str = "all",
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("remove_attendees")
+        self.write_calls["remove_attendees"].append(
+            {
+                "event_id": event_id,
+                "attendee_emails": list(attendee_emails),
+                "send_updates": send_updates,
+            }
+        )
+        removed = {email.casefold() for email in attendee_emails}
+        event = self._find_event(event_id)
+        event["attendees"] = [
+            attendee
+            for attendee in _attendee_dicts(event.get("attendees"))
+            if _optional_email(attendee).casefold() not in removed
+        ]
+        return event
 
     def quick_add(self, text: str, calendar_id: str) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("quick_add")
+        self.write_calls["quick_add"].append({"text": text, "calendar_id": calendar_id})
+        event_id = f"fake-quick-{len(self.write_calls['quick_add'])}"
+        event: dict[str, object] = {
+            "id": event_id,
+            "summary": text,
+            "status": "confirmed",
+            "attendees": [],
+        }
+        self.events_by_calendar.setdefault(calendar_id, []).append(event)
+        return event
 
     def set_reminders(
         self,
         event_id: str,
         reminders: list[dict[str, object]],
     ) -> dict[str, object]:
-        raise NotImplementedError("CAL-b implements calendar writes")
+        self._maybe_raise("set_reminders")
+        self.write_calls["set_reminders"].append(
+            {"event_id": event_id, "reminders": list(reminders)}
+        )
+        event = self._find_event(event_id)
+        event["reminders"] = {"useDefault": False, "overrides": reminders}
+        return event
+
+    def _maybe_raise(self, method: str) -> None:
+        if method in self.raise_on_write:
+            raise RuntimeError(f"configured write failure: {method}")
+
+    def _find_event(self, event_id: str) -> dict[str, object]:
+        for events in self.events_by_calendar.values():
+            for event in events:
+                if event.get("id") == event_id:
+                    return event
+        raise KeyError(event_id)
 
 
 def _dict_list(value: object) -> list[dict[str, object]]:
@@ -496,3 +764,14 @@ def _dict_list(value: object) -> list[dict[str, object]]:
 def _is_http_410(exc: Exception) -> bool:
     status_code = getattr(getattr(exc, "resp", None), "status", None)
     return status_code == 410
+
+
+def _attendee_dicts(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _optional_email(attendee: dict[str, object]) -> str:
+    email = attendee.get("email")
+    return email if isinstance(email, str) else ""

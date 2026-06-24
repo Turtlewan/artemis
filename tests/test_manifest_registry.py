@@ -104,6 +104,11 @@ class WriteResult(BaseModel):
     success: bool
 
 
+async def fake_write_file_raw(args: WriteArgs) -> WriteResult:
+    """Stub raw write tool for testing distinct _execute twin registration."""
+    return WriteResult(success=True)
+
+
 async def fake_write_file(args: WriteArgs) -> WriteResult:
     """Stub write tool — for testing _execute twin registration."""
     return WriteResult(success=True)
@@ -379,6 +384,62 @@ class TestToolRegistry:
         assert twin is not None
         assert callable(twin.callable_ref)
         assert twin.name == "write_file"
+
+    def test_execute_twin_prefers_execute_callable_ref(self) -> None:
+        """Runtime-gated tools dispatch their raw twin, not the front door."""
+        embedder = FakeEmbedder()
+        registry = ToolRegistry(embedder)
+        registry.register(
+            ModuleManifest(
+                name="files",
+                version="0.1.0",
+                description="File operations.",
+                data_scope=DataScope.OWNER_PRIVATE,
+                tools=[
+                    ToolSpec(
+                        name="write_file",
+                        description="Write content to a file.",
+                        args_schema=WriteArgs,
+                        return_schema=WriteResult,
+                        callable_ref=fake_write_file,
+                        execute_callable_ref=fake_write_file_raw,
+                        action_risk=ActionRisk.WRITE,
+                    )
+                ],
+            )
+        )
+
+        twin = registry.get_tool("files.write_file_execute")
+
+        assert twin.callable_ref is fake_write_file_raw
+        assert twin.callable_ref is not fake_write_file
+
+    def test_execute_twin_falls_back_to_callable_ref(self) -> None:
+        """Existing write tools keep their current _execute behavior."""
+        embedder = FakeEmbedder()
+        registry = ToolRegistry(embedder)
+        registry.register(
+            ModuleManifest(
+                name="files",
+                version="0.1.0",
+                description="File operations.",
+                data_scope=DataScope.OWNER_PRIVATE,
+                tools=[
+                    ToolSpec(
+                        name="write_file",
+                        description="Write content to a file.",
+                        args_schema=WriteArgs,
+                        return_schema=WriteResult,
+                        callable_ref=fake_write_file,
+                        action_risk=ActionRisk.WRITE,
+                    )
+                ],
+            )
+        )
+
+        twin = registry.get_tool("files.write_file_execute")
+
+        assert twin.callable_ref is fake_write_file
 
     def test_export_round_trip(self, time_manifest: ModuleManifest, tmp_path: Path) -> None:
         embedder = FakeEmbedder()

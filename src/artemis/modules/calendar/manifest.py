@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from artemis.integrations.google.scopes import register_google_scopes
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec
 from artemis.modules.calendar.cache import EventCacheStore
 from artemis.modules.calendar.client import CalendarClient
@@ -40,7 +41,24 @@ from artemis.modules.calendar.read_tools import (
     next_event,
     search,
 )
+from artemis.modules.calendar.write_tools import (
+    AddAttendeesArgs,
+    BlockFocusTimeArgs,
+    CalendarWriteTools,
+    CancelEventArgs,
+    CreateEventArgs,
+    CreateRecurringEventArgs,
+    MoveEventArgs,
+    QuickAddArgs,
+    RemoveAttendeesArgs,
+    RespondToInviteArgs,
+    SetRemindersArgs,
+    UpdateEventArgs,
+    WriteResult,
+)
 from artemis.runtime_config import get_runtime_config
+
+register_google_scopes("calendar_write", {"https://www.googleapis.com/auth/calendar.events"})
 
 
 class CalendarTools:
@@ -104,8 +122,8 @@ class CalendarTools:
         return await conflicts(args, store=self._store, prefs=self._prefs())
 
 
-def make_calendar_manifest(tools: CalendarTools) -> ModuleManifest:
-    """Build the read-only Calendar module manifest."""
+def make_calendar_manifest(tools: CalendarTools, write_tools: CalendarWriteTools) -> ModuleManifest:
+    """Build the Calendar module manifest with read and write scopes registered."""
     return ModuleManifest(
         name="calendar",
         version="0.1.0",
@@ -192,6 +210,102 @@ def make_calendar_manifest(tools: CalendarTools) -> ModuleManifest:
                 return_schema=ConflictsResult,
                 callable_ref=tools.conflicts,
                 action_risk=ActionRisk.READ,
+            ),
+            ToolSpec(
+                name="block_focus_time",
+                description="Create a self-only focus block on the owner's calendar.",
+                args_schema=BlockFocusTimeArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.block_focus_time,
+                action_risk=ActionRisk.WRITE,
+            ),
+            ToolSpec(
+                name="create_event",
+                description="Create a calendar event, staging attendee events for review.",
+                args_schema=CreateEventArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.create_event,
+                execute_callable_ref=write_tools.create_event_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="update_event",
+                description="Update a calendar event, staging attendee events for review.",
+                args_schema=UpdateEventArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.update_event,
+                execute_callable_ref=write_tools.update_event_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="move_event",
+                description="Move a calendar event, staging attendee events for review.",
+                args_schema=MoveEventArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.move_event,
+                execute_callable_ref=write_tools.move_event_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="cancel_event",
+                description="Cancel a calendar event, staging attendee events for review.",
+                args_schema=CancelEventArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.cancel_event,
+                execute_callable_ref=write_tools.cancel_event_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="respond_to_invite",
+                description="Respond to a calendar invite after owner approval.",
+                args_schema=RespondToInviteArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.respond_to_invite,
+                execute_callable_ref=write_tools.respond_to_invite_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="add_attendees",
+                description="Add attendees to an event after owner approval when needed.",
+                args_schema=AddAttendeesArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.add_attendees,
+                execute_callable_ref=write_tools.add_attendees_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="remove_attendees",
+                description="Remove attendees from an event after owner approval when needed.",
+                args_schema=RemoveAttendeesArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.remove_attendees,
+                execute_callable_ref=write_tools.remove_attendees_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="create_recurring_event",
+                description="Create a recurring event, staging attendee events for review.",
+                args_schema=CreateRecurringEventArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.create_recurring_event,
+                execute_callable_ref=write_tools.create_recurring_event_raw,
+                action_risk=ActionRisk.HIGH_STAKES,
+            ),
+            ToolSpec(
+                name="quick_add",
+                description="Quick-add a self-only event on the owner's calendar.",
+                args_schema=QuickAddArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.quick_add,
+                action_risk=ActionRisk.WRITE,
+            ),
+            ToolSpec(
+                name="set_reminders",
+                description="Set reminders on an event.",
+                args_schema=SetRemindersArgs,
+                return_schema=WriteResult,
+                callable_ref=write_tools.set_reminders,
+                action_risk=ActionRisk.WRITE,
             ),
         ],
         proactive_hooks=[],

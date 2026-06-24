@@ -62,6 +62,10 @@ class ToolSpec(BaseModel):
     args_schema: type[BaseModel]
     return_schema: type[BaseModel]
     callable_ref: Callable[..., Awaitable[BaseModel]]
+    # Raw classifier-free twin for runtime-gated tools. The registry maps
+    # ``{fq}_execute`` to this callable; it is never a ``ToolSpec.name`` and
+    # therefore stays out of ``retrieve_tools()``.
+    execute_callable_ref: Callable[..., Awaitable[BaseModel]] | None = None
     action_risk: ActionRisk
 
     def args_json_schema(self) -> dict[str, object]:

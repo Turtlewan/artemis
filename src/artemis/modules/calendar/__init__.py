@@ -1,8 +1,9 @@
 """Calendar module exports and Google scope registration.
 
 The composition root owns activation: construct ``CalendarTools``, call
-``make_calendar_manifest(tools)``, then register that manifest with the tool
-registry. CAL-a intentionally has no global singleton credentials or stores.
+``make_calendar_manifest(tools, write_tools)``, then register that manifest with
+the tool registry. CAL-a intentionally has no global singleton credentials or
+stores.
 
 TODO(CAL-b): compose_brain wiring.
 """
