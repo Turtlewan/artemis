@@ -1,0 +1,78 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mocks.invoke,
+  Channel: class<T> {
+    onmessage: ((event: T) => void) | null = null;
+  },
+}));
+
+import { layoutStore } from "../state/layout";
+import * as gateway from "./gateway";
+
+describe("gateway facade", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    layoutStore.resetForTest();
+  });
+
+  it("invokes app_status and returns the status DTO", async () => {
+    const dto = { connected: true, vault_unlocked: false, device_id: "dev-1" };
+    mocks.invoke.mockResolvedValueOnce(dto);
+
+    await expect(gateway.status()).resolves.toEqual(dto);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_status", undefined);
+  });
+
+  it("passes app_ask request args through invoke", async () => {
+    const response = { text: "answer", path: "direct", tool_used: null, escalated: false };
+    mocks.invoke.mockResolvedValueOnce(response);
+
+    await expect(gateway.ask({ text: "hello" })).resolves.toEqual(response);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_ask", { request: { text: "hello" } });
+  });
+
+  it("maps rejected invoke status errors", async () => {
+    mocks.invoke.mockRejectedValueOnce({ status: 401 });
+    await expect(gateway.status()).rejects.toEqual({ kind: "unauthenticated" });
+
+    mocks.invoke.mockRejectedValueOnce({ status: 423 });
+    await expect(gateway.status()).rejects.toEqual({ kind: "vaultLocked" });
+  });
+
+  it("round-trips layout through invoke", async () => {
+    const layout = {
+      version: 1,
+      updated_at: "2026-06-24T00:00:00.000Z",
+      cards: [],
+    };
+    mocks.invoke.mockResolvedValueOnce(layout);
+
+    await expect(gateway.layoutPut(layout)).resolves.toEqual(layout);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_layout_put", { layout });
+  });
+
+  it("layout store discards stale PUT responses by updated_at", async () => {
+    const newer = {
+      version: 1,
+      updated_at: "2026-06-24T01:00:00.000Z",
+      cards: [{ id: "email", domain: "email", cluster: "Comms", x: 1, y: 2, w: 3, h: 4 }],
+    };
+    const older = {
+      version: 1,
+      updated_at: "2026-06-24T00:00:00.000Z",
+      cards: [],
+    };
+    mocks.invoke.mockResolvedValueOnce(older);
+    layoutStore.setLocalLayout(newer);
+
+    await layoutStore.flush(newer);
+
+    expect(layoutStore.getSnapshot().layout).toEqual(newer);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_layout_put", { layout: newer });
+  });
+});
