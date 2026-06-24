@@ -15,7 +15,12 @@ from datetime import UTC, datetime, timedelta
 from pydantic import BaseModel, ConfigDict
 
 from artemis.modules.calendar.preferences import CalPrefs
-from artemis.modules.calendar.read_tools import FindTimeArgs, FindTimeResult, Window
+from artemis.modules.calendar.read_tools import (
+    FindTimeArgs,
+    FindTimeResult,
+    Window,
+    rank_slots_by_focus_window,
+)
 from artemis.modules.calendar.write_tools import BlockFocusTimeArgs, CalendarWriteTools
 
 
@@ -74,7 +79,8 @@ async def schedule_task(
             message=f"No open slot found for '{args.task_title}' in the requested window.",
         )
 
-    slot = result.slots[0]
+    ranked = rank_slots_by_focus_window(result.slots, prefs.preferred_focus_window, prefs.timezone)
+    slot = ranked[0]
     write_result = await write_tools.block_focus_time(
         BlockFocusTimeArgs(
             start_datetime=slot.start_dt,

@@ -25,7 +25,7 @@ from artemis.modules.calendar.write_tools import (
     WriteResult,
 )
 from artemis.modules.productivity import tools
-from artemis.modules.productivity.manifest import productivity_manifest
+from artemis.modules.productivity.manifest import tasks_manifest
 from artemis.modules.productivity.store import ProductivityStore
 
 
@@ -97,6 +97,55 @@ async def test_schedule_task_no_slot_does_not_write() -> None:
     assert result.scheduled is None
     assert result.message
     assert fake_wt.block_focus_time_calls == []
+
+
+async def test_schedule_task_prefers_earliest_slot_within_focus_window() -> None:
+    fake_wt = FakeCalendarWriteTools()
+
+    async def find_time_fn(args: FindTimeArgs) -> FindTimeResult:
+        del args
+        return FindTimeResult(
+            slots=[
+                _slot_at("2026-06-10T08:30:00Z", "2026-06-10T09:30:00Z"),
+                _slot_at("2026-06-10T10:00:00Z", "2026-06-10T11:00:00Z"),
+                _slot_at("2026-06-10T14:00:00Z", "2026-06-10T15:00:00Z"),
+            ]
+        )
+
+    result = await schedule_task(
+        ScheduleTaskArgs(task_id="t1", task_title="Buy milk"),
+        write_tools=cast(CalendarWriteTools, fake_wt),
+        find_time_fn=find_time_fn,
+        prefs=_prefs(preferred_focus_window=("09:00", "12:00")),
+    )
+
+    assert result.scheduled is not None
+    assert result.scheduled.start_dt == "2026-06-10T10:00:00Z"
+    assert fake_wt.block_focus_time_calls[0].start_datetime == "2026-06-10T10:00:00Z"
+
+
+async def test_schedule_task_falls_back_to_earliest_slot_when_none_in_focus_window() -> None:
+    fake_wt = FakeCalendarWriteTools()
+
+    async def find_time_fn(args: FindTimeArgs) -> FindTimeResult:
+        del args
+        return FindTimeResult(
+            slots=[
+                _slot_at("2026-06-10T14:00:00Z", "2026-06-10T15:00:00Z"),
+                _slot_at("2026-06-10T16:00:00Z", "2026-06-10T17:00:00Z"),
+            ]
+        )
+
+    result = await schedule_task(
+        ScheduleTaskArgs(task_id="t1", task_title="Buy milk"),
+        write_tools=cast(CalendarWriteTools, fake_wt),
+        find_time_fn=find_time_fn,
+        prefs=_prefs(preferred_focus_window=("09:00", "12:00")),
+    )
+
+    assert result.scheduled is not None
+    assert result.scheduled.start_dt == "2026-06-10T14:00:00Z"
+    assert fake_wt.block_focus_time_calls[0].start_datetime == "2026-06-10T14:00:00Z"
 
 
 async def test_schedule_task_estimate_overrides_prefs() -> None:
@@ -231,18 +280,24 @@ async def test_task_schedule_uninitialised_schedule_fn_raises(tmp_path: Path) ->
 
 def test_tasks_manifest_adds_schedule_tool_only_when_wired(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    unwired = productivity_manifest(store)
-    wired = productivity_manifest(
+    unwired = tasks_manifest(store)
+    wired = tasks_manifest(
         store,
         schedule_fn=_fake_schedule_fn(),
         write_tools=cast(CalendarWriteTools, FakeCalendarWriteTools()),
     )
     unwired_names = [tool.name for tool in unwired.tools]
     wired_names = [tool.name for tool in wired.tools]
+    unwired_fq_ids = {f"{unwired.name}.{name}" for name in unwired_names}
+    wired_fq_ids = {f"{wired.name}.{name}" for name in wired_names}
 
     assert "schedule" not in unwired_names
     assert "schedule" in wired_names
     assert "complete" in wired_names
+    assert "tasks.schedule" not in unwired_fq_ids
+    assert "tasks.schedule" in wired_fq_ids
+    assert "tasks.complete" in wired_fq_ids
+    assert all("area" not in name for name in wired_names)
     assert len(wired.tools) == len(unwired.tools) + 1
     assert len(wired_names) == len(set(wired_names))
 
@@ -268,18 +323,22 @@ def _scheduled_result() -> ScheduleTaskResult:
 
 
 def _slot() -> FreeSlot:
-    return FreeSlot(
-        start_dt="2026-06-10T10:00:00Z",
-        end_dt="2026-06-10T11:00:00Z",
-        duration_minutes=60,
-    )
+    return _slot_at("2026-06-10T10:00:00Z", "2026-06-10T11:00:00Z")
 
 
-def _prefs() -> CalPrefs:
+def _slot_at(start_dt: str, end_dt: str) -> FreeSlot:
+    return FreeSlot(start_dt=start_dt, end_dt=end_dt, duration_minutes=60)
+
+
+def _prefs(
+    *,
+    preferred_focus_window: tuple[str, str] = ("09:00", "12:00"),
+) -> CalPrefs:
     return CalPrefs(
         focus_block_duration_minutes=60,
         default_write_calendar="primary",
         owner_email="me@test.com",
+        preferred_focus_window=preferred_focus_window,
     )
 
 
