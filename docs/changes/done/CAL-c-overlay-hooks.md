@@ -256,3 +256,12 @@ Approving this spec approves all of them.
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: OverlayStore + ProposalRow (SQLCipher, ScopeLockedError propagation)
+- [x] Task 2: Six proposal tools + Google tentative projection lifecycle (B1 attendee-branch stages underlying write action; B5 cancel_event not delete_event)
+- [x] Task 3: Seven §D HookSpec factories + check_refs + _quarantine_stub guard + intentions stub
+- [x] Task 4: Manifest wiring — 6 bare-name overlay ToolSpecs + 7 tier=1 proactive_hooks (async OverlayTools callable_refs → sync module funcs)
+- [x] Task 5: Off-hardware tests (10 passed)
+- [ ] Task 6: GATED on-hardware (Mini, vault unlocked) — deferred
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit f66701c.** mypy --strict clean (99 src files), ruff clean, full suite 377 passed (367 baseline + 10 new). Per-build adaptations (logged): stale `/Users/artemis-build/` paths → repo-relative; spec's `CacheStore` type → live `EventCacheStore`. No forks. Task 6 (real Google projection/approve/reject/sync) gated for Mini.

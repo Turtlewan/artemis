@@ -165,3 +165,10 @@ Approving this spec approves all of them.
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: focus-window-ranked slot-pick in `schedule_task` (`rank_slots_by_focus_window(...)[0]` replacing `slots[0]`)
+- [x] Task 2: Areas-drop sweep — confirmed zero `area_id` (already clean from M8-d-a-areas-drop)
+- [x] Task 3: `task.schedule` already rides `tasks_manifest` with fq id `tasks.schedule` (seam built it there) — confirm-only, no change
+- [x] Task 4: focus-window tests (within-window pick / fallback / empty) added
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit pending.** mypy --strict clean, ruff clean, full suite 390 passed (388 + 2 new). **Reconciliation (logged):** spec said import `rank_slots_by_focus_window` from `preferences.py` — it actually lives in `read_tools.py`; bound to the real location. Tasks 2 & 3 were already satisfied by the seam build → confirm-only. Net change: the 2-line re-rank in `schedule_task.py` + tests. No forks.

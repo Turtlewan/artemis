@@ -440,3 +440,12 @@ Additional:
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: `calendar.schedule_task` primitive (args/return schemas + async `schedule_task()`)
+- [x] Task 2: `schedule_task` ToolSpec on calendar manifest (bare name `schedule_task` → fq `calendar.schedule_task`)
+- [x] Task 3: async `task_schedule` + `init_schedule_fn`/`init_write_tools` singletons + B2 link-clear in `task_complete` (pre_state snapshot → `clear_task_schedule_link`)
+- [x] Task 4: `schedule` ToolSpec on `tasks_manifest` (bare name → fq `tasks.schedule`)
+- [x] Task 6: off-hardware tests (11 passed)
+- [ ] Task 5: GATED on-hardware (real Google write-through) — deferred
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit 38b67eb.** mypy --strict clean (100 src files), ruff clean, full suite 388 passed (377 + 11 new). **Reconciliations (logged, all SMALL/in-scope):** (1) stale `/Users/artemis-build/` paths → repo-relative; (2) **bare ToolSpec names** (B9 live convention) used instead of the spec's literal `name="calendar.schedule_task"`/`"task.schedule"` — registry composes the fq id; (3) the spec's signature changes to `make_calendar_manifest`/`tasks_manifest` would have broken ~10 out-of-scope test callers, so the new injection params (`schedule_task_fn`, `schedule_fn`, `write_tools`) were made **optional (default None)** — additive, existing 1-arg/2-arg callers untouched, the new tool appears only when wired; (4) tool-count assertions made **relative** (the spec's `30→31` is pre-Areas-drop/pre-split). No forks.
