@@ -131,7 +131,7 @@ def compose_brain(
 
             import artemis.paths as paths
             from artemis.data.sqlcipher import sqlcipher_open
-            from artemis.memory import build_write_path
+            from artemis.memory import build_write_path, memory_manifest
             from artemis.memory.repository import BitemporalRepository
             from artemis.memory.schema import create_schema
             from artemis.memory.store import SqliteMemoryStore
@@ -151,6 +151,7 @@ def compose_brain(
                 dimension=settings.embedding_dimension,
             )
             repo = BitemporalRepository(conn, OWNER_PERSON_ID)
+            registry.register(memory_manifest(repo))
             memory = SqliteMemoryStore(repo, embedder)
             write_queue = MemoryWriteQueue(build_write_path(repo, embedder, model))
             owner_person_id = OWNER_PERSON_ID

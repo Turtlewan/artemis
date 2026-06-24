@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from artemis.memory.decide import AudnDecider, AudnDecision, Candidate
+from artemis.memory.entities import EntityRepository, EntityType
 from artemis.memory.extraction import FactExtractor
 from artemis.memory.repository import BitemporalRepository
 from artemis.ports.retrieval import EmbeddingModel
@@ -44,10 +45,12 @@ class MemoryWritePath:
         extractor: FactExtractor,
         decider: AudnDecider,
         *,
+        entity_repo: EntityRepository | None = None,
         candidate_k: int = 5,
         extractor_model_id: str = "Qwen3.6-27B",
     ) -> None:
         self._repo = repo
+        self.entity_repo = entity_repo or EntityRepository(repo.conn, repo.person_id)
         self._embedder = embedder
         self._extractor = extractor
         self._decider = decider
@@ -74,7 +77,22 @@ class MemoryWritePath:
                 embedding = (await self._embedder.embed_documents([_fact_text(fact)]))[0]
                 candidates = self._candidates_for(embedding)
                 decision = await self._decider.decide(fact, candidates)
-                result = self._apply_decision(result, fact, decision, embedding, turn_id)
+                try:
+                    # M4-d-2 auto-links fact SUBJECTS to PERSON entities only
+                    # (ADR-013 Decision 1/6 person pointer). PLACE/GOAL entities
+                    # are created on-demand by their owning spokes, not extracted here.
+                    subject_entity_id = self.entity_repo.resolve_or_create_entity(
+                        fact.subject, EntityType.PERSON
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "entity resolution failed (%s); storing fact without entity link",
+                        type(exc).__name__,
+                    )
+                    subject_entity_id = None
+                result = self._apply_decision(
+                    result, fact, decision, embedding, turn_id, subject_entity_id
+                )
             except Exception as exc:
                 logger.warning(
                     "Memory write failed for turn id %s (%s)", turn_id, type(exc).__name__
@@ -107,6 +125,7 @@ class MemoryWritePath:
         decision: AudnDecision,
         embedding: Sequence[float],
         turn_id: str,
+        subject_entity_id: str | None,
     ) -> WritePathResult:
         from artemis.memory.extraction import ExtractedFact
 
@@ -124,6 +143,7 @@ class MemoryWritePath:
                 extractor_model=self._extractor_model_id,
                 keywords=fact.keywords,
                 contextual_description=fact.contextual_description,
+                subject_entity_id=subject_entity_id,
             )
             return _replace(result, facts_added=result.facts_added + 1)
 
@@ -140,6 +160,7 @@ class MemoryWritePath:
                 extractor_model=self._extractor_model_id,
                 keywords=fact.keywords,
                 contextual_description=fact.contextual_description,
+                subject_entity_id=subject_entity_id,
             )
             return _replace(result, facts_updated=result.facts_updated + 1)
 

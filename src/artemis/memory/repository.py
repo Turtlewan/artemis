@@ -95,7 +95,7 @@ _FACT_COLUMNS: str = (
     "confidence, valid_from, valid_to, tx_from, tx_to, "
     "source_turn_id, extracted_at, extractor_model, "
     "salience, access_count, last_access, "
-    "keywords, contextual_description, linked_ids"
+    "keywords, contextual_description, linked_ids, subject_entity_id"
 )
 
 
@@ -122,6 +122,7 @@ def _row_to_fact(row: tuple[Any, ...]) -> FactRow:
         keywords=row[17],
         contextual_description=row[18],
         linked_ids=row[19],
+        subject_entity_id=row[20],
     )
 
 
@@ -145,6 +146,16 @@ class BitemporalRepository:
     def __init__(self, conn: sqlite3.Connection, person_id: PersonId) -> None:
         self._conn = conn
         self._person_id = person_id
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Return the underlying owner-scoped SQLite connection."""
+        return self._conn
+
+    @property
+    def person_id(self) -> PersonId:
+        """Return the repository's owner person id."""
+        return self._person_id
 
     # ── Cardinality helpers ─────────────────────────────────────────────────
 
@@ -218,6 +229,7 @@ class BitemporalRepository:
         keywords: tuple[str, ...] = (),
         contextual_description: str | None = None,
         linked_ids: tuple[str, ...] = (),
+        subject_entity_id: str | None = None,
     ) -> str:
         """Insert a new fact version.
 
@@ -232,6 +244,10 @@ class BitemporalRepository:
 
         Returns:
             The new ``fact_id``.
+
+        ``subject_entity_id`` is the optional M4-d-1 PERSON-entity link written
+        at fact creation time. The idempotent NO-OP path does not compare or
+        backfill it, so old or degraded rows may legitimately keep ``None``.
         """
         vf = valid_from or now_iso()
         now = now_iso()
@@ -258,8 +274,8 @@ class BitemporalRepository:
                 confidence, valid_from, valid_to, tx_from, tx_to,
                 source_turn_id, extracted_at, extractor_model,
                 salience, access_count, last_access,
-                keywords, contextual_description, linked_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?)""",
+                keywords, contextual_description, linked_ids, subject_entity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?)""",
             (
                 fact_id,
                 fact_key,
@@ -278,6 +294,7 @@ class BitemporalRepository:
                 kw_str,
                 contextual_description,
                 linked_str,
+                subject_entity_id,
             ),
         )
 
@@ -300,6 +317,7 @@ class BitemporalRepository:
         keywords: tuple[str, ...] = (),
         contextual_description: str | None = None,
         linked_ids: tuple[str, ...] = (),
+        subject_entity_id: str | None = None,
     ) -> str:
         """Close the current interval and insert a new version (the U path).
 
@@ -311,6 +329,9 @@ class BitemporalRepository:
 
         Returns:
             The new ``fact_id``.
+
+        ``subject_entity_id`` is copied onto the new version row only. Closed
+        historical rows retain the link value they had when written.
         """
         vf = valid_from or now_iso()
         now = now_iso()
@@ -336,8 +357,8 @@ class BitemporalRepository:
                 confidence, valid_from, valid_to, tx_from, tx_to,
                 source_turn_id, extracted_at, extractor_model,
                 salience, access_count, last_access,
-                keywords, contextual_description, linked_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?)""",
+                keywords, contextual_description, linked_ids, subject_entity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?)""",
             (
                 fact_id,
                 fact_key,
@@ -356,6 +377,7 @@ class BitemporalRepository:
                 kw_str,
                 contextual_description,
                 linked_str,
+                subject_entity_id,
             ),
         )
 
@@ -451,6 +473,25 @@ class BitemporalRepository:
         rows = self._conn.execute(
             f"SELECT {_FACT_COLUMNS} FROM facts WHERE fact_key = ? ORDER BY tx_from",
             (fact_key,),
+        ).fetchall()
+        return [_row_to_fact(r) for r in rows]
+
+    def facts_for_entity(self, entity_id: str, *, as_of_tx: str | None = None) -> list[FactRow]:
+        """Return current facts linked to a subject entity.
+
+        The subject link is write-time only: rows first written without an entity
+        link are not backfilled by later idempotent writes, and historical rows
+        may have ``subject_entity_id`` set to ``None``.
+        """
+        now = as_of_tx or now_iso()
+        rows = self._conn.execute(
+            f"""SELECT {_FACT_COLUMNS}
+               FROM facts
+               WHERE subject_entity_id = ?
+                 AND tx_from <= ? AND tx_to > ?
+                 AND valid_from <= ? AND valid_to > ?
+               ORDER BY relation, object""",
+            (entity_id, now, now, now, now),
         ).fetchall()
         return [_row_to_fact(r) for r in rows]
 

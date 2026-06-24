@@ -34,6 +34,14 @@ from artemis.memory.repository import (
 )
 from artemis.memory.schema import SENTINEL_TS, create_schema, now_iso
 from artemis.memory.store import SqliteMemoryStore, render_inject_block
+from artemis.memory.tools import (
+    EntityNotFound,
+    FactView,
+    ResolveEntityArgs,
+    ResolveEntityResult,
+    memory_manifest,
+    resolve_entity,
+)
 from artemis.memory.write_path import (
     MemoryWritePath,
     MemoryWriteQueue,
@@ -57,7 +65,8 @@ def build_write_path(
     """
     extractor = FactExtractor(model)
     decider = AudnDecider(model, repo)
-    return MemoryWritePath(repo, embedder, extractor, decider)
+    entity_repo = EntityRepository(repo.conn, repo.person_id)
+    return MemoryWritePath(repo, embedder, extractor, decider, entity_repo=entity_repo)
 
 
 __all__ = [
@@ -68,6 +77,7 @@ __all__ = [
     "CurrentFactConflictError",
     "DimensionMismatchError",
     "EntityRef",
+    "EntityNotFound",
     "EntityRepository",
     "EntityRow",
     "EntityType",
@@ -75,22 +85,27 @@ __all__ = [
     "ExtractedFact",
     "FactExtractor",
     "FactRow",
+    "FactView",
     "FakeDecider",
     "FakeExtractor",
     "MemoryWritePath",
     "MemoryWriteQueue",
     "OwnerConfirmationRequired",
     "OwnerMemory",
+    "ResolveEntityArgs",
+    "ResolveEntityResult",
     "SENTINEL_TS",
     "SqliteMemoryStore",
     "WritePathResult",
     "build_write_path",
     "create_schema",
     "decay_score",
+    "memory_manifest",
     "now_iso",
     "person_fact_key",
     "rank_for_inject",
     "recall_multiplier",
     "render_inject_block",
+    "resolve_entity",
     "sweep_tombstone_candidates",
 ]
