@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CardPlacement } from "./api/dto";
+import { AskPopup } from "./ask/AskPopup";
+import { useAskHotkey } from "./ask/useAskHotkey";
 import { DetailOverlay } from "./card/DetailOverlay";
 import { useCardOverlay } from "./card/useCardOverlay";
 import type { DomainId } from "./domains";
@@ -54,6 +56,7 @@ function WorldShell() {
   const minimapRef = useRef<HTMLDivElement | null>(null);
   const [activeDomain, setActiveDomain] = useState<DomainId | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const ask = useAskHotkey();
 
   const focusCard = useCallback((domain: DomainId): void => {
     window.requestAnimationFrame(() => {
@@ -136,6 +139,7 @@ function WorldShell() {
         </span>
         <span className="world-topbar__spacer" />
         <span className="world-status">{connection.state === "unlocked" ? "Vault unlocked" : "Vault locked"}</span>
+        <button {...ask.askButtonProps}>Ask</button>
         <button type="button" onClick={travelHome}>
           Home
         </button>
@@ -143,6 +147,7 @@ function WorldShell() {
           Reset layout
         </button>
       </div>
+      <AskPopup isOpen={ask.isOpen} onClose={ask.close} />
       <div ref={worldRef} data-testid="world-plane-layer">
         <WorldPlane
           placements={placements}

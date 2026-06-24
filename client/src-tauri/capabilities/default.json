@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Default capability for the main Artemis window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister"
+  ]
 }
