@@ -13,6 +13,7 @@ import { useLayoutBridge } from "./world/layoutBridge";
 import { Minimap } from "./world/Minimap";
 import { useCamera, type TravelTarget } from "./world/useCamera";
 import { WorldPlane } from "./world/WorldPlane";
+import "./screens/registry";
 import "./theme/tokens.css";
 
 export default function App() {
