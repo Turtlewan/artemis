@@ -1,6 +1,7 @@
 """Recipe package surface."""
 
 from artemis.recipes.adapters.claude_cli import TeacherMalformedResponseError
+from artemis.recipes.dedupe import dedupe_retire
 from artemis.recipes.distill import (
     CloudEgressForbiddenError,
     DistillService,
@@ -51,6 +52,7 @@ __all__ = [
     "TeacherOutcome",
     "apply_recipe",
     "classify_safety",
+    "dedupe_retire",
     "escalate_and_distill",
     "explain",
     "recurrence_path",
