@@ -29,6 +29,7 @@ from artemis.router import SemanticRouter
 
 if TYPE_CHECKING:
     from artemis.recipes.promotion import Promoter
+    from artemis.retrieval.agentic import AgenticRetriever
     from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class Brain:
         sandbox: SandboxPort | None = None,
         telemetry_writer: TelemetryWriter | None = None,
         promoter: Promoter | None = None,
+        agentic: AgenticRetriever | None = None,
         obs: ObservabilitySink = NullSink(),
     ) -> None:
         self._router = router
@@ -96,6 +98,7 @@ class Brain:
         self._sandbox = sandbox
         self._telemetry_writer = telemetry_writer
         self._promoter = promoter
+        self.agentic = agentic
         self._obs = obs
 
     async def _responder_role(self, request_text: str) -> str:
@@ -141,6 +144,22 @@ class Brain:
                 logger.warning("Brain: memory write enqueue failed", exc_info=True)
 
         if decision.path == "escalate":
+            if self.agentic is not None:
+                try:
+                    agentic_result = await self.agentic.run(request_text, scope)
+                    if agentic_result.chunks:
+                        return BrainResponse(
+                            text=agentic_result.answer,
+                            path="agentic",
+                            escalated=False,
+                        )
+                except Exception:
+                    logger.warning("Brain: agentic retrieval failed", exc_info=True)
+                    return BrainResponse(
+                        text="RETRIEVAL_ERROR",
+                        path="agentic",
+                        escalated=False,
+                    )
             if self._store is None:
                 return BrainResponse(
                     text="ESCALATION_NOT_AVAILABLE",
