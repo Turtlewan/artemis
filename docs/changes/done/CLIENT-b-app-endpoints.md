@@ -158,5 +158,40 @@ SSE streams chat (TTFT masked, brain.md). Review/Status are O(recipes) rule-base
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 - [ ] (GATED, on Mini) `tailscale serve` exposes `https://<host>.ts.net/app/status` returning 401 without a bearer, 200 with a valid session → verify recorded in handoff.
 
+## Amendment 2026-06-24 — `/app/layout` + per-domain read endpoints (Tauri client surface)
+
+The Tauri client (ADR-028 carve) consumes the existing `/app/*` surface **plus** these additions. All additive to `api_app.py`; the two-tier auth pattern + main.py wiring are unchanged. The stale `/Users/artemis-build/` paths are adapted to the live tree at build time (standing pre-flight pattern).
+
+### Added files
+| File | Operation | Notes |
+|------|-----------|-------|
+| src/artemis/app_layout_store.py | create | `LayoutStore` — the owner's map-layout persistence. **Plain JSON `0600` under `identity_dir(s)/layout.json` — NOT a SQLCipher vault store.** Rationale: layout is **session-gated** (ADR-030) and must be readable while the vault is **locked**, when no DEK is available — so it lives beside the device registry (readable with a session, no unlock), not inside an unlock-gated encrypted scope. Atomic write (temp + `os.replace`). LWW: a PUT persists only if its `updated_at` > stored. |
+
+### Added routes (api_app.py)
+- **`GET /app/layout`** (`Depends(require_session)` — **NOT** `require_unlocked`; ADR-030 § Layout endpoint gate): return the stored `LayoutDTO`, or a server **default seed** (the 4-cluster / 11-domain default per `domains.ts`) if none. Session-gated so the map arranges while Vault-locked; card positions are low-sensitivity UX state.
+- **`PUT /app/layout`** (`require_session`): body = `LayoutDTO`; **last-writer-wins** on `updated_at` (reject/ignore a PUT whose `updated_at` ≤ stored); return the effective `LayoutDTO`. Server stamps `updated_at` on accept.
+- **Per-domain reads** (`Depends(require_unlocked)` — owner data; **423 when locked**). Each composes its module's READ tools only (never a write; untrusted external content stays behind the DR-a chokepoint where applicable) and returns the CLIENT-screens DTO as a pydantic model (snake_case wire):
+
+  | Route | Response model (mirrors CLIENT-screens TS) | Composes | Build |
+  |---|---|---|---|
+  | `GET /app/calendar` | `CalendarRead {events:[{id,title,start,end,kind,attendees?,rsvp?}], tasks_due_by_day}` | CAL-a/b/c reads + M8-d tasks-due | **real** |
+  | `GET /app/tasks` | `TasksRead {overdue,today,upcoming,suggestions}` | M8-d-a/a2 reads | **real** |
+  | `GET /app/projects` | `ProjectsRead {projects:[{id,name,status,target?,open_tasks}]}` | M8-d projects manifest | **real** |
+  | `GET /app/email` | `GmailRead {needs_you:[{id,sender,subject,why}], signal:[{id,sender,subject,ts}]}` | M8-b1 reads | **fake-gated** (M8-b1 blocked on docling) |
+  | `GET /app/finance` | `FinanceRead {week_total, mtd_total, daily:[{date,amount}], categories:[{name,amount,color}], transactions[], bills[], unusual?, duplicate?, ambiguous?}` | FIN-* | **fake-gated** (FIN unbuilt) |
+
+  **Fake-gated** = ship the route + a typed fake payload behind a flag so the client builds/tests now; swap to the real module read when M8-b1 / FIN land. (FinanceRead matches the now-settled finance detail design — `finance-page.html` — even though the CLIENT-screens Finance *view* is still the generic placeholder; see GAP below.)
+
+### Added tasks
+- [ ] Task 7 (amendment): `LayoutStore` + `GET/PUT /app/layout` — files: `src/artemis/app_layout_store.py` (create), `src/artemis/api_app.py` (modify), `src/artemis/main.py` (modify — construct `LayoutStore(identity_dir(s)/...)` → `app.state.layout_store`), `tests/test_api_app.py` (modify). Pydantic `LayoutDTO`/`CardPlacement`; GET (session) returns stored-or-default-seed; PUT (session) LWW. — done when: `mypy --strict src` passes; TestClient: GET without a session → 401; with a session (vault **locked**) → a `LayoutDTO` (proves session-not-unlock gating); a PUT with an older `updated_at` leaves the store unchanged; a newer PUT persists + round-trips.
+- [ ] Task 8 (amendment): the 5 per-domain read endpoints — files: `src/artemis/api_app.py` (modify), `tests/test_api_app.py` (modify). Add the 5 `require_unlocked` routes above + their pydantic models; calendar/tasks/projects compose the real module read tools, email/finance return a typed FAKE behind a feature flag. — done when: `mypy --strict src` passes; TestClient (against fake modules): each route → **423 when vault-locked**, **200 + the typed DTO when unlocked**; `/app/calendar` includes `tasks_due_by_day`; the fake-gated email/finance return their typed shapes.
+
+### Permissions / AC delta
+- File ops: **+ create** `src/artemis/app_layout_store.py`; **+ modify** `src/artemis/api_app.py`, `src/artemis/main.py`, `tests/test_api_app.py`.
+- AC: **+** `GET/PUT /app/layout` session-gated (works while locked) + LWW; **+** the 5 per-domain reads = 423-when-locked / typed-DTO-when-unlocked (calendar/tasks/projects real; email/finance fake-gated).
+
+### GAP (for planning)
+The **Finance detail design is now settled** (`docs/research/mockups/finance-page.html` — compact daily-spend list + leader-line category pie), but `CLIENT-screens` still carries Finance as the **generic placeholder**. A near-term `CLIENT-screens` Finance amendment should graduate Finance from `GenericDomainDetail` to a bespoke `FinanceDetail` consuming the rich `FinanceRead` above (mirrors the mockup). The `/app/finance` endpoint already returns the rich shape, so no brain re-work is needed when that lands.
+
 ## Progress
 _(Coding mode writes here — do not edit manually)_

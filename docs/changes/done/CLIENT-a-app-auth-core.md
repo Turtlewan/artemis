@@ -140,5 +140,13 @@ P-256 verify is sub-millisecond; in-memory challenge/session dicts are O(1). The
 - [ ] Run `uv run python -c "from artemis.identity.app_auth import AppAuth, DeviceRegistry, SessionStore, ChallengeStore, require_session, resolve_scope; from artemis.paths import identity_dir, devices_file"` → verify: exit 0.
 - [ ] Run `uv run ruff check . && uv run ruff format --check .` → verify: both exit 0.
 
+## Amendment 2026-06-24 — ADR-025 client-encoding conformance (Tauri client replaces the phone)
+
+The Tauri client (CLIENT-auth) is the new prover. ADR-025 keeps this **brain-side verifier UNCHANGED**; this amendment only pins the on-the-wire encodings so the Tauri signer and this verifier agree. No code change to the device-registry / challenge / session / scope-from-session core.
+
+- **Signature = DER (unchanged, no brain change).** Windows NCrypt returns raw `r‖s`; CLIENT-auth normalizes it to **DER** (the `ecdsa` crate) before sending; the macOS SE path is already DER. So the existing `public_key.verify(sig_der, msg, ec.ECDSA(hashes.SHA256()))` (Task 3) is correct as-is. The signed message + domain-separation context (`nonce ‖ b"artemis-api-session" ‖ counter(8B BE)`) are unchanged.
+- **Public key = X9.63 uncompressed point (the EXISTING contract — keep).** The registry decodes via `from_encoded_point(SECP256R1(), b64decode(...))`; M2-a's broker `pair --pubkey` expects the same. ⚠ **CLIENT-auth conformance correction:** CLIENT-auth's draft normalizes the pubkey to **SPKI-DER** — that is a client-side bug (it would break BOTH this registry AND the M2-a broker). **CLIENT-auth must export the device public key as an X9.63 uncompressed point** (`0x04‖X‖Y`, 65 bytes, base64 — `p256`: `PublicKey::to_encoded_point(false)`), NOT SPKI-DER. The brain side does NOT change.
+- **Conformance test (add to Task 5):** a fixture pubkey exported as X9.63 + a DER signature over `nonce ‖ context ‖ counter` verifies through `complete_session` — pinning the byte contract end-to-end. (Live cross-impl conformance — a real CLIENT-auth signature verifying here — is the ADR-025 gated build-time spike.)
+
 ## Progress
 _(Coding mode writes here — do not edit manually)_
