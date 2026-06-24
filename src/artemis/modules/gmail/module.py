@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from artemis.integrations.google.scopes import register_google_scopes
-from artemis.manifest import DataScope, ModuleManifest, Permissions
+from artemis.manifest import DataScope, HookSpec, ModuleManifest, Permissions
 
 from .cache import GmailReadCache
 from .client import GMAIL_READONLY_SCOPE, GmailApiPort
@@ -15,8 +15,13 @@ def register_gmail_scope() -> None:
     register_google_scopes("gmail", {GMAIL_READONLY_SCOPE})
 
 
-def build_gmail_manifest(api: GmailApiPort, cache: GmailReadCache) -> ModuleManifest:
-    """Return the read-only Gmail module manifest."""
+def build_gmail_manifest(
+    api: GmailApiPort, cache: GmailReadCache, *, hook: HookSpec | None = None
+) -> ModuleManifest:
+    """Return the read-only Gmail module manifest.
+
+    ``hook`` is optional and preserves the M8-b1 no-proactivity default when omitted.
+    """
     register_gmail_scope()
     return ModuleManifest(
         name="gmail",
@@ -28,5 +33,5 @@ def build_gmail_manifest(api: GmailApiPort, cache: GmailReadCache) -> ModuleMani
         tools=build_gmail_tools(api, cache),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
-        proactive_hooks=[],
+        proactive_hooks=[hook] if hook is not None else [],
     )
