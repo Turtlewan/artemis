@@ -1,0 +1,65 @@
+{
+  "gmail": {
+    "vip_senders": [
+      "ashley",
+      "debby"
+    ],
+    "urgency_keywords": [
+      "legal",
+      "fraud",
+      "unauthorized",
+      "payment failed",
+      "payment warning",
+      "overdue",
+      "suspended",
+      "deadline"
+    ],
+    "urgency_sender_exclude": [
+      "uob.com.sg",
+      "scb.com",
+      "standardchartered.com",
+      "dbs.com",
+      "dbs.com.sg"
+    ]
+  },
+  "calendar": {
+    "working_days": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "preferred_focus_window": [
+      "09:00",
+      "12:00"
+    ],
+    "free_gap_hook_time": "08:30"
+  },
+  "tasks": {
+    "morning_digest_fallback_time": "08:00",
+    "weekend_review_day": 5,
+    "week_ahead_time": "19:00",
+    "week_ahead_day": 6
+  },
+  "finance": {
+    "bank_sender_allowlist": [
+      "uob.com.sg",
+      "scb.com",
+      "standardchartered.com",
+      "dbs.com",
+      "dbs.com.sg"
+    ],
+    "recurring_min_occurrences": 2,
+    "reconcile_date_window_days": 1,
+    "reconcile_amount_exact": true,
+    "unusual_spend_sigma": 2.0
+  },
+  "reaction": {
+    "fraud_confirm_amount_sgd": 500.0,
+    "fraud_confirm_window_days": 7,
+    "reconciler_nightly_time": "03:00",
+    "maps_intl_buffer_minutes": 180,
+    "maps_domestic_buffer_minutes": 90
+  }
+}
