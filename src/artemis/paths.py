@@ -58,6 +58,8 @@ def vault_dir(s: Settings, scope: str) -> Path:
     This is where LanceDB lives (on the APFS encrypted volume, mounted at
     runtime by the M2 security broker). Returns an empty dir path until mounted.
     """
+    if scope not in VALID_SCOPES:
+        raise ValueError(f"Vault storage is owner-only; unsupported scope: {scope!r}")
     return scope_dir(s, scope) / "vault"
 
 

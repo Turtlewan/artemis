@@ -31,6 +31,11 @@ dev = [
     "ruff>=0.11",
     "anyio>=4",
 ]
+# Heavy torch-scale parser — NOT installed by plain `uv sync` (dev box stays lean,
+# M3-a runs against FakeParser). Install on Mac/prod with `uv sync --group docling`.
+docling = [
+    "docling>=2.99.0",
+]
 
 [build-system]
 requires = ["hatchling"]

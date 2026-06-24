@@ -41,3 +41,7 @@ models/
 # --- OS cruft ---
 .DS_Store
 Thumbs.db
+
+# --- sandbox / test cache cruft (Codex restricted-token sandbox writes these) ---
+.tmp/
+.cache/

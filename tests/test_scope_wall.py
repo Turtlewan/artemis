@@ -106,7 +106,10 @@ def test_provisioning_isolation_and_vector_handles(tmp_path: Path) -> None:
     assert owner_db_path.is_relative_to(paths.scope_dir(settings, OWNER_PRIVATE))
     assert guest_db_path.is_relative_to(paths.scope_dir(settings, "guest-bob"))
     assert not owner_db_path.is_relative_to(paths.vault_dir(settings, OWNER_PRIVATE))
-    assert not guest_db_path.is_relative_to(paths.vault_dir(settings, "guest-bob"))
+    # ADR-007 (M3-a Task 1): the LanceDB doc-corpus vault is owner-only — a guest
+    # scope has no vault_dir at all (raises), and its vectors live in sqlite-vec.
+    with pytest.raises(ValueError):
+        paths.vault_dir(settings, "guest-bob")
     assert owner_db_path != guest_db_path
 
     owner_vector = owner_store.vector_index_handle()
