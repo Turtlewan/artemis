@@ -10,7 +10,9 @@ from artemis.brain import Brain, BrainResponse
 from artemis.config import Settings, get_settings
 from artemis.identity.key_provider import ScopeLockedError
 from artemis.identity.scope import (
-    OWNER_PERSON_ID,
+    OWNER_PERSON_ID as _OWNER_PERSON_ID,
+)
+from artemis.identity.scope import (
     OWNER_PRIVATE,
     Identity,
     LockedError,
@@ -26,6 +28,9 @@ if TYPE_CHECKING:
     from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
+
+OWNER_PERSON_ID: PersonId = _OWNER_PERSON_ID
+"""Backward-compatible owner person id alias for auth and gateway callers."""
 
 OWNER_SCOPE: Scope = OWNER_PRIVATE
 """Backward-compatible owner scope alias for existing M1 surface tests."""
@@ -64,14 +69,27 @@ class Gateway:
             identity = self._resolve_identity()
             scope = primary_scope(identity)
             logger.debug("Gateway: attaching resolved scope %s", scope)
-            return await self._brain.respond(request_text, scope)
+            return await self.handle_text_scoped(request_text, scope)
         except (LockedError, ScopeLockedError):
             return BrainResponse(text="LOCKED", path="locked", tool_used=None, escalated=False)
+
+    async def handle_text_scoped(self, request_text: str, scope: Scope) -> BrainResponse:
+        """Process a text request through the Brain with an authenticated scope."""
+        return await self._brain.respond(request_text, scope)
 
     async def handle_text_stream(self, request_text: str) -> AsyncIterator[str]:
         """Stream a text response as a single chunk for the text surface."""
         result = await self.handle_text(request_text)
         yield result.text
+
+    async def handle_text_stream_scoped(
+        self,
+        request_text: str,
+        scope: Scope,
+    ) -> AsyncIterator[str]:
+        """Stream a text response through the Brain with an authenticated scope."""
+        async for chunk in self._brain.respond_stream(request_text, scope):
+            yield chunk
 
     async def pre_route(self, request_text: str) -> str | None:
         """Classify a request and return the top candidate tool id, if any.

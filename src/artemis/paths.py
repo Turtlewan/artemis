@@ -37,6 +37,21 @@ def scope_dir(s: Settings, scope: str) -> Path:
     return slot_root(s) / scope
 
 
+def identity_dir(s: Settings) -> Path:
+    """Return the public-key identity directory for the active slot.
+
+    This directory holds public-key device records only, never secrets. It is
+    intentionally readable before any vault unlock so devices can authenticate
+    the unlock path.
+    """
+    return slot_root(s) / "identity"
+
+
+def devices_file(s: Settings) -> Path:
+    """Return the public-key device registry file for the active slot."""
+    return identity_dir(s) / "devices.json"
+
+
 def vault_dir(s: Settings, scope: str) -> Path:
     """Return the encrypted-volume mount point under a scope.
 
