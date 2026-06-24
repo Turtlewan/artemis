@@ -20,7 +20,7 @@ from artemis.ports.types import Document, Scope
 class Source:
     """A source URI to ingest into a scope."""
 
-    kind: Literal["file", "web", "email", "email_attachment"]
+    kind: Literal["file", "web", "email", "email_attachment", "calendar_meeting"]
     uri: str
     scope: Scope
 

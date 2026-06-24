@@ -13,6 +13,11 @@ from artemis.modules.calendar.cache import CalendarSyncEngine, EventCacheStore
 from artemis.modules.calendar.client import CalendarClient, FakeCalendarClient, GoogleCalendarClient
 from artemis.modules.calendar.manifest import CalendarTools, make_calendar_manifest
 from artemis.modules.calendar.preferences import CalPrefs, PreferencesStore
+from artemis.modules.calendar.untrusted import (
+    CALENDAR_QUARANTINE_QUERY,
+    CalendarExtract,
+    quarantine_event_text,
+)
 
 register_google_scopes(
     "calendar",
@@ -24,11 +29,14 @@ register_google_scopes(
 __all__ = [
     "CalPrefs",
     "CalendarClient",
+    "CalendarExtract",
     "CalendarSyncEngine",
     "CalendarTools",
     "EventCacheStore",
     "FakeCalendarClient",
     "GoogleCalendarClient",
     "PreferencesStore",
+    "CALENDAR_QUARANTINE_QUERY",
     "make_calendar_manifest",
+    "quarantine_event_text",
 ]
