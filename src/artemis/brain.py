@@ -10,11 +10,13 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.memory.store import render_inject_block
 from artemis.memory.write_path import MemoryWriteQueue
+from artemis.obs import NullSink, ObservabilitySink
 from artemis.ports.memory import MemoryStore
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message, PersonId, Scope
@@ -79,6 +81,7 @@ class Brain:
         sandbox: SandboxPort | None = None,
         telemetry_writer: TelemetryWriter | None = None,
         promoter: Promoter | None = None,
+        obs: ObservabilitySink = NullSink(),
     ) -> None:
         self._router = router
         self._registry = registry
@@ -93,6 +96,7 @@ class Brain:
         self._sandbox = sandbox
         self._telemetry_writer = telemetry_writer
         self._promoter = promoter
+        self._obs = obs
 
     async def _responder_role(self, request_text: str) -> str:
         """Pick the free-form responder role: local unless classified general."""
@@ -116,6 +120,13 @@ class Brain:
         except Exception:
             logger.warning("Brain: router failed, returning escalation stub", exc_info=True)
             return BrainResponse(text="ESCALATION_NOT_AVAILABLE", path="escalate", escalated=True)
+        key = task_class_key(decision, request_text)
+        self._obs.on_route_decision(
+            key,
+            decision.confidence,
+            decision.path,
+            now=datetime.now(UTC),
+        )
 
         # ── Escalation stub ────────────────────────────────────────────
         # Schedule M4-b extraction once after a successful route; enqueue is non-blocking.
@@ -136,7 +147,6 @@ class Brain:
                     path="escalate",
                     escalated=True,
                 )
-            key = task_class_key(decision, request_text)
             try:
                 names = await self._store.retrieve_recipes(
                     request_text,
@@ -212,10 +222,11 @@ class Brain:
                     path=decision.path,
                     tool_used=fq_id,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     "Brain: tool dispatch failed for %s, returning TOOL_ERROR", fq_id, exc_info=True
                 )
+                self._obs.on_error("brain", exc, now=datetime.now(UTC))
                 return BrainResponse(text="TOOL_ERROR", path=decision.path, tool_used=fq_id)
 
         # ── Free-form responder path ───────────────────────────────────
@@ -269,8 +280,15 @@ class Brain:
         # Stream from the free-form responder
         msg = Message(role="user", content=request_text)
         role = await self._responder_role(request_text)
-        async for chunk in self._model.complete_stream(role=role, messages=[msg]):
-            yield chunk
+        try:
+            async for chunk in self._model.complete_stream(role=role, messages=[msg]):
+                yield chunk
+        except Exception as exc:
+            logger.warning(
+                "Brain: responder stream failed, returning escalation stub", exc_info=True
+            )
+            self._obs.on_error("brain", exc, now=datetime.now(UTC))
+            yield "ESCALATION_NOT_AVAILABLE"
 
     async def pre_route(self, request_text: str, scope: Scope) -> str | None:
         """Classify a request and return the top candidate tool id, if any.

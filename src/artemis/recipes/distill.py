@@ -14,9 +14,10 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, cast
 
+from artemis.obs import NullSink, ObservabilitySink
 from artemis.ports.model import ModelPort, ModelResponse
 from artemis.ports.routing import RouteDecision
 from artemis.ports.types import Message, Scope
@@ -70,7 +71,7 @@ def task_class_key(decision: RouteDecision, request_text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-@dataclass
+@dataclass(init=False)
 class DistillService:
     """Service for teacher solve, task-class distillation, and replay verify."""
 
@@ -78,11 +79,34 @@ class DistillService:
     store: RecipeStore
     teacher_origin: Literal["local", "cloud"]
     sandbox: SandboxPort | None = None
+    _obs: ObservabilitySink = NullSink()
+
+    def __init__(
+        self,
+        *,
+        model: ModelPort,
+        store: RecipeStore,
+        teacher_origin: Literal["local", "cloud"],
+        sandbox: SandboxPort | None = None,
+        obs: ObservabilitySink = NullSink(),
+    ) -> None:
+        self.model = model
+        self.store = store
+        self.teacher_origin = teacher_origin
+        self.sandbox = sandbox
+        self._obs = obs
 
     async def escalate_and_distill(self, req: EscalationRequest) -> Recipe:
         """Escalate once, distill an instance-free recipe, verify, and persist."""
+        self._obs.on_escalation(
+            req.task_class_key,
+            is_cloud_safe=req.is_cloud_safe,
+            now=datetime.now(UTC),
+        )
         if req.is_cloud_safe is False and self.teacher_origin == "cloud":
-            raise CloudEgressForbiddenError("sensitive escalation cannot use cloud teacher")
+            cloud_err = CloudEgressForbiddenError("sensitive escalation cannot use cloud teacher")
+            self._obs.on_error("distill", cloud_err, now=datetime.now(UTC))
+            raise cloud_err
 
         solution = await self.model.complete(
             role="teacher",
@@ -112,9 +136,13 @@ class DistillService:
         except SandboxNotAvailableError:
             raise
         except Exception as exc:
-            raise RecipeReplayError("candidate replay verification failed") from exc
+            replay_err = RecipeReplayError("candidate replay verification failed")
+            self._obs.on_error("distill", replay_err, now=datetime.now(UTC))
+            raise replay_err from exc
         if not verified:
-            raise RecipeReplayError("candidate replay verification failed")
+            replay_err = RecipeReplayError("candidate replay verification failed")
+            self._obs.on_error("distill", replay_err, now=datetime.now(UTC))
+            raise replay_err
 
         await self.store.write(recipe)
         return recipe
