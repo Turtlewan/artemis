@@ -150,3 +150,13 @@ Approving this spec approves all of them.
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: JSON logging + `redact()` + `RedactionFilter` + `configure_logging`/`get_logger`/`obs_dir`
+- [x] Task 2: `ObservabilitySink` Protocol (primitives only) + `NullSink` + `CompositeSink` (non-raising fan-out)
+- [x] Task 3: error pillar — `ErrorRecord`/`ErrorStore` (append-only fsync) + `ErrorCaptureSink` (redact-before-store)
+- [x] Task 4: `obs/__init__.py` re-exports
+- [x] Task 5: brain taps — `obs=NullSink()` param + `on_route_decision` (key-only, no `request_text` to sink) + `on_error` at degrade sites
+- [x] Task 6: distill taps — `obs` on `DistillService.__init__` + `on_escalation` at entry + `on_error` before each typed-error raise
+- [x] Task 7: tests (6 passed; distill regression 7 passed)
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit pending.** mypy --strict clean (105 src files), ruff clean, full suite 401 passed (395 + 6 new), brain/distill regression intact, no import cycle. **Reconciliation (logged, SMALL/in-scope):** spec assumed a module-level `escalate_and_distill(req, model, store, *, obs)`, but live distill is a **`DistillService` class** (method + thin module wrapper) → injected `obs: ObservabilitySink = NullSink()` on `DistillService.__init__` (backward-compatible) with the on_escalation/on_error taps inside the method; tests build `DistillService(..., obs=spy)`. Also: live `_router.route` is async (`await`); route-decision tap placed in the success path after the route try/except. No forks.
