@@ -26,6 +26,7 @@ from artemis.registry.registry import ToolRegistry
 from artemis.router import SemanticRouter
 
 if TYPE_CHECKING:
+    from artemis.recipes.promotion import Promoter
     from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class Brain:
         store: RecipeStore | None = None,
         sandbox: SandboxPort | None = None,
         telemetry_writer: TelemetryWriter | None = None,
+        promoter: Promoter | None = None,
     ) -> None:
         self._router = router
         self._registry = registry
@@ -90,6 +92,7 @@ class Brain:
         self._store = store
         self._sandbox = sandbox
         self._telemetry_writer = telemetry_writer
+        self._promoter = promoter
 
     async def _responder_role(self, request_text: str) -> str:
         """Pick the free-form responder role: local unless classified general."""
@@ -175,6 +178,15 @@ class Brain:
                     )
                 except Exception:
                     logger.warning("Brain: escalation telemetry write failed", exc_info=True)
+            if (
+                self._promoter is not None
+                and self._store is not None
+                and any(
+                    recipe.task_class_key == key
+                    for recipe in self._store.list(status=RecipeStatus.CANDIDATE)
+                )
+            ):
+                await self._promoter.note_occurrence(key)
             return BrainResponse(text="", path="escalation_queued", escalated=True)
 
         # ── Tool path ──────────────────────────────────────────────────
