@@ -156,3 +156,13 @@ The `staged_for_digest()` items are owner-facing (rendered in the M6 digest); th
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: `TelemetrySource` Protocol + event types (`EscalationEvent`/`ConfidenceEvent`/`StaleItem`) + `Gap` + `scan_gaps` + `pick_top_gap`
+- [x] Task 2: `Researcher`/`Reachability` Protocols + `StubResearcher` + `registrable_domain` (tldextract eTLD+1) + `grounding_gate` (≥2 distinct-domain reachable, not self-generated; F7 gate)
+- [x] Task 3: `TokenLedger` (hard per-cycle + weekly caps) + `StagingStore`
+- [x] Task 4: `CuriosityLoop.curiosity_tick` end-to-end + `staged_for_digest`/`commit_staged` (recipe→CANDIDATE; chunk→NotImplementedError until M3 hook)/`discard_staged`
+- [x] Task 5: re-exports + `make_curiosity_hook` (self-contained — heartbeat.py NOT touched)
+- [x] Task 6: tests (15 new; gap scan, grounding-gate pass/fail cases, caps hard-stop, idle gate, stage→owner-gated-commit, ungrounded discard, chunk-commit NotImplementedError)
+- [ ] Task 7: GATED on-hardware (real Researcher + reachability web egress) — deferred (depends on the separate Deep-Research engine)
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit pending.** mypy --strict clean (109 src files), ruff clean, full suite 416 passed (401 + 15 new). `uv add tldextract` (5.3.1) done host-side, pip-audit clean for the new deps (tldextract/filelock/requests-file). **Reconciliations (logged):** stale `/Users/artemis-build/` paths → repo-relative; heartbeat.py left untouched (`make_curiosity_hook` self-contained in `curiosity/__init__.py`; the Task-5 heartbeat edit was "only if needed" — not needed). **⚠ FOLLOW-UP (planning, minor):** tldextract 5.3.1 **deprecates `.registered_domain`** (→ `.top_domain_under_public_suffix`); the spec explicitly mandated `.registered_domain` so it was kept (spec-faithful) — emits ~18 DeprecationWarnings in the test run. A 1-line API migration in `research.py:registrable_domain` clears them; defer to a spec amendment (don't override a frozen API mid-build). No forks.
