@@ -10,6 +10,7 @@ from artemis.memory.repository import FactRow
 
 HALF_LIFE_DAYS = 14.0
 INJECT_THRESHOLD = 0.2
+TOMBSTONE_FLOOR = 0.02
 RECALL_BOOST_MAX = 1.5
 RECALL_DAMP_MIN = 0.3
 ALPHA = 1.0
@@ -61,6 +62,33 @@ def rank_for_inject(
         key=lambda item: item[1],
         reverse=True,
     )
+
+
+def sweep_tombstone_candidates(
+    rows: Sequence[FactRow],
+    *,
+    now: str,
+    floor: float = TOMBSTONE_FLOOR,
+) -> list[str]:
+    """Return below-floor logical fact keys for caller-managed tombstoning.
+
+    This is a pure maintenance helper: it computes candidates only and never
+    writes to the database. Callers may tombstone returned keys; they must not
+    hard-delete facts as part of a decay sweep.
+    """
+    return [
+        row.fact_key
+        for row in rows
+        if decay_score(
+            valid_from=row.valid_from,
+            last_access=row.last_access,
+            access_count=row.access_count,
+            salience=row.salience,
+            confidence=row.confidence,
+            now=now,
+        )
+        < floor
+    ]
 
 
 def recall_multiplier(

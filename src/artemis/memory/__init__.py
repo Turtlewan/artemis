@@ -9,7 +9,12 @@ Package layout:
   repository.py  — ``BitemporalRepository`` (add/update/tombstone/as_of/history)
 """
 
-from artemis.memory.decay import decay_score, rank_for_inject, recall_multiplier
+from artemis.memory.decay import (
+    decay_score,
+    rank_for_inject,
+    recall_multiplier,
+    sweep_tombstone_candidates,
+)
 from artemis.memory.decide import AudnDecider, AudnDecision, AudnOp, FakeDecider
 from artemis.memory.entities import (
     EntityRef,
@@ -19,6 +24,7 @@ from artemis.memory.entities import (
     person_fact_key,
 )
 from artemis.memory.extraction import ExtractedFact, FactExtractor, FakeExtractor
+from artemis.memory.owner import OwnerConfirmationRequired, OwnerMemory
 from artemis.memory.repository import (
     BitemporalRepository,
     CurrentFactConflictError,
@@ -73,6 +79,8 @@ __all__ = [
     "FakeExtractor",
     "MemoryWritePath",
     "MemoryWriteQueue",
+    "OwnerConfirmationRequired",
+    "OwnerMemory",
     "SENTINEL_TS",
     "SqliteMemoryStore",
     "WritePathResult",
@@ -84,4 +92,5 @@ __all__ = [
     "rank_for_inject",
     "recall_multiplier",
     "render_inject_block",
+    "sweep_tombstone_candidates",
 ]
