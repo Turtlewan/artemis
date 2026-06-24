@@ -12,7 +12,12 @@ from artemis.identity.key_provider import FakeKeyProvider, ScopeLockedError
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.manifest import DataScope
 from artemis.memory.entities import EntityRef, EntityType
-from artemis.modules.productivity import ProductivityStore, productivity_manifest, tools
+from artemis.modules.productivity import (
+    ProductivityStore,
+    productivity_manifest,
+    projects_manifest,
+    tools,
+)
 from artemis.modules.productivity.repository import ProductivityRepository
 from artemis.modules.productivity.schema import create_schema
 
@@ -208,12 +213,22 @@ async def test_tools_smoke_with_store(tmp_path: Path) -> None:
 
 
 def test_manifest_shape(tmp_path: Path) -> None:
-    manifest = productivity_manifest(_store(tmp_path))
-    names = [tool.name for tool in manifest.tools]
+    store = _store(tmp_path)
+    projects = projects_manifest(store)
+    tasks = productivity_manifest(store)
+    project_names = [tool.name for tool in projects.tools]
+    task_names = [tool.name for tool in tasks.tools]
+    project_fq_ids = {f"{projects.name}.{name}" for name in project_names}
+    task_fq_ids = {f"{tasks.name}.{name}" for name in task_names}
 
-    assert manifest.name == "productivity"
-    assert len(manifest.tools) == 22
-    assert len(names) == len(set(names))
+    assert projects.name == "projects"
+    assert tasks.name == "tasks"
+    assert len(projects.tools) == 6
+    assert len(tasks.tools) == 16
+    assert len(projects.tools) + len(tasks.tools) == 22
+    assert len(project_names) == len(set(project_names))
+    assert len(task_names) == len(set(task_names))
+    assert project_fq_ids.isdisjoint(task_fq_ids)
     assert {
         "area.create",
         "area.update",
@@ -223,14 +238,17 @@ def test_manifest_shape(tmp_path: Path) -> None:
         "area.contents",
         "task.assign_to_area",
         "project.assign_to_area",
-    }.isdisjoint(names)
+    }.isdisjoint(project_fq_ids | task_fq_ids)
     assert "area_id" not in tools.TaskCreateArgs.model_fields
     assert "area_id" not in tools.TaskUpdateArgs.model_fields
     assert "area_id" not in tools.ProjectCreateArgs.model_fields
-    assert manifest.data_scope == DataScope.OWNER_PRIVATE
-    assert manifest.proactive_hooks == []
-    assert sum(tool.action_risk == "read" for tool in manifest.tools) == 9
-    assert sum(tool.action_risk == "write" for tool in manifest.tools) == 13
+    assert projects.data_scope == DataScope.OWNER_PRIVATE
+    assert tasks.data_scope == DataScope.OWNER_PRIVATE
+    assert projects.proactive_hooks == []
+    assert tasks.proactive_hooks == []
+    all_tools = projects.tools + tasks.tools
+    assert sum(tool.action_risk == "read" for tool in all_tools) == 9
+    assert sum(tool.action_risk == "write" for tool in all_tools) == 13
 
 
 def _repo() -> ProductivityRepository:
