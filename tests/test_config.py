@@ -55,6 +55,9 @@ def test_roles_toml_structure() -> None:
         "reranker",
         "sensitive_reasoner",
         "sensitivity_classifier",
+        "research_reader",
+        "research_orchestrator_standard",
+        "research_orchestrator_deep",
     }
     assert set(raw.keys()) == expected_roles, (
         f"Expected roles {expected_roles}, got {set(raw.keys())}"

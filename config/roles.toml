@@ -39,3 +39,22 @@ adapter = "codex"
 endpoint = "http://127.0.0.1:8040/v1"   # MUST stay loopback (privacy gate enforces this) -- keep in sync with mlx_port
 model_id = "Qwen3-4B-Instruct-2507"     # reuses the small local instruct model (no extra resident model)
 adapter = "openai"
+
+# logical role — physical endpoint is the swap seam
+[research_reader]
+endpoint = "http://127.0.0.1:8040/v1" # prod mlx; dev reuses local
+model_id = "Qwen3-4B-Instruct-2507"
+adapter = "openai"
+
+# logical role — physical endpoint is the swap seam
+[research_orchestrator_standard]
+endpoint = "https://api.deepseek.com/v1"
+model_id = "deepseek-chat"
+adapter = "openai"
+api_key = { env = "DEEPSEEK_API_KEY" }
+
+# logical role — physical endpoint is the swap seam
+[research_orchestrator_deep]
+endpoint = "claude-cli"
+model_id = "claude-opus"
+adapter = "claude-cli"
