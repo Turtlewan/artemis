@@ -172,3 +172,11 @@ Subject resolution is ONE indexed alias/point lookup per extracted fact (`resolv
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: `subject_entity_id` on `add`/`update`/`FactRow` + `facts_for_entity` (explicit bitemporal predicate, indexed)
+- [x] Task 2: write-path subject→PERSON resolution (degrade-don't-crash → None; PII-safe logging) + `build_write_path` builds `EntityRepository`
+- [x] Task 3: `resolve_entity` async tool + two-layer module guard (`Literal["memory"]` + assert) + sanitized `EntityNotFound` + `memory_manifest`
+- [x] Task 4: gateway registration `registry.register(memory_manifest(repo))` in the memory-active branch
+- [x] Task 5: entity-wiring tests (5 passed; M4-a/M4-b regression 41 passed)
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit f6616c8.** mypy --strict clean (101 src files), ruff clean, full suite 395 passed (390 + 5 new), M4-a/M4-b regression intact. **Reconciliations (logged, all SMALL/in-scope):** (1) stale `/Users/artemis-build/` paths → repo-relative; (2) `FactRow.subject_entity_id` field already existed (pre-staged) → not re-added, only threaded through add/update/SELECTs; (3) **live `SqliteMemoryStore` exposes no `conn`/`person_id`/`repository` accessors** and `build_write_path` was already reconciled to 3-arg `(repo, embedder, model)` — so added read-only `conn`/`person_id` **properties to `BitemporalRepository`** (in-scope) and made **`memory_manifest(repo)`** repo-based (not the spec's store-based form), building `EntityRepository(repo.conn, repo.person_id)`; registration uses the in-scope `repo` + `OWNER_PERSON_ID` at the gateway memory branch. No store.py/entities.py edits. No forks.
