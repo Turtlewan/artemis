@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
 from artemis.modules.productivity import tools
+from artemis.modules.productivity.hooks import build_productivity_hooks
 from artemis.modules.productivity.store import ProductivityStore
 
 
@@ -34,6 +35,7 @@ def projects_manifest(store: ProductivityStore) -> ModuleManifest:
 def tasks_manifest(store: ProductivityStore) -> ModuleManifest:
     """Return the tasks surface manifest and initialise the shared store."""
     tools.init_tools(store)
+    hooks = build_productivity_hooks(store)
     return ModuleManifest(
         name="tasks",
         version="0.1.0",
@@ -41,7 +43,7 @@ def tasks_manifest(store: ProductivityStore) -> ModuleManifest:
         tools=_task_tool_specs(),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
-        proactive_hooks=[],
+        proactive_hooks=hooks,
         ui=UiSurface(kind="card"),
     )
 
