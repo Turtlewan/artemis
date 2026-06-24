@@ -12,7 +12,13 @@ dependencies = [
     "tzdata>=2026.2",
     "sqlite-vec>=0.1",
     "lancedb>=0.33.0",
+    "google-auth>=2.55.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-api-python-client>=2.197.0",
 ]
+
+[project.scripts]
+artemis-google-auth = "artemis.integrations.google.cli:main"
 
 [dependency-groups]
 dev = [
