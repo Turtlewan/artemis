@@ -4,10 +4,23 @@ from __future__ import annotations
 
 import dataclasses
 
+from artemis.identity.key_provider import KeyProvider
 from artemis.integrations.google.scopes import register_google_scopes
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec
-from artemis.modules.calendar.cache import EventCacheStore
+from artemis.modules.calendar.cache import CalendarSyncEngine, EventCacheStore
 from artemis.modules.calendar.client import CalendarClient
+from artemis.modules.calendar.hooks import build_calendar_hooks
+from artemis.modules.calendar.overlay import (
+    ApproveRejectArgs,
+    HoldTentativeArgs,
+    ListProposalsArgs,
+    OverlayStore,
+    OverlayTools,
+    ProposalListResult,
+    ProposalResult,
+    ProposeEventArgs,
+    ProposeRescheduleArgs,
+)
 from artemis.modules.calendar.preferences import CalPrefs, PreferencesStore
 from artemis.modules.calendar.read_tools import (
     AgendaArgs,
@@ -122,7 +135,71 @@ class CalendarTools:
         return await conflicts(args, store=self._store, prefs=self._prefs())
 
 
-def make_calendar_manifest(tools: CalendarTools, write_tools: CalendarWriteTools) -> ModuleManifest:
+def make_calendar_overlay_manifest(overlay_tools: OverlayTools) -> list[ToolSpec]:
+    """Build overlay proposal ToolSpecs with bare names for registry composition."""
+    return [
+        ToolSpec(
+            name="propose_reschedule",
+            description="Propose a new time for an existing calendar event.",
+            args_schema=ProposeRescheduleArgs,
+            return_schema=ProposalResult,
+            callable_ref=overlay_tools.propose_reschedule,
+            action_risk=ActionRisk.WRITE,
+        ),
+        ToolSpec(
+            name="propose_event",
+            description="Create a pending proposed event and tentative Google projection.",
+            args_schema=ProposeEventArgs,
+            return_schema=ProposalResult,
+            callable_ref=overlay_tools.propose_event,
+            action_risk=ActionRisk.WRITE,
+        ),
+        ToolSpec(
+            name="hold_tentative",
+            description="Create a self-only tentative hold on the owner's calendar.",
+            args_schema=HoldTentativeArgs,
+            return_schema=ProposalResult,
+            callable_ref=overlay_tools.hold_tentative,
+            action_risk=ActionRisk.WRITE,
+        ),
+        ToolSpec(
+            name="list_proposals",
+            description="List pending calendar proposals and holds.",
+            args_schema=ListProposalsArgs,
+            return_schema=ProposalListResult,
+            callable_ref=overlay_tools.list_proposals,
+            action_risk=ActionRisk.READ,
+        ),
+        ToolSpec(
+            name="approve_proposal",
+            description="Approve a calendar proposal or stage the underlying attendee write.",
+            args_schema=ApproveRejectArgs,
+            return_schema=ProposalResult,
+            callable_ref=overlay_tools.approve_proposal,
+            action_risk=ActionRisk.HIGH_STAKES,
+        ),
+        ToolSpec(
+            name="reject_proposal",
+            description="Reject a calendar proposal and cancel its tentative projection.",
+            args_schema=ApproveRejectArgs,
+            return_schema=ProposalResult,
+            callable_ref=overlay_tools.reject_proposal,
+            action_risk=ActionRisk.WRITE,
+        ),
+    ]
+
+
+def make_calendar_manifest(
+    tools: CalendarTools,
+    write_tools: CalendarWriteTools,
+    overlay_tools: OverlayTools | None = None,
+    *,
+    sync_engine: CalendarSyncEngine | None = None,
+    overlay_store: OverlayStore | None = None,
+    owner_email: str | None = None,
+    calendar_ids: list[str] | None = None,
+    key_provider: KeyProvider | None = None,
+) -> ModuleManifest:
     """Build the Calendar module manifest with read and write scopes registered."""
     return ModuleManifest(
         name="calendar",
@@ -307,6 +384,20 @@ def make_calendar_manifest(tools: CalendarTools, write_tools: CalendarWriteTools
                 callable_ref=write_tools.set_reminders,
                 action_risk=ActionRisk.WRITE,
             ),
+            *(make_calendar_overlay_manifest(overlay_tools) if overlay_tools is not None else []),
         ],
-        proactive_hooks=[],
+        proactive_hooks=build_calendar_hooks(
+            sync_engine,
+            tools._store,
+            overlay_store,
+            owner_email=owner_email,
+            calendar_ids=calendar_ids,
+            client=tools._client,
+            key_provider=key_provider,
+        )
+        if sync_engine is not None
+        and overlay_store is not None
+        and owner_email is not None
+        and calendar_ids is not None
+        else [],
     )
