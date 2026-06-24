@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from collections.abc import Awaitable, Callable
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
+from artemis.modules.calendar.write_tools import CalendarWriteTools, CancelEventArgs
 from artemis.modules.productivity.store import ProductivityStore
 
 _store: ProductivityStore | None = None
+_schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None
+_write_tools: CalendarWriteTools | None = None
 
 
 class EmptyArgs(BaseModel):
@@ -71,6 +77,14 @@ class TaskUpdateArgs(BaseModel):
 
 class TaskCompleteArgs(BaseModel):
     id: str
+
+
+class TaskScheduleArgs(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    window_start: str | None = None
+    window_end: str | None = None
 
 
 class TaskCancelArgs(BaseModel):
@@ -150,6 +164,15 @@ class TaskCompleteResult(BaseModel):
     spawned_task: dict[str, object] | None
 
 
+class TaskScheduleResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    event_id: str | None
+    scheduled_block: str | None
+    message: str
+
+
 class ProjectCreatedResult(BaseModel):
     project_id: str
 
@@ -168,10 +191,34 @@ def init_tools(store: ProductivityStore) -> None:
     _store = store
 
 
+def init_schedule_fn(fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]]) -> None:
+    """Set the calendar scheduling callable used by task scheduling."""
+    global _schedule_fn
+    _schedule_fn = fn
+
+
+def init_write_tools(write_tools: CalendarWriteTools) -> None:
+    """Set calendar write tools used to cancel prior task focus blocks."""
+    global _write_tools
+    _write_tools = write_tools
+
+
 def _get_store() -> ProductivityStore:
     if _store is None:
         raise RuntimeError("productivity store not initialised")
     return _store
+
+
+def _get_schedule_fn() -> Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]]:
+    if _schedule_fn is None:
+        raise RuntimeError("schedule_fn not initialised")
+    return _schedule_fn
+
+
+def _get_write_tools() -> CalendarWriteTools:
+    if _write_tools is None:
+        raise RuntimeError("write_tools not initialised")
+    return _write_tools
 
 
 async def task_list(args: TaskListArgs) -> TaskListResult:
@@ -241,7 +288,66 @@ async def task_update(args: TaskUpdateArgs) -> OkResult:
 
 
 async def task_complete(args: TaskCompleteArgs) -> TaskCompleteResult:
-    return TaskCompleteResult(spawned_task=_get_store().complete_task(args.id))
+    """Complete a task and clear its consumed Task-Event link without deleting the event."""
+    store = _get_store()
+    pre_state = store.get_task(args.id)
+    spawned = store.complete_task(args.id)
+    if pre_state and pre_state.get("calendar_event_id"):
+        store.clear_task_schedule_link(args.id)
+    return TaskCompleteResult(spawned_task=spawned)
+
+
+async def task_schedule(args: TaskScheduleArgs) -> TaskScheduleResult:
+    """Schedule a task after confirmed calendar write, then persist the Task-Event link."""
+    store = _get_store()
+    schedule_fn = _get_schedule_fn()
+    write_tools = _get_write_tools()
+
+    task = store.get_task(args.task_id)
+    if task is None:
+        return TaskScheduleResult(
+            task_id=args.task_id,
+            event_id=None,
+            scheduled_block=None,
+            message=f"Task {args.task_id} not found.",
+        )
+
+    old_event_id = task.get("calendar_event_id")
+    if isinstance(old_event_id, str) and old_event_id:
+        await write_tools.cancel_event(
+            CancelEventArgs(event_id=old_event_id, recurrence_scope="THIS_EVENT")
+        )
+
+    task_title = str(task["title"])
+    estimate = task.get("estimate_minutes")
+    result = await schedule_fn(
+        ScheduleTaskArgs(
+            task_id=args.task_id,
+            task_title=task_title,
+            estimate_minutes=estimate if isinstance(estimate, int) else None,
+            window_start=args.window_start,
+            window_end=args.window_end,
+        )
+    )
+    if result.scheduled is None:
+        return TaskScheduleResult(
+            task_id=args.task_id,
+            event_id=None,
+            scheduled_block=None,
+            message=result.message,
+        )
+
+    store.update_task(
+        args.task_id,
+        calendar_event_id=result.scheduled.event_id,
+        scheduled_block=result.scheduled.start_dt,
+    )
+    return TaskScheduleResult(
+        task_id=args.task_id,
+        event_id=result.scheduled.event_id,
+        scheduled_block=result.scheduled.start_dt,
+        message=result.message,
+    )
 
 
 async def task_cancel(args: TaskCancelArgs) -> OkResult:

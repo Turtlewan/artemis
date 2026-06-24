@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Awaitable, Callable
 
 from artemis.identity.key_provider import KeyProvider
 from artemis.integrations.google.scopes import register_google_scopes
@@ -54,6 +55,7 @@ from artemis.modules.calendar.read_tools import (
     next_event,
     search,
 )
+from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
 from artemis.modules.calendar.write_tools import (
     AddAttendeesArgs,
     BlockFocusTimeArgs,
@@ -194,6 +196,7 @@ def make_calendar_manifest(
     write_tools: CalendarWriteTools,
     overlay_tools: OverlayTools | None = None,
     *,
+    schedule_task_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
     sync_engine: CalendarSyncEngine | None = None,
     overlay_store: OverlayStore | None = None,
     owner_email: str | None = None,
@@ -383,6 +386,25 @@ def make_calendar_manifest(
                 return_schema=WriteResult,
                 callable_ref=write_tools.set_reminders,
                 action_risk=ActionRisk.WRITE,
+            ),
+            *(
+                [
+                    ToolSpec(
+                        name="schedule_task",
+                        description=(
+                            "Find the earliest open focus-block slot for a task and create a "
+                            "self-only focus-block calendar event. Returns the created event_id "
+                            "and block times, or a message if no slot is available. Always auto "
+                            "(self-only, no attendees)."
+                        ),
+                        args_schema=ScheduleTaskArgs,
+                        return_schema=ScheduleTaskResult,
+                        callable_ref=schedule_task_fn,
+                        action_risk=ActionRisk.WRITE,
+                    )
+                ]
+                if schedule_task_fn is not None
+                else []
             ),
             *(make_calendar_overlay_manifest(overlay_tools) if overlay_tools is not None else []),
         ],

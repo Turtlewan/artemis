@@ -9,9 +9,13 @@ manifest to avoid colliding with task ``create``/``list``.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from pydantic import BaseModel
 
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
+from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
+from artemis.modules.calendar.write_tools import CalendarWriteTools
 from artemis.modules.productivity import tools
 from artemis.modules.productivity.hooks import build_productivity_hooks
 from artemis.modules.productivity.store import ProductivityStore
@@ -32,15 +36,24 @@ def projects_manifest(store: ProductivityStore) -> ModuleManifest:
     )
 
 
-def tasks_manifest(store: ProductivityStore) -> ModuleManifest:
+def tasks_manifest(
+    store: ProductivityStore,
+    *,
+    schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
+    write_tools: CalendarWriteTools | None = None,
+) -> ModuleManifest:
     """Return the tasks surface manifest and initialise the shared store."""
     tools.init_tools(store)
+    if schedule_fn is not None:
+        tools.init_schedule_fn(schedule_fn)
+        if write_tools is not None:
+            tools.init_write_tools(write_tools)
     hooks = build_productivity_hooks(store)
     return ModuleManifest(
         name="tasks",
         version="0.1.0",
         description="Owned tasks - capture, schedule, recurrence. Artemis is the source of truth.",
-        tools=_task_tool_specs(),
+        tools=_task_tool_specs(include_schedule=schedule_fn is not None),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
         proactive_hooks=hooks,
@@ -101,7 +114,7 @@ def _project_tool_specs() -> list[ToolSpec]:
     ]
 
 
-def _task_tool_specs() -> list[ToolSpec]:
+def _task_tool_specs(*, include_schedule: bool = False) -> list[ToolSpec]:
     read_tools = [
         _spec("list", "List tasks.", tools.TaskListArgs, tools.TaskListResult, tools.task_list),
         _spec("get", "Get a task.", tools.TaskGetArgs, tools.TaskResult, tools.task_get),
@@ -154,6 +167,26 @@ def _task_tool_specs() -> list[ToolSpec]:
             tools.TaskCompleteResult,
             tools.task_complete,
             ActionRisk.WRITE,
+        ),
+        *(
+            [
+                _spec(
+                    "schedule",
+                    (
+                        "Find an open calendar slot for the given task and create a self-only "
+                        "focus-block event. Writes task.calendar_event_id and "
+                        "task.scheduled_block on success. Returns the event_id and block start, "
+                        "or a message if no slot was found. action_risk: WRITE; always auto "
+                        "(focus blocks are self-only)."
+                    ),
+                    tools.TaskScheduleArgs,
+                    tools.TaskScheduleResult,
+                    tools.task_schedule,
+                    ActionRisk.WRITE,
+                )
+            ]
+            if include_schedule
+            else []
         ),
         _spec(
             "cancel",
