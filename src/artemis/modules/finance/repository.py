@@ -1,0 +1,343 @@
+"""Repository for the always-local Finance ledger."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from collections.abc import Mapping
+from dataclasses import asdict
+from decimal import Decimal
+from typing import Literal
+from uuid import uuid4
+
+from artemis.memory.schema import now_iso
+from artemis.modules.finance.csv_import import CsvColumnMapping
+from artemis.modules.finance.schema import TransactionType
+
+
+class FinanceRepository:
+    """Parameterised SQL access over the locked Finance schema."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+        self.conn.row_factory = sqlite3.Row
+
+    def create_account(
+        self,
+        name: str,
+        account_type: str,
+        *,
+        currency: str = "SGD",
+        institution: str | None = None,
+    ) -> str:
+        account_id = uuid4().hex
+        now = now_iso()
+        self.conn.execute(
+            """
+            INSERT INTO account (
+                id, name, account_type, currency, institution, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (account_id, name, account_type, currency, institution, now, now),
+        )
+        self.conn.commit()
+        return account_id
+
+    def get_account(self, id: str) -> dict[str, object] | None:
+        row = self.conn.execute("SELECT * FROM account WHERE id = ?", (id,)).fetchone()
+        return _account_row(row) if row is not None else None
+
+    def list_accounts(self, *, include_archived: bool = False) -> list[dict[str, object]]:
+        if include_archived:
+            rows = self.conn.execute("SELECT * FROM account ORDER BY name").fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM account WHERE archived = 0 ORDER BY name"
+            ).fetchall()
+        return [_account_row(row) for row in rows]
+
+    def update_account(
+        self,
+        id: str,
+        *,
+        name: str | None = None,
+        institution: str | None = None,
+        current_balance: Decimal | None = None,
+    ) -> None:
+        updates: dict[str, object] = {"updated_at": now_iso()}
+        if name is not None:
+            updates["name"] = name
+        if institution is not None:
+            updates["institution"] = institution
+        if current_balance is not None:
+            updates["current_balance"] = str(current_balance)
+        self._update("account", id, updates)
+
+    def archive_account(self, id: str) -> None:
+        self._update("account", id, {"archived": 1, "updated_at": now_iso()})
+
+    def list_categories(self) -> list[dict[str, object]]:
+        rows = self.conn.execute("SELECT * FROM category ORDER BY is_seed DESC, name").fetchall()
+        return [_plain_row(row) for row in rows]
+
+    def add_category(self, name: str) -> str:
+        category_id = uuid4().hex
+        self.conn.execute(
+            """
+            INSERT INTO category (id, name, is_seed, created_at)
+            VALUES (?, ?, 0, ?)
+            """,
+            (category_id, name, now_iso()),
+        )
+        self.conn.commit()
+        return category_id
+
+    def rename_category(self, id: str, name: str) -> None:
+        self.conn.execute("UPDATE category SET name = ? WHERE id = ?", (name, id))
+        self.conn.commit()
+
+    def get_category_by_name(self, name: str) -> dict[str, object] | None:
+        row = self.conn.execute("SELECT * FROM category WHERE name = ?", (name,)).fetchone()
+        return _plain_row(row) if row is not None else None
+
+    def add_transaction(
+        self,
+        *,
+        txn_date: str,
+        amount: Decimal,
+        merchant: str | None = None,
+        category_id: str | None = None,
+        txn_type: str = TransactionType.PURCHASE.value,
+        source: str,
+        instrument_account_id: str | None = None,
+        currency: str = "SGD",
+        amount_original: Decimal | None = None,
+        currency_original: str | None = None,
+        raw_ref: str | None = None,
+        confidence: float | None = None,
+        notes: str | None = None,
+    ) -> str:
+        transaction_id = uuid4().hex
+        now = now_iso()
+        cursor = self.conn.execute(
+            """
+            INSERT INTO "transaction" (
+                id, txn_date, amount, currency, amount_original, currency_original, merchant,
+                category_id, txn_type, source, instrument_account_id, raw_ref, confidence, notes,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(raw_ref) WHERE raw_ref IS NOT NULL DO NOTHING
+            """,
+            (
+                transaction_id,
+                txn_date,
+                str(amount),
+                currency,
+                _decimal_text(amount_original),
+                currency_original,
+                merchant,
+                category_id,
+                txn_type,
+                source,
+                instrument_account_id,
+                raw_ref,
+                confidence,
+                notes,
+                now,
+                now,
+            ),
+        )
+        self.conn.commit()
+        # Fast path: a fresh insert returns its own id. Only on an ON CONFLICT
+        # no-op (rowcount == 0) do we resolve the pre-existing row (L0 dedup).
+        if raw_ref is not None and cursor.rowcount == 0:
+            existing = self.get_transaction_by_raw_ref(raw_ref)
+            if existing is not None:
+                return str(existing["id"])
+        return transaction_id
+
+    def get_transaction(self, id: str) -> dict[str, object] | None:
+        row = self.conn.execute('SELECT * FROM "transaction" WHERE id = ?', (id,)).fetchone()
+        return _transaction_row(row) if row is not None else None
+
+    def get_transaction_by_raw_ref(self, raw_ref: str) -> dict[str, object] | None:
+        row = self.conn.execute(
+            'SELECT * FROM "transaction" WHERE raw_ref = ?', (raw_ref,)
+        ).fetchone()
+        return _transaction_row(row) if row is not None else None
+
+    def list_transactions(
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        category_id: str | None = None,
+        txn_type: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, object]]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if start is not None:
+            clauses.append("txn_date >= ?")
+            params.append(start)
+        if end is not None:
+            clauses.append("txn_date < ?")
+            params.append(end)
+        if category_id is not None:
+            clauses.append("category_id = ?")
+            params.append(category_id)
+        if txn_type is not None:
+            clauses.append("txn_type = ?")
+            params.append(txn_type)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f'SELECT * FROM "transaction" {where} ORDER BY txn_date DESC, created_at DESC LIMIT ?',
+            (*params, limit),
+        ).fetchall()
+        return [_transaction_row(row) for row in rows]
+
+    def update_transaction(
+        self,
+        id: str,
+        *,
+        merchant: str | None = None,
+        category_id: str | None = None,
+        txn_type: str | None = None,
+        notes: str | None = None,
+        amount: Decimal | None = None,
+    ) -> None:
+        updates: dict[str, object] = {"updated_at": now_iso()}
+        if merchant is not None:
+            updates["merchant"] = merchant
+        if category_id is not None:
+            updates["category_id"] = category_id
+        if txn_type is not None:
+            updates["txn_type"] = txn_type
+        if notes is not None:
+            updates["notes"] = notes
+        if amount is not None:
+            updates["amount"] = str(amount)
+        self._update('"transaction"', id, updates)
+
+    def recategorize(self, id: str, category_id: str) -> None:
+        self._update('"transaction"', id, {"category_id": category_id, "updated_at": now_iso()})
+
+    def delete_transaction(self, id: str) -> None:
+        self.conn.execute('DELETE FROM "transaction" WHERE id = ?', (id,))
+        self.conn.commit()
+
+    def spend_summary(
+        self,
+        *,
+        start: str,
+        end: str,
+        group_by: Literal["category", "day", "merchant"],
+    ) -> list[dict[str, object]]:
+        select_expr = {
+            "category": "COALESCE(category.name, 'Uncategorised')",
+            "day": '"transaction".txn_date',
+            "merchant": "COALESCE(\"transaction\".merchant, 'Unknown')",
+        }[group_by]
+        rows = self.conn.execute(
+            f"""
+            SELECT {select_expr} AS key,
+                SUM(CASE WHEN txn_type='refund' THEN -amount ELSE amount END) AS total
+            FROM "transaction"
+            LEFT JOIN category ON category.id = "transaction".category_id
+            WHERE txn_date >= ?
+                AND txn_date < ?
+                AND txn_type IN ('purchase','refund')
+            GROUP BY key
+            ORDER BY key
+            """,
+            (start, end),
+        ).fetchall()
+        return [{"key": str(row["key"]), "total": _decimal_from_sql(row["total"])} for row in rows]
+
+    def total_spend(self, *, start: str, end: str) -> Decimal:
+        row = self.conn.execute(
+            """
+            SELECT SUM(CASE WHEN txn_type='refund' THEN -amount ELSE amount END) AS total
+            FROM "transaction"
+            WHERE txn_date >= ?
+                AND txn_date < ?
+                AND txn_type IN ('purchase','refund')
+            """,
+            (start, end),
+        ).fetchone()
+        if row is None:
+            return Decimal("0")
+        return _decimal_from_sql(row["total"])
+
+    def save_csv_profile(self, name: str, mapping: CsvColumnMapping) -> None:
+        profile_id = uuid4().hex
+        self.conn.execute(
+            """
+            INSERT INTO csv_profile (id, name, mapping_json, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET mapping_json = excluded.mapping_json
+            """,
+            (profile_id, name, json.dumps(asdict(mapping)), now_iso()),
+        )
+        self.conn.commit()
+
+    def get_csv_profile(self, name: str) -> CsvColumnMapping | None:
+        row = self.conn.execute(
+            "SELECT mapping_json FROM csv_profile WHERE name = ?", (name,)
+        ).fetchone()
+        if row is None:
+            return None
+        raw = json.loads(str(row["mapping_json"]))
+        if not isinstance(raw, dict):
+            return None
+        mapping: dict[str, object] = raw
+        return CsvColumnMapping(
+            date_col=str(mapping["date_col"]),
+            amount_col=str(mapping["amount_col"]),
+            merchant_col=_optional_str(mapping.get("merchant_col")),
+            currency_col=_optional_str(mapping.get("currency_col")),
+            type_col=_optional_str(mapping.get("type_col")),
+            date_format=str(mapping.get("date_format", "%Y-%m-%d")),
+            amount_is_negative_spend=bool(mapping.get("amount_is_negative_spend", False)),
+        )
+
+    def _update(self, table: str, id: str, updates: Mapping[str, object]) -> None:
+        assignments = ", ".join(f"{column} = ?" for column in updates)
+        self.conn.execute(
+            f"UPDATE {table} SET {assignments} WHERE id = ?",
+            (*updates.values(), id),
+        )
+        self.conn.commit()
+
+
+def _decimal_text(value: Decimal | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _plain_row(row: sqlite3.Row) -> dict[str, object]:
+    return dict(row)
+
+
+def _account_row(row: sqlite3.Row) -> dict[str, object]:
+    result = dict(row)
+    if result["current_balance"] is not None:
+        result["current_balance"] = Decimal(str(result["current_balance"]))
+    return result
+
+
+def _transaction_row(row: sqlite3.Row) -> dict[str, object]:
+    result = dict(row)
+    result["amount"] = Decimal(str(result["amount"]))
+    if result["amount_original"] is not None:
+        result["amount_original"] = Decimal(str(result["amount_original"]))
+    return result
+
+
+def _decimal_from_sql(value: object) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    return Decimal(str(value))
+
+
+def _optional_str(value: object) -> str | None:
+    return str(value) if value is not None else None
