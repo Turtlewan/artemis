@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per contracts.md (Seam 5) + m5-m6-voice-heartbeat.md BLOCKs B1, B2, B4, B5; FLAGs F9 -->
+<!-- amended 2026-06-24 (M6-blocker resolution, planning-ratified): `settings.ntfy_topic_secret` (referenced in Assumptions + Task 3) is now a real `Settings` field, ADDED BY `docs/changes/M6-chain-prereqs.md` (Task 2) — so it is NO LONGER in this spec's scope and the Assumptions' "[on-hardware confirm only: whether M0-a/M0-b already provide ... the secret slot, else M6-c introduces them]" is RESOLVED: the field exists, do not add it here. Build order: M6-chain-prereqs → M6-b → M6-c. -->
 ---
 spec: m6-c-ntfy-delivery-policy-tier1-queue
 status: ready

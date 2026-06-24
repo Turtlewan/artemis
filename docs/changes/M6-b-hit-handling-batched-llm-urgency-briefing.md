@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per contracts.md (Seam 5) + m5-m6-voice-heartbeat.md BLOCKs B2, B3, U7; Seam 5 template-registration rule (F4) -->
+<!-- amended 2026-06-24 (M6-blocker resolution, planning-ratified): the `on_hits` seam is now ASYNC (`Callable[[TickResult], Awaitable[None]] | None`) per `docs/changes/M6-chain-prereqs.md` (Task 1) — BUILD `M6-chain-prereqs` FIRST. Consequence for THIS spec: `HitHandler.handle` is `async def handle(self, tick: TickResult) -> list[OutboundMessage]` and `await`s the ONE batched `model.complete(...)` call; it is wired as the heartbeat's async `on_hits` (invoked from `run_forever`, not `tick()`). The Task 4 tests that drive `handle()` become `async` (asyncio_mode=auto). The injected `deliver` sink stays SYNC (a plain HTTP POST, not a ModelPort call) — an async method may call it directly. Build order: M6-chain-prereqs → M6-b → M6-c. -->
 ---
 spec: m6-b-hit-handling-batched-llm-urgency-briefing
 status: ready
