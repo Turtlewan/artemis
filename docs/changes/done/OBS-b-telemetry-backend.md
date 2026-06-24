@@ -156,3 +156,13 @@ Approving this spec approves all of them.
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+- [x] Task 1: SQLCipher `TelemetryStore` (epoch-ms ints, `user_version` migrate, route/escalation/call_traces tables + indexes, insert/query/`prune`) + `CallTrace`/`UsageRow` + `open_telemetry_db`/`telemetry_db_path`
+- [x] Task 2: `Tier`/`tier_for`/`CostModel` (tier-aware micros, flat-rate quota)
+- [x] Task 3: `TracingModelPort` (token/cost/latency/model_id; usage-object defensive read; all-zero WARN; record-failure non-fatal)
+- [x] Task 4: `TelemetrySink` (route-only on route-decision; escalation row on escalation) + `SqliteTelemetrySource` (M7-c `TelemetrySource` conformance)
+- [x] Task 5: `obs/telemetry/__init__.py` re-exports
+- [x] Task 6: tests (6 new; store/migrate/prune, cost math + unknown-role WARN, tracer, sink→source, empty-store, staleness, `scan_gaps` escalation-cluster end-to-end)
+- [ ] Task 7: GATED on-hardware (live composition-root wiring) — deferred
+
+**Built 2026-06-24 (Codex apex-coder, host-verified). Commit pending.** mypy --strict clean (114 src files), ruff clean, full suite 422 passed (416 + 6 new). Built on M7-c's now-live `artemis.curiosity.gaps` contract. **Reconciliations (logged, SMALL/in-scope):** stale `/Users/artemis-build/` paths → repo-relative; **live `ModelPort.complete` has no `stream` arg** (uses a separate `complete_stream`) — `TracingModelPort` matched the live port signature while preserving the spec's tracing behavior. **⚠ FOLLOW-UP (planning, minor):** `tier_for` predates the **`codex` adapter** — codex currently falls to the `else→LOCAL` branch (cost 0 either way under flat-rate, so no $ impact, but codex tokens aren't tagged as the SUBSCRIPTION quota signal). A 1-line addition (`codex`→SUBSCRIPTION, same as `claude-cli`) aligns it; defer to a spec amendment. No forks.
