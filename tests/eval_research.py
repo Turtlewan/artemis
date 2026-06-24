@@ -287,8 +287,8 @@ async def _run_recorded() -> None:
         )
 
     print("mode       faithfulness  relevance  token_cost")
-    for mode, faithfulness, relevance, token_cost in rows:
-        print(f"{mode:<10} {faithfulness:>12.2f} {relevance:>10.2f} {token_cost:>11}")
+    for mode_name, faith_avg, rel_avg, cost in rows:
+        print(f"{mode_name:<10} {faith_avg:>12.2f} {rel_avg:>10.2f} {cost:>11}")
 
 
 def main() -> None:
