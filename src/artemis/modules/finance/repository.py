@@ -226,6 +226,80 @@ class FinanceRepository:
         self.conn.execute('DELETE FROM "transaction" WHERE id = ?', (id,))
         self.conn.commit()
 
+    def create_fin_suggestion(
+        self,
+        kind: str,
+        payload_json: str,
+        *,
+        raw_ref: str | None = None,
+    ) -> str:
+        suggestion_id = uuid4().hex
+        now = now_iso()
+        self.conn.execute(
+            """
+            INSERT INTO fin_suggestion (
+                id, kind, payload_json, raw_ref, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (suggestion_id, kind, payload_json, raw_ref, now, now),
+        )
+        self.conn.commit()
+        return suggestion_id
+
+    def list_fin_suggestions(self, *, status: str = "pending") -> list[dict[str, object]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM fin_suggestion
+            WHERE status = ?
+            ORDER BY created_at ASC
+            """,
+            (status,),
+        ).fetchall()
+        return [_plain_row(row) for row in rows]
+
+    def accept_fin_suggestion(self, id: str, *, txn_type: str) -> str:
+        row = self.conn.execute("SELECT * FROM fin_suggestion WHERE id = ?", (id,)).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown finance suggestion: {id}")
+        suggestion = _plain_row(row)
+        status = str(suggestion["status"])
+        if status != "pending":
+            raise ValueError(f"suggestion {id} is already {status}")
+        payload = _suggestion_payload(str(suggestion["payload_json"]))
+        txn_id = self.add_transaction(
+            txn_date=str(payload["txn_date"]),
+            amount=Decimal(str(payload["amount"])),
+            merchant=_optional_str(payload.get("merchant")),
+            txn_type=txn_type,
+            source="email",
+            instrument_account_id=_optional_str(payload.get("instrument_account_id")),
+            currency=str(payload.get("currency", "SGD")),
+            raw_ref=_optional_str(payload.get("raw_ref"))
+            or _optional_str(suggestion.get("raw_ref")),
+            confidence=_optional_float(payload.get("confidence")),
+        )
+        self.conn.execute(
+            """
+            UPDATE fin_suggestion
+            SET status = 'accepted', updated_at = ?
+            WHERE id = ?
+            """,
+            (now_iso(), id),
+        )
+        self.conn.commit()
+        return txn_id
+
+    def reject_fin_suggestion(self, id: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE fin_suggestion
+            SET status = 'rejected', updated_at = ?
+            WHERE id = ?
+            """,
+            (now_iso(), id),
+        )
+        self.conn.commit()
+
     def spend_summary(
         self,
         *,
@@ -341,3 +415,24 @@ def _decimal_from_sql(value: object) -> Decimal:
 
 def _optional_str(value: object) -> str | None:
     return str(value) if value is not None else None
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str | int | float):
+        return float(value)
+    raise ValueError("suggestion confidence must be numeric")
+
+
+def _suggestion_payload(payload_json: str) -> dict[str, object]:
+    raw = json.loads(payload_json)
+    if not isinstance(raw, dict):
+        raise ValueError("suggestion payload must decode to an object")
+    transaction = raw.get("transaction", raw)
+    if not isinstance(transaction, dict):
+        raise ValueError("suggestion payload transaction must be an object")
+    required = ("txn_date", "amount", "raw_ref")
+    if not all(key in transaction for key in required):
+        raise ValueError("suggestion payload missing transaction fields")
+    return dict(transaction)

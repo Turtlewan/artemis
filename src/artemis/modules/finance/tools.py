@@ -10,9 +10,13 @@ from typing import Literal, cast
 from pydantic import BaseModel, field_validator
 
 from artemis.manifest import ActionRisk, ToolSpec
+from artemis.modules.finance.extraction import FinanceExtractor
 from artemis.modules.finance.store import FinanceStore
+from artemis.modules.gmail.cache import GmailReadCache
 
 _store: FinanceStore | None = None
+_extractor: FinanceExtractor | None = None
+_gmail_cache: GmailReadCache | None = None
 
 
 class EmptyArgs(BaseModel):
@@ -83,6 +87,44 @@ class TxnCreatedResult(BaseModel):
     """Created transaction id."""
 
     transaction_id: str
+
+
+class ExtractEmailArgs(BaseModel):
+    """Arguments for extracting transactions from one cached email."""
+
+    message_id: str
+
+
+class ExtractResult(BaseModel):
+    """Email extraction ids split by committed and suggested writes."""
+
+    written: list[str]
+    suggested: list[str]
+
+
+class FinSuggestionListArgs(BaseModel):
+    """Arguments for listing finance suggestions."""
+
+    status: str = "pending"
+
+
+class FinSuggestionListResult(BaseModel):
+    """Finance suggestion list result."""
+
+    suggestions: list[dict[str, object]]
+
+
+class FinSuggestionAcceptArgs(BaseModel):
+    """Arguments for accepting a finance suggestion."""
+
+    id: str
+    txn_type: str
+
+
+class FinSuggestionRejectArgs(BaseModel):
+    """Arguments for rejecting a finance suggestion."""
+
+    id: str
 
 
 class TxnAddArgs(BaseModel):
@@ -192,6 +234,13 @@ def init_finance_tools(store: FinanceStore) -> None:
     _store = store
 
 
+def init_finance_extractor(extractor: FinanceExtractor, gmail_cache: GmailReadCache) -> None:
+    """Set the Finance email extractor used by module-level tool callables."""
+    global _extractor, _gmail_cache
+    _extractor = extractor
+    _gmail_cache = gmail_cache
+
+
 def build_finance_tool_specs() -> list[ToolSpec]:
     """Build bare Finance tool specs."""
     return [
@@ -285,6 +334,37 @@ def build_finance_tool_specs() -> list[ToolSpec]:
             csv_import,
             ActionRisk.WRITE,
         ),
+        _spec(
+            "transaction_extract_email",
+            "Extract local ledger transactions from one cached email.",
+            ExtractEmailArgs,
+            ExtractResult,
+            transaction_extract_email,
+            ActionRisk.WRITE,
+        ),
+        _spec(
+            "fin_suggestion_list",
+            "List pending local finance suggestions.",
+            FinSuggestionListArgs,
+            FinSuggestionListResult,
+            fin_suggestion_list,
+        ),
+        _spec(
+            "fin_suggestion_accept",
+            "Accept a local finance suggestion.",
+            FinSuggestionAcceptArgs,
+            TxnCreatedResult,
+            fin_suggestion_accept,
+            ActionRisk.WRITE,
+        ),
+        _spec(
+            "fin_suggestion_reject",
+            "Reject a local finance suggestion.",
+            FinSuggestionRejectArgs,
+            OkResult,
+            fin_suggestion_reject,
+            ActionRisk.WRITE,
+        ),
     ]
 
 
@@ -292,6 +372,12 @@ def _get_store() -> FinanceStore:
     if _store is None:
         raise RuntimeError("finance store not initialised")
     return _store
+
+
+def _get_extractor() -> tuple[FinanceExtractor, GmailReadCache]:
+    if _extractor is None or _gmail_cache is None:
+        raise RuntimeError("finance extractor not initialised")
+    return _extractor, _gmail_cache
 
 
 async def spend_summary(args: SpendSummaryArgs) -> SpendSummaryResult:
@@ -387,6 +473,31 @@ async def csv_import(args: CsvImportArgs) -> CsvImportResult:
         skipped_duplicates=result.skipped_duplicates,
         errors=result.errors,
     )
+
+
+async def transaction_extract_email(args: ExtractEmailArgs) -> ExtractResult:
+    extractor, gmail_cache = _get_extractor()
+    msg = gmail_cache.get(args.message_id)
+    if msg is None:
+        return ExtractResult(written=[], suggested=[])
+    result = await extractor.extract_email(msg)
+    return ExtractResult(written=result.written, suggested=result.suggested)
+
+
+async def fin_suggestion_list(args: FinSuggestionListArgs) -> FinSuggestionListResult:
+    return FinSuggestionListResult(
+        suggestions=_get_store().list_fin_suggestions(status=args.status)
+    )
+
+
+async def fin_suggestion_accept(args: FinSuggestionAcceptArgs) -> TxnCreatedResult:
+    transaction_id = _get_store().accept_fin_suggestion(args.id, txn_type=args.txn_type)
+    return TxnCreatedResult(transaction_id=transaction_id)
+
+
+async def fin_suggestion_reject(args: FinSuggestionRejectArgs) -> OkResult:
+    _get_store().reject_fin_suggestion(args.id)
+    return OkResult()
 
 
 def _validated_decimal_text(value: str) -> str:

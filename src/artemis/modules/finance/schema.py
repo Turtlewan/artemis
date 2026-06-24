@@ -163,6 +163,21 @@ def create_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_bill_status ON bill(status)")
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS fin_suggestion (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            raw_ref TEXT,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','accepted','rejected')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fin_suggestion_status ON fin_suggestion(status)")
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS category (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,

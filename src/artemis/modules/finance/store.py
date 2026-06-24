@@ -193,6 +193,24 @@ class FinanceStore:
     def delete_transaction(self, id: str) -> None:
         self._repo().delete_transaction(id)
 
+    def create_fin_suggestion(
+        self,
+        kind: str,
+        payload_json: str,
+        *,
+        raw_ref: str | None = None,
+    ) -> str:
+        return self._repo().create_fin_suggestion(kind, payload_json, raw_ref=raw_ref)
+
+    def list_fin_suggestions(self, *, status: str = "pending") -> list[dict[str, object]]:
+        return self._repo().list_fin_suggestions(status=status)
+
+    def accept_fin_suggestion(self, id: str, *, txn_type: str) -> str:
+        return self._repo().accept_fin_suggestion(id, txn_type=txn_type)
+
+    def reject_fin_suggestion(self, id: str) -> None:
+        self._repo().reject_fin_suggestion(id)
+
     def spend_summary(
         self,
         *,

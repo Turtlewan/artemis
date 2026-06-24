@@ -251,8 +251,13 @@ def test_finance_manifest_and_tools_shape(tmp_path: Path) -> None:
 
 
 def test_finance_package_has_no_cloud_imports() -> None:
+    # Always-local: the ledger may use the LOCAL ModelPort (loopback
+    # sensitive_reasoner, added in FIN-b extraction) but never a CLOUD/Codex
+    # port. Assert the cloud-specific markers are absent, not ModelPort itself.
     finance_dir = Path(__file__).parents[1] / "src" / "artemis" / "modules" / "finance"
     combined = "\n".join(path.read_text() for path in finance_dir.glob("*.py"))
-    assert "ModelPort" not in combined
+    assert "model_adapters" not in combined
+    assert "Codex" not in combined
+    assert "responder_cloud" not in combined
     assert "model_adapters" not in combined
     assert "cloud" not in combined
