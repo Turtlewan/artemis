@@ -42,6 +42,17 @@ from artemis.memory.tools import (
     memory_manifest,
     resolve_entity,
 )
+from artemis.memory.trips import (
+    Trip,
+    TripAssembler,
+    TripExtract,
+    TripLeg,
+    TripLegKind,
+    TripRepository,
+    TripStatus,
+    create_trip_schema,
+    trip_entity_ref,
+)
 from artemis.memory.write_path import (
     MemoryWritePath,
     MemoryWriteQueue,
@@ -96,9 +107,17 @@ __all__ = [
     "ResolveEntityResult",
     "SENTINEL_TS",
     "SqliteMemoryStore",
+    "Trip",
+    "TripAssembler",
+    "TripExtract",
+    "TripLeg",
+    "TripLegKind",
+    "TripRepository",
+    "TripStatus",
     "WritePathResult",
     "build_write_path",
     "create_schema",
+    "create_trip_schema",
     "decay_score",
     "memory_manifest",
     "now_iso",
@@ -108,4 +127,5 @@ __all__ = [
     "render_inject_block",
     "resolve_entity",
     "sweep_tombstone_candidates",
+    "trip_entity_ref",
 ]
