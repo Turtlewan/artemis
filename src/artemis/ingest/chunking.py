@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from artemis.ingest.parsing import ParsedBlock, ParsedDocument
 from artemis.ports.types import Document, Scope
+from artemis.sensitivity import Sensitivity
 
 DEFAULT_CHUNK_CHARS = 2048
 
@@ -28,6 +29,8 @@ class ChunkRecord:
     node_level: int = 0
     is_summary: bool = False
     parent_chunk_id: str | None = None
+    sensitivity: Sensitivity = "sensitive"
+    category: str | None = None
 
 
 def chunk_document(
@@ -84,4 +87,6 @@ def _make_chunk(
         bbox=first.bbox,
         char_start=min(block.char_start for block in blocks),
         char_end=max(block.char_end for block in blocks),
+        sensitivity=document.sensitivity,
+        category=document.category,
     )

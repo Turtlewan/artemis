@@ -92,6 +92,8 @@ class LanceDBVectorStore:
                 "node_level": _required_int(meta.get("node_level", 0)),
                 "is_summary": bool(meta.get("is_summary", False)),
                 "parent_chunk_id": _optional_str(meta.get("parent_chunk_id")),
+                "sensitivity": _sensitivity(meta.get("sensitivity")),
+                "category": _optional_str(meta.get("category")),
             }
             for entry_id, vector, meta in zip(ids, vectors, metadata)
         ]
@@ -340,6 +342,8 @@ class LanceDBVectorStore:
                 pa.field("node_level", pa.int64()),
                 pa.field("is_summary", pa.bool_()),
                 pa.field("parent_chunk_id", pa.string()),
+                pa.field("sensitivity", pa.string()),
+                pa.field("category", pa.string()),
             ]
         )
 
@@ -373,6 +377,12 @@ def _optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _sensitivity(value: object) -> str:
+    if value == "general":
+        return "general"
+    return "sensitive"
 
 
 def _optional_bbox(value: object) -> list[float] | None:

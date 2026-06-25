@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -11,6 +12,9 @@ from artemis.ingest.connectors import Connector, RawItem, Source, to_document
 from artemis.ingest.parsing import DocumentParser, ParsedDocument
 from artemis.ports.retrieval import EmbeddingModel, VectorStore
 from artemis.ports.types import Document, Scope
+from artemis.sensitivity import Sensitivity, SensitivityClassifierProtocol
+
+logger = logging.getLogger(__name__)
 
 
 class IngestError(Exception):
@@ -50,6 +54,7 @@ class IngestPipeline:
         store_for: Callable[[Scope], VectorStore],
         is_unlocked: Callable[[], bool],
         projection_fn: Callable[[ParsedDocument, Document], Sequence[Projection]] | None = None,
+        classifier: SensitivityClassifierProtocol | None = None,
     ) -> None:
         self._connector_for = connector_for
         self._parser = parser
@@ -57,9 +62,15 @@ class IngestPipeline:
         self._store_for = store_for
         self._is_unlocked = is_unlocked
         self._projection_fn = projection_fn
+        self._classifier = classifier
 
     async def ingest(self, source: Source) -> IngestResult:
-        """Ingest one source, idempotent by document content hash."""
+        """Ingest one source, idempotent by document content hash.
+
+        Sensitivity is classified once per source after the idempotency skip,
+        never per chunk; unavailable or failing classifiers fail closed to
+        ``sensitive``, and ``category`` is reserved as ``None`` in v1.
+        """
         if not self._is_unlocked():
             raise ScopeLockedError(f"Scope is locked: {source.scope}")
 
@@ -81,6 +92,14 @@ class IngestPipeline:
                 document=document,
                 item=item,
             )
+
+        document.sensitivity = await self._classify_source(document)
+        document.category = None
+        logger.debug(
+            "classified source sensitivity source_id=%s label=%s",
+            document.source_id,
+            document.sensitivity,
+        )
 
         _delete_document(store, document.document_id)
         if self._projection_fn is not None:
@@ -107,6 +126,19 @@ class IngestPipeline:
             item=item,
         )
 
+    async def _classify_source(self, document: Document) -> Sensitivity:
+        sensitivity: Sensitivity = "sensitive"
+        if self._classifier is None:
+            return sensitivity
+        try:
+            return await self._classifier.classify(document.text)
+        except Exception as exc:
+            logger.warning(
+                "sensitivity classify failed (%s); failing closed to sensitive",
+                type(exc).__name__,
+            )
+            return sensitivity
+
 
 def _metadata_for(chunk: ChunkRecord) -> Mapping[str, object]:
     return {
@@ -122,6 +154,8 @@ def _metadata_for(chunk: ChunkRecord) -> Mapping[str, object]:
         "node_level": chunk.node_level,
         "is_summary": chunk.is_summary,
         "parent_chunk_id": chunk.parent_chunk_id,
+        "sensitivity": chunk.sensitivity,
+        "category": chunk.category,
     }
 
 

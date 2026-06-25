@@ -54,7 +54,8 @@ The immutable-corpus RAG store. Distinct entity family from Memory (the two stor
   (idempotency) · `scope` · `sensitivity` · ingest + extractor version. One Source → one-or-more Documents.
 - **Chunk** — `chunk_id` · `document_id` (FK) · text · **`embedding`** (vector; dimension locked in store
   metadata) · BM25/FTS terms · **provenance + locator** (page / timestamp / bbox → deep-link back to Source) ·
-  `scope` · `sensitivity`. The retrieval unit (hybrid vector + keyword + rerank).
+  `scope` · `sensitivity` · `category` (nullable, reserved); the doc-corpus LanceDB row persists both
+  `sensitivity` and `category`. The retrieval unit (hybrid vector + keyword + rerank).
 - _Module **knowledge contributions** (§4) also land here as Documents/Chunks with a back-reference to the
   originating module record — this is the "push" half of the hybrid data flow._
 

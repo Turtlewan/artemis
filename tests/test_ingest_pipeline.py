@@ -12,10 +12,12 @@ from artemis.adapters.lancedb_store import DimensionMismatchError, LanceDBVector
 from artemis.config import Settings
 from artemis.data.scoped_store import CrossScopeError
 from artemis.identity.key_provider import ScopeLockedError
+from artemis.ingest.chunking import ChunkRecord, chunk_document
 from artemis.ingest.connectors import FileConnector, Source, WebConnector
-from artemis.ingest.parsing import FakeParser
+from artemis.ingest.parsing import FakeParser, ParsedBlock, ParsedDocument
 from artemis.ingest.pipeline import IngestPipeline
-from artemis.ports.types import Scope, Vector
+from artemis.ports.types import Document, Scope, Vector
+from artemis.sensitivity import Sensitivity
 
 
 class FakeEmbedder:
@@ -40,6 +42,22 @@ class FakeEmbedder:
             values[index % self._dimension] += float(byte)
         norm = sum(value * value for value in values) ** 0.5 or 1.0
         return [value / norm for value in values]
+
+
+class FakeSensitivityClassifier:
+    """Deterministic classifier for ingestion tests."""
+
+    def __init__(self, label: Sensitivity = "sensitive", *, raises: bool = False) -> None:
+        self._label = label
+        self._raises = raises
+        self.calls = 0
+
+    async def classify(self, request_text: str) -> Sensitivity:
+        _ = request_text
+        self.calls += 1
+        if self._raises:
+            raise RuntimeError("classifier unavailable")
+        return self._label
 
 
 class FixtureWebConnector(WebConnector):
@@ -73,6 +91,7 @@ def _pipeline(
     store: LanceDBVectorStore,
     *,
     unlocked: bool = True,
+    classifier: FakeSensitivityClassifier | None = None,
 ) -> IngestPipeline:
     embedder = FakeEmbedder(dimension=8)
     return IngestPipeline(
@@ -81,7 +100,25 @@ def _pipeline(
         embedder=embedder,
         store_for=lambda _scope: store,
         is_unlocked=lambda: unlocked,
+        classifier=classifier,
     )
+
+
+def _write_long_file(path: Path) -> None:
+    path.parent.mkdir()
+    path.write_text("alpha beta gamma delta " * 140, encoding="utf-8")
+
+
+def _assert_rows_tagged(
+    rows: Sequence[object],
+    *,
+    sensitivity: Sensitivity,
+    category: object = None,
+) -> None:
+    for row in rows:
+        row_mapping = cast(dict[str, object], row)
+        assert row_mapping["sensitivity"] == sensitivity
+        assert row_mapping["category"] is category
 
 
 @pytest.mark.asyncio
@@ -108,6 +145,8 @@ async def test_file_ingest_writes_provenance_and_page_images(tmp_path: Path) -> 
         assert row["node_level"] == 0
         assert row["is_summary"] is False
         assert row["parent_chunk_id"] is None
+        assert row["sensitivity"] == "sensitive"
+        assert row["category"] is None
 
 
 @pytest.mark.asyncio
@@ -163,6 +202,9 @@ def test_dimension_lock_and_scope_wall(tmp_path: Path) -> None:
             }
         ],
     )
+    rows = store.rows()
+    assert rows[0]["sensitivity"] == "sensitive"
+    assert rows[0]["category"] is None
 
     with pytest.raises(DimensionMismatchError):
         _store(tmp_path, dimension=4)
@@ -208,3 +250,128 @@ def test_vault_dir_rejects_non_owner_scope(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         vault_dir(_settings(tmp_path), "guest-x")
+
+
+def test_chunk_document_propagates_document_sensitivity() -> None:
+    document = Document(
+        document_id="doc",
+        source_id="src",
+        content_hash="hash",
+        scope="owner-private",
+        text="alpha beta",
+        sensitivity="general",
+    )
+    parsed = ParsedDocument(
+        text=document.text,
+        blocks=(
+            ParsedBlock(
+                text=document.text,
+                page=1,
+                bbox=None,
+                char_start=0,
+                char_end=len(document.text),
+            ),
+        ),
+        page_images=(),
+    )
+
+    chunks = chunk_document(parsed, document)
+
+    assert {chunk.sensitivity for chunk in chunks} == {"general"}
+    assert {chunk.category for chunk in chunks} == {None}
+    assert (
+        ChunkRecord(
+            chunk_id="chunk",
+            document_id="doc",
+            text="text",
+            scope="owner-private",
+            content_hash="hash",
+            source_id="src",
+            page=None,
+            bbox=None,
+            char_start=0,
+            char_end=4,
+        ).sensitivity
+        == "sensitive"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_sensitivity_propagates_once_per_source(tmp_path: Path) -> None:
+    path = tmp_path / "allowed" / "note.txt"
+    _write_long_file(path)
+    store = _store(tmp_path)
+    classifier = FakeSensitivityClassifier("sensitive")
+    pipeline = _pipeline(tmp_path, FileConnector([path.parent]), store, classifier=classifier)
+
+    result = await pipeline.ingest(Source(kind="file", uri=str(path), scope="owner-private"))
+
+    rows = store.rows()
+    assert result.chunks_written > 1
+    assert len(rows) == result.chunks_written
+    assert result.document.sensitivity == "sensitive"
+    assert result.document.category is None
+    assert classifier.calls == 1
+    _assert_rows_tagged(rows, sensitivity="sensitive")
+
+
+@pytest.mark.asyncio
+async def test_ingest_sensitivity_general_path(tmp_path: Path) -> None:
+    path = tmp_path / "allowed" / "note.txt"
+    _write_long_file(path)
+    store = _store(tmp_path)
+    classifier = FakeSensitivityClassifier("general")
+    pipeline = _pipeline(tmp_path, FileConnector([path.parent]), store, classifier=classifier)
+
+    result = await pipeline.ingest(Source(kind="file", uri=str(path), scope="owner-private"))
+
+    assert result.document.sensitivity == "general"
+    assert classifier.calls == 1
+    _assert_rows_tagged(store.rows(), sensitivity="general")
+
+
+@pytest.mark.asyncio
+async def test_ingest_sensitivity_fail_closed_without_classifier(tmp_path: Path) -> None:
+    path = tmp_path / "allowed" / "note.txt"
+    _write_long_file(path)
+    store = _store(tmp_path)
+    pipeline = _pipeline(tmp_path, FileConnector([path.parent]), store, classifier=None)
+
+    result = await pipeline.ingest(Source(kind="file", uri=str(path), scope="owner-private"))
+
+    assert result.document.sensitivity == "sensitive"
+    assert result.document.category is None
+    _assert_rows_tagged(store.rows(), sensitivity="sensitive")
+
+
+@pytest.mark.asyncio
+async def test_ingest_sensitivity_fail_closed_when_classifier_raises(tmp_path: Path) -> None:
+    path = tmp_path / "allowed" / "note.txt"
+    _write_long_file(path)
+    store = _store(tmp_path)
+    classifier = FakeSensitivityClassifier("general", raises=True)
+    pipeline = _pipeline(tmp_path, FileConnector([path.parent]), store, classifier=classifier)
+
+    result = await pipeline.ingest(Source(kind="file", uri=str(path), scope="owner-private"))
+
+    assert result.document.sensitivity == "sensitive"
+    assert classifier.calls == 1
+    _assert_rows_tagged(store.rows(), sensitivity="sensitive")
+
+
+@pytest.mark.asyncio
+async def test_idempotent_reingest_skips_sensitivity_classifier(tmp_path: Path) -> None:
+    path = tmp_path / "allowed" / "note.txt"
+    _write_long_file(path)
+    store = _store(tmp_path)
+    classifier = FakeSensitivityClassifier("general")
+    pipeline = _pipeline(tmp_path, FileConnector([path.parent]), store, classifier=classifier)
+    source = Source(kind="file", uri=str(path), scope="owner-private")
+
+    first = await pipeline.ingest(source)
+    second = await pipeline.ingest(source)
+
+    assert first.skipped is False
+    assert second.skipped is True
+    assert second.chunks_written == 0
+    assert classifier.calls == 1

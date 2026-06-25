@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import NewType
+from typing import TYPE_CHECKING, NewType
+
+if TYPE_CHECKING:
+    from artemis.sensitivity import Sensitivity
 
 PersonId = NewType("PersonId", str)
 """Unique identifier for a person."""
@@ -56,12 +59,16 @@ class Document:
         content_hash: str,
         scope: Scope,
         text: str,
+        sensitivity: Sensitivity = "sensitive",
+        category: str | None = None,
     ) -> None:
         self.document_id = document_id
         self.source_id = source_id
         self.content_hash = content_hash
         self.scope = scope
         self.text = text
+        self.sensitivity = sensitivity
+        self.category = category
 
 
 class Chunk:
