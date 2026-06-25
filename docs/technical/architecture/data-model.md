@@ -68,6 +68,8 @@ on every node/edge/vector.
 - **SemanticFact** (semantic store) — a distilled `(subject, relation, object)` triple. `fact_id` · `person_id`
   · subject/relation/object · `confidence` · provenance (links to source Episode/Chunk) · **`valid_at` /
   `invalid_at`** (temporal validity + explicit supersession for stale-confident facts) · embedding + graph edges.
+  The memory fact row persists `sensitivity` plus nullable `category` (reserved/`None` in v1), inherited from
+  the source where available and otherwise fail-closed to `sensitive`.
   Written via **A.U.D.N.** (ADD/UPDATE/DELETE/NOOP) to dedupe + resolve contradictions; extraction runs on the **local `sensitive_reasoner`** (Qwen3.6-27B), not the teacher — owner memory content is sensitive and must not reach the cloud (ADR-003).
 - **Entity** (cross-module backbone — ADR-013) — a first-class referenced node in the owner-private memory
   DB: `entity_id` (PK, stable) · `entity_type` (`person` | `place` | `goal`) · `canonical_name` · `external_ref`

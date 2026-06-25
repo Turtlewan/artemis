@@ -22,6 +22,7 @@ from artemis.memory.schema import (
     SENTINEL_TS,
     now_iso,
 )
+from artemis.sensitivity import Sensitivity
 
 if TYPE_CHECKING:
     import sqlite3
@@ -68,6 +69,8 @@ class FactRow:
     keywords: str | None
     contextual_description: str | None
     linked_ids: str | None
+    sensitivity: Sensitivity = "sensitive"
+    category: str | None = None
     subject_entity_id: str | None = None  # added by M4-d-2 migration; default None pre-migration
 
 
@@ -95,7 +98,7 @@ _FACT_COLUMNS: str = (
     "confidence, valid_from, valid_to, tx_from, tx_to, "
     "source_turn_id, extracted_at, extractor_model, "
     "salience, access_count, last_access, "
-    "keywords, contextual_description, linked_ids, subject_entity_id"
+    "keywords, contextual_description, linked_ids, sensitivity, category, subject_entity_id"
 )
 
 
@@ -122,7 +125,9 @@ def _row_to_fact(row: tuple[Any, ...]) -> FactRow:
         keywords=row[17],
         contextual_description=row[18],
         linked_ids=row[19],
-        subject_entity_id=row[20],
+        sensitivity=row[20],
+        category=row[21],
+        subject_entity_id=row[22],
     )
 
 
@@ -146,6 +151,7 @@ class BitemporalRepository:
     def __init__(self, conn: sqlite3.Connection, person_id: PersonId) -> None:
         self._conn = conn
         self._person_id = person_id
+        self._ensure_sensitivity_columns()
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -229,6 +235,8 @@ class BitemporalRepository:
         keywords: tuple[str, ...] = (),
         contextual_description: str | None = None,
         linked_ids: tuple[str, ...] = (),
+        sensitivity: Sensitivity = "sensitive",
+        category: str | None = None,
         subject_entity_id: str | None = None,
     ) -> str:
         """Insert a new fact version.
@@ -274,8 +282,9 @@ class BitemporalRepository:
                 confidence, valid_from, valid_to, tx_from, tx_to,
                 source_turn_id, extracted_at, extractor_model,
                 salience, access_count, last_access,
-                keywords, contextual_description, linked_ids, subject_entity_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?)""",
+                keywords, contextual_description, linked_ids,
+                sensitivity, category, subject_entity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?, ?, ?)""",
             (
                 fact_id,
                 fact_key,
@@ -294,6 +303,8 @@ class BitemporalRepository:
                 kw_str,
                 contextual_description,
                 linked_str,
+                sensitivity,
+                category,
                 subject_entity_id,
             ),
         )
@@ -317,6 +328,8 @@ class BitemporalRepository:
         keywords: tuple[str, ...] = (),
         contextual_description: str | None = None,
         linked_ids: tuple[str, ...] = (),
+        sensitivity: Sensitivity = "sensitive",
+        category: str | None = None,
         subject_entity_id: str | None = None,
     ) -> str:
         """Close the current interval and insert a new version (the U path).
@@ -357,8 +370,9 @@ class BitemporalRepository:
                 confidence, valid_from, valid_to, tx_from, tx_to,
                 source_turn_id, extracted_at, extractor_model,
                 salience, access_count, last_access,
-                keywords, contextual_description, linked_ids, subject_entity_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?)""",
+                keywords, contextual_description, linked_ids,
+                sensitivity, category, subject_entity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, NULL, ?, ?, ?, ?, ?, ?)""",
             (
                 fact_id,
                 fact_key,
@@ -377,6 +391,8 @@ class BitemporalRepository:
                 kw_str,
                 contextual_description,
                 linked_str,
+                sensitivity,
+                category,
                 subject_entity_id,
             ),
         )
@@ -416,8 +432,9 @@ class BitemporalRepository:
                 confidence, valid_from, valid_to, tx_from, tx_to,
                 source_turn_id, extracted_at, extractor_model,
                 salience, access_count, last_access,
-                keywords, contextual_description, linked_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, NULL, NULL, NULL, 0.0, 0, NULL, NULL, NULL, NULL)""",
+                keywords, contextual_description, linked_ids,
+                sensitivity, category
+            ) VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, NULL, NULL, NULL, 0.0, 0, NULL, NULL, NULL, NULL, ?, ?)""",
             (
                 tombstone_id,
                 fact_key,
@@ -429,6 +446,11 @@ class BitemporalRepository:
                 vt,  # valid_to = vt → empty half-open [vt, vt) so as_of finds nothing
                 now,
                 SENTINEL_TS,
+                # Carry the original fact's tag explicitly (don't rely on the column
+                # DEFAULT) so the tombstone's sensitivity stays code-driven — consistent
+                # with the add()/update() paths. (ADR-029; cross-model review hardening.)
+                current.sensitivity,
+                current.category,
             ),
         )
 
@@ -670,6 +692,16 @@ class BitemporalRepository:
             (fact_key, SENTINEL_TS),
         ).fetchone()
         return _row_to_fact(row) if row is not None else None
+
+    def _ensure_sensitivity_columns(self) -> None:
+        """Add fact sensitivity columns when opening a pre-SENS-prod-M4b store."""
+        columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(facts)").fetchall()}
+        if "sensitivity" not in columns:
+            self._conn.execute(
+                "ALTER TABLE facts ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'sensitive'"
+            )
+        if "category" not in columns:
+            self._conn.execute("ALTER TABLE facts ADD COLUMN category TEXT")
 
     def _insert_embedding(self, fact_id: str, embedding: Vector) -> None:
         # Verify dimension from meta.

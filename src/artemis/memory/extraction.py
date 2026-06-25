@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message
+from artemis.sensitivity import Sensitivity, SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,13 @@ EXTRACTION_SCHEMA: dict[str, object] = {
 
 @dataclass(frozen=True)
 class ExtractedFact:
-    """An owner-scoped atomic fact extracted from a turn."""
+    """An owner-scoped atomic fact extracted from a turn.
+
+    Facts inherit the source sensitivity when available. Otherwise extraction
+    classifies the whole source text once per call, fail-closed to
+    ``"sensitive"``. Residual sensitive memory covers journal, credential, and
+    identity facts; ``category`` is reserved and remains ``None`` in v1.
+    """
 
     subject: str
     relation: str
@@ -54,16 +61,31 @@ class ExtractedFact:
     confidence: float
     keywords: tuple[str, ...] = ()
     contextual_description: str | None = None
+    sensitivity: Sensitivity = "sensitive"
+    category: str | None = None
 
 
 class FactExtractor:
     """Extract atomic owner facts through the local sensitive-reasoner role."""
 
-    def __init__(self, model: ModelPort, *, role: str = "sensitive_reasoner") -> None:
+    def __init__(
+        self,
+        model: ModelPort,
+        *,
+        role: str = "sensitive_reasoner",
+        classifier: SensitivityClassifierProtocol | None = None,
+    ) -> None:
         self._model = model
         self._role = role
+        self._classifier = classifier
 
-    async def extract(self, text: str, *, context: str | None = None) -> list[ExtractedFact]:
+    async def extract(
+        self,
+        text: str,
+        *,
+        context: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> list[ExtractedFact]:
         """Return schema-validated extracted facts, or ``[]`` on parse failure."""
         prompt = (
             "Extract atomic, self-contained (subject, relation, object) facts about the owner "
@@ -84,17 +106,39 @@ class FactExtractor:
         )
         try:
             payload = json.loads(response.text)
-            return validate_extraction_payload(payload)
+            facts = validate_extraction_payload(payload)
         except Exception as exc:
             logger.warning("Memory extraction parse failed (%s)", type(exc).__name__)
             return []
+        tag = await self._resolve_sensitivity(text, source_sensitivity=source_sensitivity)
+        return [replace(fact, sensitivity=tag, category=None) for fact in facts]
+
+    async def _resolve_sensitivity(
+        self, text: str, *, source_sensitivity: Sensitivity | None
+    ) -> Sensitivity:
+        if source_sensitivity is not None:
+            return source_sensitivity
+        if self._classifier is None:
+            return "sensitive"
+        try:
+            return await self._classifier.classify(text)
+        except Exception as exc:
+            logger.warning("Memory sensitivity classification failed (%s)", type(exc).__name__)
+            return "sensitive"
 
 
 class FakeExtractor:
     """Small deterministic extractor for off-hardware tests."""
 
-    async def extract(self, text: str, *, context: str | None = None) -> list[ExtractedFact]:
+    async def extract(
+        self,
+        text: str,
+        *,
+        context: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> list[ExtractedFact]:
         del context
+        tag = source_sensitivity or "sensitive"
         normalized = text.strip()
         lowered = normalized.lower()
 
@@ -111,6 +155,8 @@ class FakeExtractor:
                     _clean_object(delete_match.group("place")),
                     0.95,
                     contextual_description="DELETE",
+                    sensitivity=tag,
+                    category=None,
                 )
             ]
 
@@ -126,6 +172,8 @@ class FakeExtractor:
                     "lives_in",
                     _clean_object(moved_match.group("place")),
                     0.95,
+                    sensitivity=tag,
+                    category=None,
                 )
             ]
 
@@ -133,7 +181,16 @@ class FakeExtractor:
             r"\bI like (?P<thing>[A-Za-z][A-Za-z .'-]*?)$", normalized, re.IGNORECASE
         )
         if like_match:
-            return [ExtractedFact("owner", "likes", _clean_object(like_match.group("thing")), 0.9)]
+            return [
+                ExtractedFact(
+                    "owner",
+                    "likes",
+                    _clean_object(like_match.group("thing")),
+                    0.9,
+                    sensitivity=tag,
+                    category=None,
+                )
+            ]
 
         if "used to" in lowered:
             used_to_match = re.search(
@@ -152,6 +209,8 @@ class FakeExtractor:
                         _clean_object(used_to_match.group("object")),
                         0.9,
                         contextual_description="DELETE",
+                        sensitivity=tag,
+                        category=None,
                     )
                 ]
 

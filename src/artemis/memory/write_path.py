@@ -12,6 +12,7 @@ from artemis.memory.entities import EntityRepository, EntityType
 from artemis.memory.extraction import FactExtractor
 from artemis.memory.repository import BitemporalRepository
 from artemis.ports.retrieval import EmbeddingModel
+from artemis.sensitivity import Sensitivity
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class _QueuedTurn:
     text: str
     turn_id: str
     role: str | None
+    source_sensitivity: Sensitivity | None
 
 
 class MemoryWritePath:
@@ -58,14 +60,19 @@ class MemoryWritePath:
         self._extractor_model_id = extractor_model_id
 
     async def process_turn(
-        self, text: str, *, turn_id: str, role: str | None = None
+        self,
+        text: str,
+        *,
+        turn_id: str,
+        role: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
     ) -> WritePathResult:
         """Append the episode first, then best-effort extract and apply facts."""
         episode_id = self._repo.append_episode(text, turn_id=turn_id, role=role)
         result = WritePathResult(episode_id=episode_id)
 
         try:
-            facts = await self._extractor.extract(text)
+            facts = await self._extractor.extract(text, source_sensitivity=source_sensitivity)
         except Exception as exc:
             logger.warning(
                 "Memory extraction failed for turn id %s (%s)", turn_id, type(exc).__name__
@@ -143,6 +150,8 @@ class MemoryWritePath:
                 extractor_model=self._extractor_model_id,
                 keywords=fact.keywords,
                 contextual_description=fact.contextual_description,
+                sensitivity=fact.sensitivity,
+                category=fact.category,
                 subject_entity_id=subject_entity_id,
             )
             return _replace(result, facts_added=result.facts_added + 1)
@@ -160,6 +169,8 @@ class MemoryWritePath:
                 extractor_model=self._extractor_model_id,
                 keywords=fact.keywords,
                 contextual_description=fact.contextual_description,
+                sensitivity=fact.sensitivity,
+                category=fact.category,
                 subject_entity_id=subject_entity_id,
             )
             return _replace(result, facts_updated=result.facts_updated + 1)
@@ -181,10 +192,24 @@ class MemoryWriteQueue:
         self._write_path = write_path
         self._queue: asyncio.Queue[_QueuedTurn] = asyncio.Queue(maxsize=maxsize)
 
-    def enqueue(self, text: str, turn_id: str, role: str | None = None) -> None:
+    def enqueue(
+        self,
+        text: str,
+        turn_id: str,
+        role: str | None = None,
+        *,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> None:
         """Queue a turn without blocking; drop when full."""
         try:
-            self._queue.put_nowait(_QueuedTurn(text=text, turn_id=turn_id, role=role))
+            self._queue.put_nowait(
+                _QueuedTurn(
+                    text=text,
+                    turn_id=turn_id,
+                    role=role,
+                    source_sensitivity=source_sensitivity,
+                )
+            )
         except asyncio.QueueFull:
             logger.warning("Memory write queue full; dropping turn id %s", turn_id)
 
@@ -193,7 +218,12 @@ class MemoryWriteQueue:
         while True:
             item = await self._queue.get()
             try:
-                await self._write_path.process_turn(item.text, turn_id=item.turn_id, role=item.role)
+                await self._write_path.process_turn(
+                    item.text,
+                    turn_id=item.turn_id,
+                    role=item.role,
+                    source_sensitivity=item.source_sensitivity,
+                )
             except Exception as exc:
                 logger.warning(
                     "Memory write worker caught failure for turn id %s (%s)",
@@ -211,7 +241,12 @@ class MemoryWriteQueue:
             except asyncio.QueueEmpty:
                 return
             try:
-                await self._write_path.process_turn(item.text, turn_id=item.turn_id, role=item.role)
+                await self._write_path.process_turn(
+                    item.text,
+                    turn_id=item.turn_id,
+                    role=item.role,
+                    source_sensitivity=item.source_sensitivity,
+                )
             except Exception as exc:
                 logger.warning(
                     "Memory write drain caught failure for turn id %s (%s)",

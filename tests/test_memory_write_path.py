@@ -14,6 +14,7 @@ from artemis.memory.schema import SENTINEL_TS, create_schema
 from artemis.memory.write_path import MemoryWritePath, MemoryWriteQueue
 from artemis.ports.model import ModelResponse
 from artemis.ports.types import Message, PersonId, Vector
+from artemis.sensitivity import Sensitivity
 
 DIMENSION = 4
 OWNER_PERSON_ID = PersonId("owner")
@@ -81,9 +82,29 @@ class FakeModelPort:
         return [_embed(role + text) for text in texts]
 
 
+class FakeSensitivityClassifier:
+    def __init__(self, label: Sensitivity = "sensitive", *, raises: bool = False) -> None:
+        self.label = label
+        self.raises = raises
+        self.calls = 0
+
+    async def classify(self, request_text: str) -> Sensitivity:
+        del request_text
+        self.calls += 1
+        if self.raises:
+            raise RuntimeError("boom")
+        return self.label
+
+
 class RaisingExtractor:
-    async def extract(self, text: str, *, context: str | None = None) -> list[ExtractedFact]:
-        del text, context
+    async def extract(
+        self,
+        text: str,
+        *,
+        context: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> list[ExtractedFact]:
+        del text, context, source_sensitivity
         raise RuntimeError("boom")
 
 
@@ -91,8 +112,15 @@ class ExplodingWritePath:
     def __init__(self) -> None:
         self.turn_ids: list[str] = []
 
-    async def process_turn(self, text: str, *, turn_id: str, role: str | None = None) -> object:
-        del text, role
+    async def process_turn(
+        self,
+        text: str,
+        *,
+        turn_id: str,
+        role: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> object:
+        del text, role, source_sensitivity
         self.turn_ids.append(turn_id)
         if turn_id == "bad":
             raise RuntimeError("boom")
@@ -136,6 +164,57 @@ async def test_fact_extractor_uses_schema_and_parses_model_json() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fact_extractor_inherits_source_sensitivity_without_classifying() -> None:
+    classifier = FakeSensitivityClassifier("sensitive")
+    extractor = FactExtractor(_model_with_facts(["tea", "coffee"]), classifier=classifier)
+
+    facts = await extractor.extract("I like tea and coffee", source_sensitivity="general")
+
+    assert classifier.calls == 0
+    assert [fact.sensitivity for fact in facts] == ["general", "general"]
+    assert [fact.category for fact in facts] == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_fact_extractor_classifies_turn_text_once_for_fallback() -> None:
+    classifier = FakeSensitivityClassifier("sensitive")
+    extractor = FactExtractor(_model_with_facts(["tea", "coffee"]), classifier=classifier)
+
+    facts = await extractor.extract("I like tea and coffee")
+
+    assert classifier.calls == 1
+    assert [fact.sensitivity for fact in facts] == ["sensitive", "sensitive"]
+
+
+@pytest.mark.asyncio
+async def test_journal_turn_is_residual_sensitive_memory() -> None:
+    classifier = FakeSensitivityClassifier("sensitive")
+    extractor = FactExtractor(
+        _model_with_facts(["writing private journal notes"]), classifier=classifier
+    )
+
+    facts = await extractor.extract("I wrote in my private journal about my feelings")
+
+    assert classifier.calls == 1
+    assert [fact.sensitivity for fact in facts] == ["sensitive"]
+
+
+@pytest.mark.asyncio
+async def test_fact_extractor_fails_closed_without_or_with_raising_classifier() -> None:
+    no_classifier = FactExtractor(_model_with_facts(["tea"]))
+    raising_classifier = FactExtractor(
+        _model_with_facts(["coffee"]),
+        classifier=FakeSensitivityClassifier("general", raises=True),
+    )
+
+    no_classifier_facts = await no_classifier.extract("I like tea")
+    raising_facts = await raising_classifier.extract("I like coffee")
+
+    assert [fact.sensitivity for fact in no_classifier_facts] == ["sensitive"]
+    assert [fact.sensitivity for fact in raising_facts] == ["sensitive"]
+
+
+@pytest.mark.asyncio
 async def test_fake_decider_rubric() -> None:
     candidate = Candidate("f1", "owner", "lives_in", "London")
     decider = FakeDecider()
@@ -174,7 +253,9 @@ async def test_write_path_add_update_delete_noop_and_provenance(
 ) -> None:
     write_path = _write_path(repo)
 
-    added = await write_path.process_turn("I live in London", turn_id="T1", role="user")
+    added = await write_path.process_turn(
+        "I live in London", turn_id="T1", role="user", source_sensitivity="general"
+    )
     assert added.facts_added == 1
     london_rows = repo.as_of()
     assert [(row.subject, row.relation, row.object) for row in london_rows] == [
@@ -183,9 +264,13 @@ async def test_write_path_add_update_delete_noop_and_provenance(
     london = london_rows[0]
     assert london.source_turn_id == "T1"
     assert london.extractor_model == "fake-extractor"
+    assert london.sensitivity == "general"
+    assert london.category is None
     fact_key = london.fact_key
 
-    updated = await write_path.process_turn("Actually I moved to Paris", turn_id="T2")
+    updated = await write_path.process_turn(
+        "Actually I moved to Paris", turn_id="T2", source_sensitivity="sensitive"
+    )
     assert updated.facts_updated == 1
     current = repo.as_of(fact_keys=[fact_key])
     assert [row.object for row in current] == ["Paris"]
@@ -195,6 +280,8 @@ async def test_write_path_add_update_delete_noop_and_provenance(
     assert history[0].tx_to != SENTINEL_TS
     assert history[1].object == "Paris"
     assert history[1].source_turn_id == "T2"
+    assert history[1].sensitivity == "sensitive"
+    assert history[1].category is None
 
     noop = await write_path.process_turn("I live in Paris", turn_id="T2-replay")
     assert noop.noops == 1
@@ -250,6 +337,19 @@ async def test_queue_drain_processes_turns(repo: BitemporalRepository) -> None:
 
 
 @pytest.mark.asyncio
+async def test_queue_forwards_source_sensitivity(repo: BitemporalRepository) -> None:
+    queue = MemoryWriteQueue(_write_path(repo))
+
+    queue.enqueue("I like tea", "T1", source_sensitivity="general")
+    await queue.drain()
+
+    rows = repo.as_of()
+    assert len(rows) == 1
+    assert rows[0].sensitivity == "general"
+    assert rows[0].category is None
+
+
+@pytest.mark.asyncio
 async def test_queue_survives_process_turn_exception() -> None:
     write_path = ExplodingWritePath()
     queue = MemoryWriteQueue(write_path)  # type: ignore[arg-type]
@@ -268,6 +368,24 @@ def _write_path(repo: BitemporalRepository) -> MemoryWritePath:
         FakeExtractor(),  # type: ignore[arg-type]
         FakeDecider(),  # type: ignore[arg-type]
         extractor_model_id="fake-extractor",
+    )
+
+
+def _model_with_facts(objects: list[str]) -> FakeModelPort:
+    return FakeModelPort(
+        json.dumps(
+            {
+                "facts": [
+                    {
+                        "subject": "owner",
+                        "relation": "likes",
+                        "object": object_,
+                        "confidence": 0.9,
+                    }
+                    for object_ in objects
+                ]
+            }
+        )
     )
 
 
