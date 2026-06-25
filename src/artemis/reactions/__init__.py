@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from artemis.reactions.dispatcher import ReactionDispatcher
     from artemis.reactions.emit import DomainEvent, EventBus, EventType
     from artemis.reactions.ledger import ReactionLedger
+    from artemis.reactions.reconciler import LinkIntegrityReport, MatchResult, Reconciler
     from artemis.reactions.rulestore import (
         TIER_A_BUILTINS,
         ReactionRule,
@@ -19,11 +20,14 @@ __all__ = [
     "DomainEvent",
     "EventBus",
     "EventType",
+    "LinkIntegrityReport",
+    "MatchResult",
     "ReactionDispatcher",
     "ReactionLedger",
     "ReactionRule",
     "ReactionRuleStore",
     "ReactionTier",
+    "Reconciler",
     "TIER_A_BUILTINS",
 ]
 
@@ -41,6 +45,10 @@ def __getattr__(name: str) -> object:
         from artemis.reactions.ledger import ReactionLedger
 
         return ReactionLedger
+    if name in {"LinkIntegrityReport", "MatchResult", "Reconciler"}:
+        from artemis.reactions import reconciler
+
+        return getattr(reconciler, name)
     if name in {"ReactionRule", "ReactionRuleStore", "ReactionTier", "TIER_A_BUILTINS"}:
         from artemis.reactions import rulestore
 
