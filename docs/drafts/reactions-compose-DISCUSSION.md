@@ -11,6 +11,32 @@ propagated via an injected lookup.
 
 ---
 
+## 🔬 RESEARCH VERDICT (2026-06-25, L5 deep-research pass)
+
+6-agent deep research → `docs/research/2026-06-25-reactions-composition/` (synthesis: `README.md`).
+**Headline:** the research **confirms the built dispatcher, tiering, and observe-first posture**, and
+gives a security-grounded answer to the EMAIL_INGESTED fork:
+- **Resolve the A/B fork as Option B reframed = claim-check + thin classification envelope.** Payload =
+  `{message_id, source_ref, dedup id, + small non-sensitive flags has_commitment/has_event/has_gift_signal}`;
+  handlers fetch the quarantined extract via `source_ref`. Rationale: **OWASP LLM01:2025** — fanning out
+  AI-extracted content before validation propagates prompt-injection to every subscriber; claim-check
+  keeps the untrusted body behind a ref. Cost: rework the built comms reactions to fetch-via-ref.
+- **Sub-fork (emit timing):** lean emit **post-extraction** (flags+extract exist; matches the
+  "post-commit triggers = 52% engagement" finding) — but fix R2's "extraction is skippable" gap first.
+- **2 NEW decisions surfaced:** (1) **phantom-claim** posture — the dispatcher claims before the effect
+  (at-most-once; a failed stage/execute never retries) → keep, or move to effect-then-claim; add a
+  ledger **TTL**. (2) **Cascade guard** — nothing bounds a reaction→emit→reaction chain; add a
+  depth/origin marker or forbid reactions emitting the types they consume.
+- **Confirmed (no change):** INSERT-OR-IGNORE try_claim is canonical; single-consumer ⇒ the
+  stateful-atomicity TOCTOU is a non-issue (matches the review flag); definition-time tiering with
+  unknowns→most-restrictive; inert-suggestion≠approval-queue; event-bus+SQLite-ledger = right small-system fit.
+- **Observe-mode design inputs:** tag WOULD/inDryRun in one stream · block writes at the seam not the
+  logic · re-evaluate sensitivity at fire time (point-in-time staleness) · set explicit observe→live
+  exit criteria (avoid "permanent purgatory").
+
+Read `README.md` first tonight; the per-topic docs carry the cited detail + a `NEEDS-DOMAIN` registry
+(authorize ~14 domains to upgrade the event-payload claims from [COMMUNITY] to [VERIFIED]).
+
 ## ⛔ KEY OPEN QUESTION — the `EMAIL_INGESTED` payload contract (3-way mismatch)
 
 The comms reactions are already BUILT and consume `EMAIL_INGESTED`, but the new emit seam (R2) and
