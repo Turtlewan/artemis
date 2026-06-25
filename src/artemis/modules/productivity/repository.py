@@ -443,6 +443,13 @@ class ProductivityRepository:
         ).fetchall()
         return [_require_dict(row) for row in rows]
 
+    def get_suggestion(self, suggestion_id: str) -> dict[str, object] | None:
+        row = self._conn.execute(
+            "SELECT * FROM suggestions WHERE id = ?",
+            (suggestion_id,),
+        ).fetchone()
+        return _row_to_dict(row)
+
     def accept_suggestion(
         self,
         suggestion_id: str,

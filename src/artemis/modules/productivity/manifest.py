@@ -13,10 +13,14 @@ from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
 
+from artemis.config import get_settings
+from artemis.ingest.pipeline import IngestPipeline
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
+from artemis.memory import MemoryWriteQueue
 from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
 from artemis.modules.calendar.write_tools import CalendarWriteTools
 from artemis.modules.productivity import tools
+from artemis.modules.productivity.capture import CaptureService
 from artemis.modules.productivity.hooks import build_productivity_hooks
 from artemis.modules.productivity.store import ProductivityStore
 
@@ -41,6 +45,7 @@ def tasks_manifest(
     *,
     schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
     write_tools: CalendarWriteTools | None = None,
+    include_project_complete: bool = False,
 ) -> ModuleManifest:
     """Return the tasks surface manifest and initialise the shared store."""
     tools.init_tools(store)
@@ -53,7 +58,10 @@ def tasks_manifest(
         name="tasks",
         version="0.1.0",
         description="Owned tasks - capture, schedule, recurrence. Artemis is the source of truth.",
-        tools=_task_tool_specs(include_schedule=schedule_fn is not None),
+        tools=_task_tool_specs(
+            include_schedule=schedule_fn is not None,
+            include_project_complete=include_project_complete,
+        ),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
         proactive_hooks=hooks,
@@ -61,7 +69,32 @@ def tasks_manifest(
     )
 
 
-productivity_manifest = tasks_manifest
+def productivity_manifest(
+    store: ProductivityStore,
+    schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
+    write_tools: CalendarWriteTools | None = None,
+    registry: object | None = None,
+    capture_service: CaptureService | None = None,
+    ingest_pipeline: IngestPipeline | None = None,
+    memory_queue: MemoryWriteQueue | None = None,
+) -> ModuleManifest:
+    """Return the productivity task manifest with optional capture wiring."""
+    del registry
+    capture_wired = (
+        capture_service is not None and ingest_pipeline is not None and memory_queue is not None
+    )
+    manifest = tasks_manifest(
+        store,
+        schedule_fn=schedule_fn,
+        write_tools=write_tools,
+        include_project_complete=capture_wired,
+    )
+    if capture_wired:
+        assert capture_service is not None
+        assert ingest_pipeline is not None
+        assert memory_queue is not None
+        tools.init_capture(capture_service, ingest_pipeline, memory_queue, get_settings())
+    return manifest
 
 
 def _project_tool_specs() -> list[ToolSpec]:
@@ -114,7 +147,11 @@ def _project_tool_specs() -> list[ToolSpec]:
     ]
 
 
-def _task_tool_specs(*, include_schedule: bool = False) -> list[ToolSpec]:
+def _task_tool_specs(
+    *,
+    include_schedule: bool = False,
+    include_project_complete: bool = False,
+) -> list[ToolSpec]:
     read_tools = [
         _spec("list", "List tasks.", tools.TaskListArgs, tools.TaskListResult, tools.task_list),
         _spec("get", "Get a task.", tools.TaskGetArgs, tools.TaskResult, tools.task_get),
@@ -243,6 +280,20 @@ def _task_tool_specs(*, include_schedule: bool = False) -> list[ToolSpec]:
             tools.OkResult,
             tools.suggestion_reject,
             ActionRisk.WRITE,
+        ),
+        *(
+            [
+                _spec(
+                    "project.complete",
+                    "Complete a project and push its summary to knowledge and memory.",
+                    tools.ProjectCompleteArgs,
+                    tools.OkResult,
+                    tools.project_complete,
+                    ActionRisk.WRITE,
+                )
+            ]
+            if include_project_complete
+            else []
         ),
     ]
     return read_tools + write_tools

@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from artemis import paths
+from artemis.config import Settings
+from artemis.identity.scope import OWNER_PRIVATE
+from artemis.ingest.connectors import Source
+from artemis.ingest.pipeline import IngestPipeline
+from artemis.memory import MemoryWriteQueue
 from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
 from artemis.modules.calendar.write_tools import CalendarWriteTools, CancelEventArgs
+from artemis.modules.productivity.capture import CaptureService
 from artemis.modules.productivity.store import ProductivityStore
+
+LOGGER = logging.getLogger(__name__)
 
 _store: ProductivityStore | None = None
 _schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None
 _write_tools: CalendarWriteTools | None = None
+_capture_service: CaptureService | None = None
+_ingest_pipeline: IngestPipeline | None = None
+_memory_queue: MemoryWriteQueue | None = None
+_settings: Settings | None = None
 
 
 class EmptyArgs(BaseModel):
@@ -120,6 +135,10 @@ class ProjectArchiveArgs(BaseModel):
     id: str
 
 
+class ProjectCompleteArgs(BaseModel):
+    id: str
+
+
 class SuggestionCreateArgs(BaseModel):
     title: str
     notes: str | None = None
@@ -201,6 +220,20 @@ def init_write_tools(write_tools: CalendarWriteTools) -> None:
     """Set calendar write tools used to cancel prior task focus blocks."""
     global _write_tools
     _write_tools = write_tools
+
+
+def init_capture(
+    capture_service: CaptureService,
+    ingest_pipeline: IngestPipeline,
+    memory_queue: MemoryWriteQueue,
+    settings: Settings,
+) -> None:
+    """Set capture and knowledge-push services used by productivity tools."""
+    global _capture_service, _ingest_pipeline, _memory_queue, _settings
+    _capture_service = capture_service
+    _ingest_pipeline = ingest_pipeline
+    _memory_queue = memory_queue
+    _settings = settings
 
 
 def _get_store() -> ProductivityStore:
@@ -386,7 +419,16 @@ async def project_update(args: ProjectUpdateArgs) -> OkResult:
 
 
 async def project_archive(args: ProjectArchiveArgs) -> OkResult:
-    _get_store().archive_project(args.id)
+    store = _get_store()
+    store.archive_project(args.id)
+    await _push_knowledge(store.get_project(args.id))
+    return OkResult()
+
+
+async def project_complete(args: ProjectCompleteArgs) -> OkResult:
+    store = _get_store()
+    store.update_project(args.id, status="done")
+    await _push_knowledge(store.get_project(args.id))
     return OkResult()
 
 
@@ -400,14 +442,49 @@ async def suggestion_list(args: SuggestionListArgs) -> SuggestionListResult:
 
 
 async def suggestion_accept(args: SuggestionAcceptArgs) -> TaskCreatedResult:
-    task_id = _get_store().accept_suggestion(
-        args.suggestion_id,
-        project_id=args.project_id,
-        due_at=args.due_at,
-    )
+    if _capture_service is not None:
+        task_id = await _capture_service.accept_with_graduation(
+            args.suggestion_id,
+            project_id=args.project_id,
+            due_at=args.due_at,
+        )
+    else:
+        task_id = _get_store().accept_suggestion(
+            args.suggestion_id,
+            project_id=args.project_id,
+            due_at=args.due_at,
+        )
     return TaskCreatedResult(task_id=task_id)
 
 
 async def suggestion_reject(args: SuggestionRejectArgs) -> OkResult:
     _get_store().reject_suggestion(args.suggestion_id)
     return OkResult()
+
+
+async def _push_knowledge(project: dict[str, object] | None) -> None:
+    """Best-effort project completion push into knowledge and memory."""
+    if project is None or _ingest_pipeline is None or _memory_queue is None or _settings is None:
+        return
+    try:
+        title = str(project.get("title") or "")
+        notes = project.get("notes")
+        status = str(project.get("status") or "")
+        project_id = str(project.get("id") or "")
+        text = "\n".join(
+            part
+            for part in (
+                f"Completed project: {title}",
+                f"Status: {status}",
+                f"Notes: {notes}" if isinstance(notes, str) and notes else "",
+            )
+            if part
+        )
+        staging = paths.scope_dir(_settings, OWNER_PRIVATE) / "staging" / "productivity"
+        staging.mkdir(parents=True, exist_ok=True)
+        path = staging / f"project-{project_id or uuid.uuid4().hex}.txt"
+        path.write_text(text, encoding="utf-8")
+        await _ingest_pipeline.ingest(Source(kind="file", uri=str(path), scope=OWNER_PRIVATE))
+        _memory_queue.enqueue(text, turn_id=f"project_complete:{project_id or uuid.uuid4().hex}")
+    except Exception as exc:
+        LOGGER.warning("Productivity knowledge push failed (%s)", type(exc).__name__)

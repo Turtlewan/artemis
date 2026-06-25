@@ -231,6 +231,9 @@ class ProductivityStore:
     def list_suggestions(self, *, status: str = "pending") -> list[dict[str, object]]:
         return self._repo().list_suggestions(status=status)
 
+    def get_suggestion(self, suggestion_id: str) -> dict[str, object] | None:
+        return self._repo().get_suggestion(suggestion_id)
+
     def accept_suggestion(
         self,
         suggestion_id: str,
