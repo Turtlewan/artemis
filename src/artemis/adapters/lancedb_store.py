@@ -15,6 +15,7 @@ from artemis.data.scoped_store import assert_same_scope
 from artemis.identity.key_provider import ScopeLockedError
 from artemis.ports.types import Chunk, RetrievedChunk, Scope, Vector
 from artemis.retrieval.rrf import reciprocal_rank_fusion
+from artemis.sensitivity import Sensitivity
 
 logger = logging.getLogger(__name__)
 
@@ -396,12 +397,17 @@ def _optional_bbox(value: object) -> list[float] | None:
 
 
 def _row_to_retrieved(row: Mapping[str, object], score: float) -> RetrievedChunk:
+    raw_sens = row.get("sensitivity")
+    sensitivity: Sensitivity = "general" if raw_sens == "general" else "sensitive"
+    category = _optional_str(row.get("category"))
     return RetrievedChunk(
         chunk=Chunk(
             chunk_id=str(row["id"]),
             document_id=str(row.get("document_id", "")),
             text=str(row.get("text", "")),
             scope=str(row.get("scope", "")),
+            sensitivity=sensitivity,
+            category=category,
         ),
         score=score,
     )

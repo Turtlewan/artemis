@@ -214,6 +214,66 @@ async def test_retriever_default_hybrid_reranks_known_chunk_first(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_retriever_carries_sensitivity_and_category(tmp_path: Path) -> None:
+    embedder = FakeEmbedder()
+    store = _store(tmp_path)
+    texts = [
+        "carrier query general source",
+        "carrier query sensitive source",
+        "carrier query omitted sensitivity source",
+    ]
+    vectors = await embedder.embed_documents(texts)
+    store.add(
+        "owner-private",
+        ["c-general", "c-sensitive", "c-missing"],
+        vectors,
+        [
+            {
+                "text": texts[0],
+                "document_id": "doc-general",
+                "content_hash": "hash-general",
+                "source_id": "file://general.md",
+                "char_start": 0,
+                "char_end": len(texts[0]),
+                "sensitivity": "general",
+                "category": "health",
+            },
+            {
+                "text": texts[1],
+                "document_id": "doc-sensitive",
+                "content_hash": "hash-sensitive",
+                "source_id": "file://sensitive.md",
+                "char_start": 0,
+                "char_end": len(texts[1]),
+                "sensitivity": "sensitive",
+                "category": None,
+            },
+            {
+                "text": texts[2],
+                "document_id": "doc-missing",
+                "content_hash": "hash-missing",
+                "source_id": "file://missing.md",
+                "char_start": 0,
+                "char_end": len(texts[2]),
+                "category": None,
+            },
+        ],
+    )
+    retriever = AdaptiveRetriever(embedder, lambda _scope: store, FakeReranker(), candidate_k=5)
+
+    results = await retriever.retrieve("carrier query", "owner-private", k=3)
+
+    by_id = {result.chunk.chunk_id: result.chunk for result in results}
+    assert set(by_id) == {"c-general", "c-sensitive", "c-missing"}
+    assert by_id["c-general"].sensitivity == "general"
+    assert by_id["c-general"].category == "health"
+    assert by_id["c-sensitive"].sensitivity == "sensitive"
+    assert by_id["c-sensitive"].category is None
+    assert by_id["c-missing"].sensitivity == "sensitive"
+    assert by_id["c-missing"].category is None
+
+
+@pytest.mark.asyncio
 async def test_mode_routing_agentic_and_graph(tmp_path: Path) -> None:
     embedder = FakeEmbedder()
     store = _store(tmp_path)

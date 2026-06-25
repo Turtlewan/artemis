@@ -72,13 +72,28 @@ class Document:
 
 
 class Chunk:
-    """A chunk of a document."""
+    """A chunk of a document.
 
-    def __init__(self, chunk_id: str, document_id: str, text: str, scope: Scope) -> None:
+    ``sensitivity`` and ``category`` carry ADR-029 source tags written by
+    SENS-prod-M3a for the downstream enforcer. Missing sensitivity fails closed
+    to ``"sensitive"``.
+    """
+
+    def __init__(
+        self,
+        chunk_id: str,
+        document_id: str,
+        text: str,
+        scope: Scope,
+        sensitivity: Sensitivity = "sensitive",
+        category: str | None = None,
+    ) -> None:
         self.chunk_id = chunk_id
         self.document_id = document_id
         self.text = text
         self.scope = scope
+        self.sensitivity = sensitivity
+        self.category = category
 
 
 class RetrievedChunk:
