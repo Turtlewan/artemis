@@ -59,6 +59,7 @@ This adds a **third, independent axis** to the existing two boundaries (ADR-009)
 - **1 — producer amendments:** `M3-a` (classify each doc → tag on Document/chunk/LanceDB row), `M8-b1` (tag each signal email + its extracted memory fact), `M4-b` (facts inherit source-derived sensitivity; note owner-rules already exclude finance/health from memory, so the residual sensitive memory is journal/credentials/identity).
 - **2 — carrier:** `M3-b` surfaces the tag on `RetrievedChunk`; `M4-c-1` surfaces it on recalled facts.
 - **3 — enforcer + seam (new spec):** RAG-compose-with-gate — retrieve+recall → assemble → enforcer (filter + route) → responder/responder_cloud → surface held-back + inline release + audit. Enforcer logic extends `sensitivity.py`.
+  - Build note 2026-06-25: the enforcer seam is implemented; `compose_brain` still leaves retrieval unwired until the existing AdaptiveRetriever composition gap is planned.
 
 **Mac-gated tail:** only the later quality upgrade (distilled `sensitive_reasoner`) — a separate ADR-022 phase. The gate's logic and correctness are entirely dev-box territory.
 

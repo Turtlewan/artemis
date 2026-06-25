@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
@@ -19,13 +19,20 @@ from artemis.memory.write_path import MemoryWriteQueue
 from artemis.obs import NullSink, ObservabilitySink
 from artemis.ports.memory import MemoryStore
 from artemis.ports.model import ModelPort
-from artemis.ports.types import Message, PersonId, Scope
+from artemis.ports.types import Fact, Message, PersonId, RetrievedChunk, Scope
 from artemis.recipes.distill import apply_recipe, task_class_key
 from artemis.recipes.model import RecipeStatus
 from artemis.recipes.sandbox import SandboxPort
 from artemis.recipes.store import RecipeStore
 from artemis.registry.registry import ToolRegistry
 from artemis.router import SemanticRouter
+from artemis.sensitivity import (
+    HeldBackItem,
+    PrivacyWallError,
+    ReleaseAuditEntry,
+    SensitivityEnforcer,
+    compose_with_gate,
+)
 
 if TYPE_CHECKING:
     from artemis.recipes.promotion import Promoter
@@ -44,7 +51,12 @@ class TelemetryWriter(Protocol):
 
 
 class BrainResponse:
-    """Structured response from the Brain."""
+    """Structured response from the Brain.
+
+    ``held_back`` carries ADR-029 per-item privacy-wall markers for sensitive
+    context filtered from a cloud prompt. It is empty for local turns and for
+    legacy/no-enforcer calls.
+    """
 
     def __init__(
         self,
@@ -52,11 +64,13 @@ class BrainResponse:
         path: str,
         tool_used: str | None = None,
         escalated: bool = False,
+        held_back: list[HeldBackItem] | None = None,
     ) -> None:
         self.text = text
         self.path = path
         self.tool_used = tool_used
         self.escalated = escalated
+        self.held_back = held_back or []
 
 
 class Brain:
@@ -83,6 +97,10 @@ class Brain:
         telemetry_writer: TelemetryWriter | None = None,
         promoter: Promoter | None = None,
         agentic: AgenticRetriever | None = None,
+        enforcer: SensitivityEnforcer | None = None,
+        retrieve_fn: Callable[[str], Awaitable[list[RetrievedChunk]]] | None = None,
+        recall_fn: Callable[[], Awaitable[list[Fact]]] | None = None,
+        audit_log: Callable[[ReleaseAuditEntry], None] | None = None,
         obs: ObservabilitySink = NullSink(),
     ) -> None:
         self._router = router
@@ -99,6 +117,10 @@ class Brain:
         self._telemetry_writer = telemetry_writer
         self._promoter = promoter
         self.agentic = agentic
+        self._enforcer = enforcer
+        self._retrieve_fn = retrieve_fn
+        self._recall_fn = recall_fn
+        self._audit_log = audit_log
         self._obs = obs
 
     async def _responder_role(self, request_text: str) -> str:
@@ -113,10 +135,17 @@ class Brain:
             return "responder"
         return "responder" if sensitivity == "sensitive" else "responder_cloud"
 
-    async def respond(self, request_text: str, scope: Scope) -> BrainResponse:
+    async def respond(
+        self,
+        request_text: str,
+        scope: Scope,
+        released_ref_ids: frozenset[str] = frozenset(),
+    ) -> BrainResponse:
         """Process a single request through the brain loop.
 
         Returns a ``BrainResponse`` — never raises (degrade-don't-crash).
+        ``released_ref_ids`` is a per-turn one-time inline release set mapped
+        by the client/gateway from previously surfaced ``held_back`` items.
         """
         try:
             decision = await self._router.route(request_text, scope)
@@ -250,6 +279,28 @@ class Brain:
 
         # ── Free-form responder path ───────────────────────────────────
         try:
+            if self._enforcer is not None:
+                try:
+                    response = await self._respond_with_rag_gate(
+                        request_text=request_text,
+                        scope=scope,
+                        released_ref_ids=released_ref_ids,
+                    )
+                    if response is not None:
+                        return response
+                except PrivacyWallError:
+                    # A breach was caught by the wall — fall back to the LOCAL
+                    # path (safe: no cloud egress), but surface it at ERROR so it
+                    # reaches monitoring rather than being demoted to a warning.
+                    logger.error(
+                        "Brain: privacy-wall breach detected -- forcing local handling",
+                        exc_info=True,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Brain: RAG compose gate failed -- falling back to local inject path",
+                        exc_info=True,
+                    )
             role = await self._responder_role(request_text)
             messages = [Message(role="user", content=request_text)]
             # SECURITY: inject owner facts ONLY into the LOCAL responder, never the cloud one.
@@ -282,6 +333,81 @@ class Brain:
         except Exception:
             logger.warning("Brain: responder failed, returning escalation stub", exc_info=True)
             return BrainResponse(text="ESCALATION_NOT_AVAILABLE", path="escalate", escalated=True)
+
+    async def _respond_with_rag_gate(
+        self,
+        *,
+        request_text: str,
+        scope: Scope,
+        released_ref_ids: frozenset[str],
+    ) -> BrainResponse | None:
+        """Run ADR-029 RAG-compose: assemble, enforce, route, and surface held-back.
+
+        The responder prompt is built from ``decision.context`` only. Released
+        refs are per-turn exceptions supplied by the client/gateway after the
+        owner chooses a held-back item; they do not persist as re-tags.
+        """
+        enforcer = self._enforcer
+        if enforcer is None:
+            return None
+
+        recall_fn = self._recall_fn
+        # SECURITY: owner facts are only recalled for an OWNER_PRIVATE turn —
+        # mirror the M4-c-1 scope guard so a non-owner scope never injects them.
+        if (
+            recall_fn is None
+            and self._memory is not None
+            and self._owner_person_id is not None
+            and scope == OWNER_PRIVATE
+        ):
+            memory = self._memory
+            owner_person_id = self._owner_person_id
+
+            async def recall_fn() -> list[Fact]:
+                return await memory.inject_context(owner_person_id, self._inject_token_budget)
+
+        decision = await compose_with_gate(
+            request_text=request_text,
+            query_id=uuid.uuid4().hex,
+            retrieve_fn=self._retrieve_fn,
+            recall_fn=recall_fn,
+            enforcer=enforcer,
+            released_ref_ids=released_ref_ids,
+            audit_log=self._audit_log,
+        )
+        messages = self._rag_messages(
+            request_text, decision.context.cloud_safe_chunks, decision.context.cloud_safe_facts
+        )
+        result = await self._model.complete(role=decision.role, messages=messages)
+        return BrainResponse(
+            text=result.text,
+            path="local",
+            held_back=list(decision.context.held_back),
+        )
+
+    def _rag_messages(
+        self,
+        request_text: str,
+        chunks: tuple[RetrievedChunk, ...],
+        facts: tuple[Fact, ...],
+    ) -> list[Message]:
+        blocks: list[str] = []
+        if chunks:
+            blocks.append(
+                "Retrieved context:\n"
+                + "\n".join(
+                    f"- [{retrieved.chunk.chunk_id}] {retrieved.chunk.text}" for retrieved in chunks
+                )
+            )
+        fact_block = render_inject_block(facts)
+        if fact_block:
+            blocks.append(fact_block)
+        if not blocks:
+            return [Message(role="user", content=request_text)]
+        return [
+            Message(role="system", content="\n\n".join(blocks)),
+            Message(role="user", content=request_text),
+        ]
 
     async def respond_stream(self, request_text: str, scope: Scope) -> AsyncIterator[str]:
         """Stream a response — yields text segments.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -24,8 +25,9 @@ if TYPE_CHECKING:
     from artemis.identity.key_provider import KeyProvider
     from artemis.ports.model import ModelPort
     from artemis.ports.retrieval import EmbeddingModel
+    from artemis.ports.types import Fact
     from artemis.registry import ToolRegistry
-    from artemis.sensitivity import SensitivityClassifierProtocol
+    from artemis.sensitivity import ReleaseAuditEntry, SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -63,18 +65,29 @@ class Gateway:
         # M5: voice-ID will call this; no runtime caller in M2.
         return Identity(person_id, "guest")
 
-    async def handle_text(self, request_text: str) -> BrainResponse:
+    async def handle_text(
+        self,
+        request_text: str,
+        released_ref_ids: frozenset[str] = frozenset(),
+    ) -> BrainResponse:
         """Process a text request through the Brain with resolved scope."""
         try:
             identity = self._resolve_identity()
             scope = primary_scope(identity)
             logger.debug("Gateway: attaching resolved scope %s", scope)
-            return await self.handle_text_scoped(request_text, scope)
+            return await self.handle_text_scoped(request_text, scope, released_ref_ids)
         except (LockedError, ScopeLockedError):
             return BrainResponse(text="LOCKED", path="locked", tool_used=None, escalated=False)
 
-    async def handle_text_scoped(self, request_text: str, scope: Scope) -> BrainResponse:
+    async def handle_text_scoped(
+        self,
+        request_text: str,
+        scope: Scope,
+        released_ref_ids: frozenset[str] = frozenset(),
+    ) -> BrainResponse:
         """Process a text request through the Brain with an authenticated scope."""
+        if released_ref_ids:
+            return await self._brain.respond(request_text, scope, released_ref_ids)
         return await self._brain.respond(request_text, scope)
 
     async def handle_text_stream(self, request_text: str) -> AsyncIterator[str]:
@@ -129,12 +142,20 @@ def compose_brain(
     if embedder is None:
         embedder = OpenAIEmbeddingModel(settings)
     classifier: SensitivityClassifierProtocol | None = None
+    enforcer = None
+    retrieve_fn = None
+    recall_fn = None
+    audit_log = None
     if model is None:
         from artemis.adapters.composite_model import CompositeModelPort
-        from artemis.sensitivity import SensitivityClassifier
+        from artemis.sensitivity import SensitivityClassifier, SensitivityEnforcer
 
         model = CompositeModelPort(settings)
         classifier = SensitivityClassifier(OpenAIModelPort(settings), settings)
+        enforcer = SensitivityEnforcer(
+            classifier,
+            cloud_reasoning_enabled=settings.cloud_reasoning_enabled,
+        )
 
     registry = _register_modules(embedder)
     from artemis.router import SemanticRouter
@@ -173,6 +194,11 @@ def compose_brain(
             memory = SqliteMemoryStore(repo, embedder)
             write_queue = MemoryWriteQueue(build_write_path(repo, embedder, model))
             owner_person_id = OWNER_PERSON_ID
+            memory_store = memory
+
+            async def recall_fn() -> list[Fact]:
+                return await memory_store.inject_context(OWNER_PERSON_ID, 512)
+
         except Exception:
             logger.warning(
                 "compose_brain: memory unavailable -- building Brain without memory",
@@ -181,6 +207,33 @@ def compose_brain(
             memory = None
             write_queue = None
             owner_person_id = None
+
+    if enforcer is not None:
+        import artemis.paths as paths
+
+        audit_path = (
+            paths.scope_dir(settings, OWNER_PRIVATE) / "audit" / "sensitivity_releases.jsonl"
+        )
+
+        def audit_log(entry: ReleaseAuditEntry) -> None:
+            audit_path.parent.mkdir(parents=True, exist_ok=True)
+            with audit_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "query_id": entry.query_id,
+                            "ref_id": entry.ref_id,
+                            "kind": entry.kind,
+                            "released_at": entry.released_at,
+                            "category": entry.category,
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+
+        # retrieve_fn unwired — no AdaptiveRetriever composed in compose_brain (same gap as the M3-c agentic= flag); planning must compose the retriever.
+        retrieve_fn = None
 
     router = SemanticRouter(registry, embedder)
     return Brain(
@@ -192,6 +245,10 @@ def compose_brain(
         memory=memory,
         write_queue=write_queue,
         owner_person_id=owner_person_id,
+        enforcer=enforcer,
+        retrieve_fn=retrieve_fn,
+        recall_fn=recall_fn,
+        audit_log=audit_log,
     )
 
 
