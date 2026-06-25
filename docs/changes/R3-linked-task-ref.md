@@ -1,6 +1,6 @@
 ---
 spec: R3-linked-task-ref
-status: draft
+status: ready
 cross_model_review: false
 token_profile: balanced
 autonomy_level: L2

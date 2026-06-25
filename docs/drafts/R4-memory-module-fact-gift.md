@@ -1,10 +1,15 @@
 ---
 spec: R4-memory-module-fact-gift
-status: draft
+status: superseded
 cross_model_review: true
 token_profile: balanced
 autonomy_level: L2
 ---
+
+> **SUPERSEDED 2026-06-25** by the ADR-032 amendment (full Option-B email subsystem). Split into
+> **`R4m-memory-module-fact.md`** (the `add_module_fact` push, buildable now) + **`R6c-comms-fetch-via-ref.md`**
+> (the gift reaction, now reads `has_gift_signal` + fetches `gift_item`/`gift_recipient` via `source_ref`
+> instead of reading `gift_signal_detected`/`gift_item` from the payload). Do not build this draft.
 
 # Spec: R4 — Memory module-fact-push + register reaction:gift_signal
 
