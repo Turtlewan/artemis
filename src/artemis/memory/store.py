@@ -10,6 +10,7 @@ from artemis.memory.repository import BitemporalRepository, FactRow
 from artemis.memory.schema import now_iso
 from artemis.ports.retrieval import EmbeddingModel
 from artemis.ports.types import AsOf, Fact, PersonId
+from artemis.sensitivity import Sensitivity
 
 
 class SqliteMemoryStore:
@@ -106,6 +107,7 @@ class SqliteMemoryStore:
         return [self._to_fact(row) for row in selected]
 
     def _to_fact(self, row: FactRow) -> Fact:
+        sensitivity: Sensitivity = "general" if row.sensitivity == "general" else "sensitive"
         return Fact(
             fact_id=row.fact_id,
             person_id=PersonId(row.person_id),
@@ -114,6 +116,8 @@ class SqliteMemoryStore:
             object=row.object,
             confidence=row.confidence,
             valid_at=datetime.fromisoformat(row.valid_from),
+            sensitivity=sensitivity,
+            category=row.category,
         )
 
 

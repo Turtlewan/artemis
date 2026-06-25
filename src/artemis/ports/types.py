@@ -105,7 +105,12 @@ class RetrievedChunk:
 
 
 class Fact:
-    """A bitemporal fact about a person."""
+    """A bitemporal fact about a person.
+
+    ``sensitivity`` and ``category`` carry ADR-029 tags written by
+    SENS-prod-M4b for the downstream enforcer. Missing sensitivity fails
+    closed to ``"sensitive"``.
+    """
 
     def __init__(
         self,
@@ -117,6 +122,8 @@ class Fact:
         confidence: float,
         valid_at: datetime,
         invalid_at: datetime | None = None,
+        sensitivity: Sensitivity = "sensitive",
+        category: str | None = None,
     ) -> None:
         self.fact_id = fact_id
         self.person_id = person_id
@@ -126,6 +133,8 @@ class Fact:
         self.confidence = confidence
         self.valid_at = valid_at
         self.invalid_at = invalid_at
+        self.sensitivity = sensitivity
+        self.category = category
 
 
 class Usage:

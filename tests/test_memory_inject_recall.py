@@ -226,6 +226,56 @@ async def test_recall_returns_seeded_facts(repo: BitemporalRepository) -> None:
 
 
 @pytest.mark.asyncio
+async def test_recall_and_inject_carry_sensitivity_and_category(
+    repo: BitemporalRepository,
+) -> None:
+    store = SqliteMemoryStore(repo, FakeEmbedder())
+    general_id = _add(
+        repo,
+        "owner",
+        "likes",
+        "coffee",
+        valid_from=now_iso(),
+        sensitivity="general",
+        category="journal",
+    )
+    sensitive_id = _add(
+        repo,
+        "owner",
+        "visits",
+        "clinic",
+        valid_from=now_iso(),
+        sensitivity="sensitive",
+    )
+    untagged_id = _add(
+        repo,
+        "owner",
+        "keeps",
+        "notes",
+        valid_from=now_iso(),
+        sensitivity="",
+    )
+
+    recalled = {fact.fact_id: fact for fact in await store.recall(OWNER_PERSON_ID, "owner", k=3)}
+
+    assert recalled[general_id].sensitivity == "general"
+    assert recalled[general_id].category == "journal"
+    assert recalled[sensitive_id].sensitivity == "sensitive"
+    assert recalled[sensitive_id].category is None
+    assert recalled[untagged_id].sensitivity == "sensitive"
+    assert recalled[untagged_id].category is None
+
+    injected = {
+        fact.fact_id: fact for fact in await store.inject_context(OWNER_PERSON_ID, token_budget=100)
+    }
+
+    assert injected[general_id].sensitivity == "general"
+    assert injected[general_id].category == "journal"
+    assert injected[sensitive_id].sensitivity == "sensitive"
+    assert injected[untagged_id].sensitivity == "sensitive"
+
+
+@pytest.mark.asyncio
 async def test_sqlite_memory_store_satisfies_protocol(repo: BitemporalRepository) -> None:
     store = SqliteMemoryStore(repo, FakeEmbedder())
 
@@ -311,6 +361,8 @@ def _add(
     object_: str,
     *,
     valid_from: str,
+    sensitivity: str = "sensitive",
+    category: str | None = None,
 ) -> str:
     return repo.add(
         subject,
@@ -319,6 +371,8 @@ def _add(
         0.95,
         _embed(f"{subject} {relation} {object_}"),
         valid_from=valid_from,
+        sensitivity=sensitivity,  # type: ignore[arg-type]
+        category=category,
     )
 
 
@@ -351,4 +405,6 @@ def _fact_row(fact_id: str, *, valid_from: str) -> FactRow:
         keywords=None,
         contextual_description=None,
         linked_ids=None,
+        sensitivity="sensitive",
+        category=None,
     )
