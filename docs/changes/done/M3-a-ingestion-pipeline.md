@@ -1,6 +1,7 @@
 <!-- amended 2026-06-11 per contracts.md (Seams 8, 9) + m3-m4-knowledge-memory.md BLOCKs B1(partial), F9, F12, U7 -->
 <!-- amended 2026-06-11 per Decision D4/D5 (contracts.md Seam 10) -->
 <!-- amended 2026-06-17: EmbeddingModel port split embed→embed_documents/embed_query (embedding-layer decision; research/2026-06-17-embedding-implementation.md) -->
+<!-- amended 2026-06-24: docling → optional [dependency-groups].docling group; uv sync never installs it; uv sync --group docling on Mac Mini / prod only -->
 ---
 spec: m3-a-ingestion-pipeline
 status: ready
@@ -22,7 +23,7 @@ autonomy_level: L2
 - The per-scope **encrypted volume is mounted by the M2 broker on owner unlock** at `scope_dir(scope)/vault/` (Decision D4, Seam 10). M3-a depends on `paths.vault_dir(settings, scope)` resolving to that mount point and on the broker having mounted it before ingest runs (precondition: `is_owner_unlocked()`). M2-a Task 10 owns the mount step (amended); the path contract `scope_dir/vault/` is frozen in contracts.md Seam 10. GATED on-hardware (Task 8): confirm the table is created under the broker-mounted volume and is unreadable when locked.
 - Decision D4: the LanceDB doc corpus lives at `paths.vault_dir(settings, scope)` = `scope_dir(scope)/vault/` (the APFS encrypted-volume mount point). M3-a uses `paths.vault_dir` (added to M0-a `paths.py`) — NOT a separate `paths.volume_vectors_dir` or a `Settings.volume_root` field. The old plain `vectors/` subdir under `scope_dir` is not created (M0-a setup script amended); do NOT write the doc index there. → impact: Caution (use `vault_dir`, not `scope_dir / "vectors"`; no `ARTEMIS_VOLUME_ROOT` env var).
 - LanceDB is reached via the `lancedb` Python package; its native hybrid (vector + FTS/BM25) + RRF are used by M3-b. M3-a's job is to WRITE: create/open the per-scope LanceDB table, add rows (id, vector, text, scope, content_hash, source_id, document_id, locator fields), and build the FTS index on `text`. → impact: Stop (the table schema written here is the contract M3-b reads).
-- Docling is reached via the `docling` Python package; it parses files (PDF/docx/pptx/md/html) to a structured document with page + bbox info. The web connector fetches with **trafilatura** (+ optional Playwright for JS pages, deferred) and yields cleaned text + the source URL. → impact: Caution. Docling behind the `DocumentParser` port with a deterministic `FakeParser` for CI; real Docling install + parse GATED on-hardware (Task 7). Marker/MinerU escalation PARKED per ADR-007.
+- Docling is reached via the `docling` Python package; it parses files (PDF/docx/pptx/md/html) to a structured document with page + bbox info. The web connector fetches with **trafilatura** (+ optional Playwright for JS pages, deferred) and yields cleaned text + the source URL. → impact: Caution. Docling behind the `DocumentParser` port with a deterministic `FakeParser` for CI; real Docling install + parse GATED on-hardware (Task 7). Marker/MinerU escalation PARKED per ADR-007. **Docling is an optional dep group** (`[dependency-groups].docling = ["docling>=2.99.0"]` in pyproject.toml); `uv sync` never installs it; `uv sync --group docling` installs on Mac Mini / prod. `DoclingParser` uses a lazy `import docling` inside its method body — the class is always importable; it raises `ImportError` only when actually called without docling installed, which never happens in dev (FakeParser path only).
 - **Late chunking** = embed-then-chunk over the long-context embedder so each chunk's vector carries document context (brain.md). **Contextual Retrieval** = prepend an LLM-generated short context blurb to high-value chunks before embedding (Anthropic technique, brain.md "for high-value"). In M3-a, late chunking is the DEFAULT path; Contextual Retrieval is behind a per-document `contextual: bool` flag and its blurb generation calls the `ModelPort` responder role — drafted but the LLM-context generation is GATED on-hardware (needs a served model). → impact: Caution (off-hardware: plain late chunking only; the contextual blurb is a gated probe).
 - `content_hash` = a stable hash (sha256) of the normalized `Document.text` (+ source_id). Re-ingesting an unchanged source is a NO-OP (idempotent); a changed source re-chunks + re-embeds + replaces the old rows for that document_id. → impact: Stop (idempotency is an ADR-007 hard requirement).
 - The embedder dimension is locked in the store metadata (brain.md "dimension locked in store metadata; model change = explicit re-index migration"). M3-a writes the embedder's `dimension` + `model_id` into the LanceDB table metadata on creation and refuses to add vectors of a mismatched dimension. → impact: Stop (dimension-lock is an ADR/brain.md invariant).
@@ -31,7 +32,7 @@ Simplicity check: considered writing the doc corpus into the same SQLCipher file
 
 ## Prerequisites
 - Specs that must be complete first: **M0-a** (paths/config), **M0-d** (`EmbeddingModel`/`VectorStore`/`Document`/`Chunk`/`Scope` ports), **M2-b** (`ScopedStore`/`vector_index_handle`/`KeyProvider`/`ScopeLockedError`). Sequenced-with: **M2** encrypted-volume mount step (see the load-bearing volume-mount Assumption; M2-a owns the mount) — ingest must run only when the volume is mounted (owner unlocked).
-- Environment setup required: `lancedb`, `docling`, `trafilatura` (added via `uv add`). Off-hardware the pipeline tests run against a `FakeEmbedder` + `FakeParser` + a temp LanceDB dir; **real Docling parse + real LanceDB on a real encrypted volume + Contextual-Retrieval blurb generation are GATED on-hardware** (Tasks 7–8).
+- Environment setup required: `trafilatura` (new dep — `lancedb` already installed from slice-3a; `docling` is in the **optional `[dependency-groups].docling` group**, never installed by plain `uv sync`). Off-hardware the pipeline tests run against a `FakeEmbedder` + `FakeParser` + a temp LanceDB dir; **real Docling parse + real LanceDB on a real encrypted volume + Contextual-Retrieval blurb generation are GATED on-hardware** (Tasks 7–8). To install docling for real use: `uv sync --group docling` (Mac Mini / prod only).
 
 ## Files to Change
 | File | Operation | Notes |
@@ -107,7 +108,8 @@ Approving this spec approves all of them.
 ### Commands
 | Command | Purpose |
 |---------|---------|
-| `uv add lancedb docling trafilatura` | Pipeline dependencies (Docling may be gated/lazy if it won't install off-hardware) |
+| `uv add trafilatura` | Web-connector dep (`lancedb` already installed from slice-3a; `docling` → optional group below) |
+| Add `docling = ["docling>=2.99.0"]` entry under `[dependency-groups]` in `pyproject.toml` | Makes docling opt-in; `uv sync` never installs it; `uv sync --group docling` on Mac Mini / prod |
 | `uv run mypy --strict src tests/test_ingest_pipeline.py` | Type gate |
 | `uv run ruff check . ; uv run ruff format --check .` | Lint + format gate |
 | `uv run pytest -q` | Test gate (fakes + temp LanceDB) |

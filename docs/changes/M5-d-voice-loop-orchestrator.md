@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per m5-m6-voice-heartbeat.md BLOCKs B6, FLAG F12 -->
+<!-- amended 2026-06-25 Windows dev re-scope — see docs/research/2026-06-25-voice-windows-dev/README.md -->
 ---
 spec: m5-d-voice-loop-orchestrator
 status: ready
@@ -7,6 +8,11 @@ autonomy_level: L2
 ---
 
 # Spec: M5-d — Voice-loop orchestrator (custom thin pipeline: wake→capture→VAD-endpoint→STT→Brain.respond→sentence-stream→TTS→sidecar) behind the `AudioFrontend` port + instant-ack + barge-in + latency-budget instrumentation
+
+> **Amendment 2026-06-25 (Windows dev re-scope):** The voice-loop orchestrator is **fully dev-buildable and testable on Windows** — it is already brain-side Python with no Mac dependencies. See `docs/research/2026-06-25-voice-windows-dev/README.md`.
+> - **IPC client builds and tests against `M5-a-win-sidecar`:** the `SidecarAudioFrontend` socket client speaks the same frozen wire protocol (1-byte kind + 4-byte length + body; events + `0x02`/`0x03` PCM frames; 16 kHz/mono/Int16) whether the far end is the Swift sidecar (Mac production) or the Windows Python sidecar — no changes to Task 1.
+> - **FakeSidecar test coverage is unchanged:** the off-hardware suite already validates the full cascade; running against the real Windows sidecar is an additional integration path at Task 5/6 (the existing GATED tasks remain Mac production gates; Windows integration is a separate bring-up step documented in `M5-a-win-sidecar`).
+> - **No cascade or gate logic changes:** `VoiceLoop`, latency instrumentation, barge-in, instant-ack, and the `NeedsPhoneUnlock` path are platform-neutral — they run identically on Windows against the dev sidecar.
 
 **Identity:** Implements the Python `AudioFrontend` port as the thin custom voice loop: a `SidecarAudioFrontend` IPC client to the M5-a audio sidecar (consume mic PCM + wake/VAD/barge-in events, send playback PCM) and a `VoiceLoop` orchestrator that drives wake→capture→endpoint→STT (M5-b)→speaker-ID + scope (M5-c Gateway voice path)→Brain.respond (M1)→split the responder token stream into sentences→Kokoro TTS per sentence (M5-b)→stream PCM to the sidecar, with an instant ack masking TTFT, barge-in cancellation of the in-flight TTS, and per-stage latency-budget instrumentation.
 → why: see docs/technical/architecture/brain.md § "Voice (cascaded, streaming every stage)" (the full cascade + instant-ack + barge-in + 750–800ms budget; AudioFrontend port; multi-room satellites later) · docs/drafts/m5/M5-a-audio-sidecar.md (the sidecar IPC contract this client consumes) · docs/drafts/m5/M5-b-stt-tts.md (STT/TTS adapters) · docs/drafts/m5/M5-c-speaker-id.md (the Gateway `handle_voice` path) · docs/drafts/m1/M1-b-router-brain.md (`Brain.respond`).

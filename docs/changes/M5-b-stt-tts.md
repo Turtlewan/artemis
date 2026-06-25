@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per m5-m6-voice-heartbeat.md UPGRADE U4 (kokoro-mlx → mlx-audio package name) -->
+<!-- amended 2026-06-25 Windows dev re-scope — see docs/research/2026-06-25-voice-windows-dev/README.md -->
 ---
 spec: m5-b-stt-tts
 status: ready
@@ -7,6 +8,12 @@ autonomy_level: L2
 ---
 
 # Spec: M5-b — STT (Parakeet-TDT MLX + Whisper-turbo fallback) behind the `STT` port + TTS (Kokoro-82M MLX persistent server, sentence-streaming) behind the `TTS` port
+
+> **Amendment 2026-06-25 (Windows dev re-scope):** The STT and TTS ports now have **dev implementations** bound to the Windows Python sidecar (`M5-a-win-sidecar`) — the Mac MLX/AVSpeech adapters remain the production impls (ADR-001 unchanged). See `docs/research/2026-06-25-voice-windows-dev/README.md`.
+> - **STT dev binding:** `Moonshine v2 Small` (true streaming, CPU, <500 MB, MIT, native 16 kHz) as the primary; `faster-whisper distil-large-v3 int8` as the accuracy/GPU fallback — both run on Windows against the same `STT` port the Mac Parakeet impl satisfies. Off-hardware test suite is unchanged (fakes); Tasks 1–4 now also cover the Windows dev path.
+> - **TTS dev binding:** `Kokoro-82M` (PyTorch CUDA via `kokoro-onnx` is broken on Windows — use the `Kokoro-FastAPI` / PyTorch CUDA path, onnxruntime #23384); `Piper` as the CPU/degraded fallback. 2–3 GB VRAM for Kokoro; Piper = 0 VRAM. Both speak the same `TTS` port; the 24 kHz→16 kHz resample lives in the adapter.
+> - **Sentence-level streaming is the critical latency lever:** without calling `tts.synthesize` per sentence as the LLM streams, TTFA balloons +3–5 s. The splitter (M5-d) + per-sentence TTS call pattern is mandatory for sub-1 s TTFA on Windows.
+> - The dev+Mac split is purely at the port adapter layer (`stt.py`/`tts.py` `_load_*` seams) — no task body changes required.
 
 **Identity:** Implements the Python `STT` port adapter (Parakeet-TDT-0.6B MLX/ANE primary + MLX-Whisper-turbo multilingual fallback, language-routed) and the `TTS` port adapter (Kokoro-82M MLX, run as a warm persistent server, synthesising sentence-by-sentence as text streams in → an `Iterator[bytes]` of 16 kHz PCM), both pre-warmed at startup.
 → why: see docs/technical/architecture/brain.md § "Voice (cascaded, streaming every stage)" (Parakeet-TDT + Whisper fallback, Kokoro persistent server sentence-by-sentence) · docs/drafts/m0/M0-d-ports-scaffolding.md (the `STT.transcribe`/`TTS.synthesize` port signatures).

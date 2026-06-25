@@ -45,3 +45,7 @@ Thumbs.db
 # --- sandbox / test cache cruft (Codex restricted-token sandbox writes these) ---
 .tmp/
 .cache/
+.pytest-tmp/
+
+# --- Codex build run logs (transient apex-code dispatch streams; not project docs) ---
+docs/progress/codex-*.log

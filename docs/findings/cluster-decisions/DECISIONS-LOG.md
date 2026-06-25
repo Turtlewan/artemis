@@ -66,7 +66,7 @@ C3 location+optional buffer (Maps deferred) · C4 defer other-people scheduling 
   - **Gmail:** urgency "needs you" list (sender·subject·why-flagged) + browsable signal mail + search; tap→spotlighted reader; open-in-Gmail (no send v1); inline accept task-suggestion / approve held event.
   - **Calendar:** **Month + Week toggle** + a **selected-day panel** (pick a day → its events AND tasks-due). Held-tentatives distinct; RSVP strip; approve-held→Google, self-edit inline, invites→Review, morning find-time. *(Tasks-due-on-day = a Tasks↔Calendar view link.)*
   - **Tasks:** tasks-only — Due/Overdue/Upcoming + capture inbox; check/reschedule/time-block(morning)/accept-suggestion/quick-add.
-  - **Finance:** **weekly spend dashboard** = daily-spend **bar chart** + category **pie chart** (week default, month toggle); transactions + Bills strip + unusual-spend flags + dup-merge below; recategorize/confirm-type/merge/mark-paid/manual/CSV.
+  - **Finance:** **compact / no-cards awareness page** (confirmed 2026-06-24 via `docs/research/mockups/finance-page.html` — supersedes the earlier "weekly spend dashboard = bar + pie chart"): a **week-to-date daily-spend list** (weekday+date · S$amount; today marked with an accent divider below it; upcoming days "—") + Week/MTD figures · a **leader-line category donut** (slices connected out to name/% labels; total in centre) · transactions · Bills strip (inline mark-paid) · unusual-spend flag · duplicate-merge · confirm-type. Posture unchanged: **awareness-only, instant local edits, no action-gate, no bank link, S$500 = alert-only.**
   - **Projects (NEW separate card):** detail designed in its own pass (its own module).
 
 ## Structural / architecture changes from this pass (ripple into existing specs)

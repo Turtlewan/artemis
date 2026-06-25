@@ -1,3 +1,4 @@
+<!-- amended 2026-06-25 Windows dev re-scope — see docs/research/2026-06-25-voice-windows-dev/README.md -->
 ---
 spec: m5-c-speaker-id
 status: ready
@@ -6,6 +7,11 @@ autonomy_level: L2
 ---
 
 # Spec: M5-c — Speaker-ID (ECAPA-TDNN) behind the `SpeakerID` port (voiceprint enrol + match→person; unknown→guest) + Gateway VOICE-path scope-attach encoding voice-ID≠key (Tier-1-while-locked → ask phone unlock; Tier-0 proceeds)
+
+> **Amendment 2026-06-25 (Windows dev re-scope):** Speaker-ID is **dev-buildable and testable on Windows** — the model and gate logic are both platform-neutral. See `docs/research/2026-06-25-voice-windows-dev/README.md`.
+> - **Speaker-ID model is portable:** ECAPA-TDNN (SpeechBrain/PyTorch) runs on Windows CPU/CUDA — no Mac dependency. A SpeechBrain/Resemblyzer-class embedding model is the production pick; the `_load_ecapa` lazy-import seam accepts any portable embedding backend. Exact package install confirmed at GATED Task 6 (unchanged, just now confirmable on Windows dev box too).
+> - **Tier gate logic is platform-neutral:** `tier.py` (`tier_for(data_scope)`) is pure Python with no platform deps — dev-buildable and testable on Windows immediately.
+> - **No wire-contract changes:** `identify(audio: bytes) -> PersonId | None` and the voiceprint store interface are unchanged; the Windows dev sidecar feeds 16 kHz/mono/Int16 PCM in the same format (M5-a-win-sidecar wire contract is frozen-identical to M5-a).
 
 **Identity:** Implements the Python `SpeakerID` port adapter (SpeechBrain ECAPA-TDNN voiceprint enrolment + cosine match → `PersonId`; below threshold → `None` → guest), a voiceprint store, and the VOICE-path identity resolution in the Gateway that maps a matched owner to owner-scope routing while honouring voice-ID = identity-not-auth: a Tier-1 (sensitive) request on a voice-identified-but-locked owner returns a "needs phone unlock" response, while Tier-0 (non-sensitive) owner + guest requests proceed.
 → why: see docs/technical/architecture/brain.md § "Voice (cascaded, streaming every stage)" (SpeechBrain ECAPA-TDNN; enrol voiceprints → person scope; unknown → guest least-privilege; voice-ID = identity, not auth) · docs/technical/adr/ADR-005-owner-key-broker.md (voice-ID routes to owner scope but SENSITIVE owner data still needs the phone-attested broker unlock) · docs/technical/adr/ADR-006-two-tier-proactivity.md (Tier-0 vs Tier-1) · docs/drafts/m2/M2-b-scope-model-and-wall.md (the guest-recognition seam M2 deferred to M5; the `Identity`/`scopes_for`/Gateway scope-attach this fills).

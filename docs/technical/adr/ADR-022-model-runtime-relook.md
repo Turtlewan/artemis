@@ -79,3 +79,34 @@ Closes the architecture-validation research's two model-layer foundational calls
 
 ## Parked / next
 Model expected usage against the Codex subscription rate caps (+ the fallback API cost) · **owner to run `codex login` + `codex exec` end-to-end** to confirm the subscription path on their plan · the constrained-decoding × Pydantic AI integration check (on Windows/Ollama) · first-hand Hermes repo read to extract the GEPA + layered-memory specifics for the recipe system.
+
+## Refinement 2026-06-25 — Finance sensitivity narrowed: whole-domain → content-grade
+
+**Decided:** owner + planning, 2026-06-25. Closes the *Source.sensitivity override (HIGH privacy gap)* flagged in continuation 7.
+
+### What changed
+
+ADR-022 (and the FIN-d spec) previously treated **all finance content** as hard-sensitive — reasoning locally, never cloud. This posture is **narrowed**: only **access/identity-grade finance content** is hard-sensitive; **soft finance facts** (spending patterns, subscriptions, category totals, individual transactions, institution names) are **general / cloud-OK**.
+
+| Grade | Examples | Sensitivity |
+|---|---|---|
+| **Access / identity** | Full card/account numbers (beyond masked last-4), credentials, OTPs, CVV | `sensitive` — hard lock |
+| **Government identity** | NRIC, passport number, DOB, home address | `sensitive` — hard lock |
+| **Soft finance** | "Owner pays ~$15/mo for Netflix", category totals, merchant names, account balances | `general` — cloud-OK |
+
+The **privacy wall (ADR-003/005/006) is unchanged** — the enforcer still gates on `chunk.sensitivity` / `fact.sensitivity`; we only changed what gets tagged.
+
+### Accepted risks
+
+1. **Aggregation risk:** many soft facts together compose a financial profile that is more sensitive than any single fact. Accepted; the classifier must evaluate combinations, not just isolated facts, when uncertain.
+2. **Classifier separation risk:** the local model classifier must reliably distinguish access-grade content from soft finance content. **Mandatory consequence: the classifier MUST fail-closed to `sensitive` when uncertain** — any ambiguous or partial access-grade signal → `sensitive` + ask-owner. This is non-negotiable.
+
+### Effect on FIN-d
+
+`push_finance_knowledge` in `src/artemis/modules/finance/knowledge.py` currently forces every finance fact to `sensitivity="sensitive"` (inline comment: *"A finance fact must NEVER be tagged general"*). This invariant is **amended**: derived soft facts from `derive_finance_facts` (subscriptions, recurring merchants, spending patterns) become **general** and must NOT be forced sensitive. The `force_sensitive` lever now serves journal, health, email, and access/identity-grade content — not soft finance.
+
+The `IngestPipeline.ingest` path (via `Source`) should classify soft-finance staging files through the normal classifier rather than short-circuiting to `sensitive`. The `source_sensitivity="sensitive"` kwarg passed to `memory_queue.enqueue` inside `push_finance_knowledge` must similarly be removed or set to `None` / `"general"` for soft facts.
+
+### Effect on Source.force_sensitive
+
+The new `Source.force_sensitive: bool = False` field (spec: `sensitivity-ground-rules.md`) is a one-directional upgrade-only lever. Callers that set it: journal, health, and email connectors. Finance connectors do **not** set it — their content goes through the classifier, which will tag access-grade items sensitive and pass soft facts through as general.
