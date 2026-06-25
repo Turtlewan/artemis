@@ -10,13 +10,18 @@ from typing import Literal, cast
 from pydantic import BaseModel, field_validator
 
 from artemis.manifest import ActionRisk, ToolSpec
+from artemis.modules.finance.events import Emit, _noop_emit
 from artemis.modules.finance.extraction import FinanceExtractor
+from artemis.modules.finance.reconcile import reconcile, unusual_spend
+from artemis.modules.finance.recurring import detect_recurring
 from artemis.modules.finance.store import FinanceStore
 from artemis.modules.gmail.cache import GmailReadCache
+from artemis.runtime_config import get_runtime_config
 
 _store: FinanceStore | None = None
 _extractor: FinanceExtractor | None = None
 _gmail_cache: GmailReadCache | None = None
+_emit: Emit = _noop_emit
 
 
 class EmptyArgs(BaseModel):
@@ -228,10 +233,55 @@ class CsvImportResult(BaseModel):
     errors: list[str]
 
 
-def init_finance_tools(store: FinanceStore) -> None:
+class SubscriptionListArgs(BaseModel):
+    """Arguments for listing subscriptions."""
+
+    active: bool = True
+
+
+class SubscriptionListResult(BaseModel):
+    """Subscription list result."""
+
+    subscriptions: list[dict[str, object]]
+
+
+class BillListArgs(BaseModel):
+    """Arguments for listing bills."""
+
+    status: str | None = None
+
+
+class BillListResult(BaseModel):
+    """Bill list result."""
+
+    bills: list[dict[str, object]]
+
+
+class RecurringScanResult(BaseModel):
+    """Recurring scan result."""
+
+    results: list[dict[str, object]]
+
+
+class ReconcileRunResult(BaseModel):
+    """Reconciliation counters."""
+
+    auto_merged: int
+    suggested_duplicates: int
+    reconciled: int
+
+
+class UnusualSpendListResult(BaseModel):
+    """Unusual-spend flags."""
+
+    flags: list[dict[str, object]]
+
+
+def init_finance_tools(store: FinanceStore, *, emit: Emit = _noop_emit) -> None:
     """Set the Finance store used by module-level tool callables."""
-    global _store
+    global _store, _emit
     _store = store
+    _emit = emit
 
 
 def init_finance_extractor(extractor: FinanceExtractor, gmail_cache: GmailReadCache) -> None:
@@ -365,6 +415,43 @@ def build_finance_tool_specs() -> list[ToolSpec]:
             fin_suggestion_reject,
             ActionRisk.WRITE,
         ),
+        _spec(
+            "subscription_list",
+            "List local recurring subscriptions.",
+            SubscriptionListArgs,
+            SubscriptionListResult,
+            subscription_list,
+        ),
+        _spec(
+            "bill_list",
+            "List local bills.",
+            BillListArgs,
+            BillListResult,
+            bill_list,
+        ),
+        _spec(
+            "recurring_scan",
+            "Scan local ledger for recurring patterns.",
+            EmptyArgs,
+            RecurringScanResult,
+            recurring_scan,
+            ActionRisk.WRITE,
+        ),
+        _spec(
+            "reconcile_run",
+            "Run local transaction reconciliation.",
+            EmptyArgs,
+            ReconcileRunResult,
+            reconcile_run,
+            ActionRisk.WRITE,
+        ),
+        _spec(
+            "unusual_spend_list",
+            "List statistical unusual-spend flags.",
+            EmptyArgs,
+            UnusualSpendListResult,
+            unusual_spend_list,
+        ),
     ]
 
 
@@ -491,6 +578,15 @@ async def fin_suggestion_list(args: FinSuggestionListArgs) -> FinSuggestionListR
 
 
 async def fin_suggestion_accept(args: FinSuggestionAcceptArgs) -> TxnCreatedResult:
+    store = _get_store()
+    suggestion = _find_suggestion(store, args.id)
+    if suggestion is not None and suggestion.get("kind") == "possible_duplicate":
+        payload = _decoded_payload(str(suggestion["payload_json"]))
+        keep_id = str(payload["keep_id"])
+        drop_id = str(payload["drop_id"])
+        store.merge_transactions(keep_id, drop_id)
+        store.mark_fin_suggestion_accepted(args.id)
+        return TxnCreatedResult(transaction_id=keep_id)
     transaction_id = _get_store().accept_fin_suggestion(args.id, txn_type=args.txn_type)
     return TxnCreatedResult(transaction_id=transaction_id)
 
@@ -500,12 +596,62 @@ async def fin_suggestion_reject(args: FinSuggestionRejectArgs) -> OkResult:
     return OkResult()
 
 
+async def subscription_list(args: SubscriptionListArgs) -> SubscriptionListResult:
+    return SubscriptionListResult(subscriptions=_get_store().list_subscriptions(active=args.active))
+
+
+async def bill_list(args: BillListArgs) -> BillListResult:
+    return BillListResult(bills=_get_store().list_bills(status=args.status))
+
+
+async def recurring_scan(args: EmptyArgs) -> RecurringScanResult:
+    del args
+    cfg = get_runtime_config().finance
+    results = detect_recurring(
+        _get_store(),
+        min_occurrences=cfg.recurring_min_occurrences,
+        emit=_emit,
+    )
+    return RecurringScanResult(results=results)
+
+
+async def reconcile_run(args: EmptyArgs) -> ReconcileRunResult:
+    del args
+    cfg = get_runtime_config().finance
+    result = reconcile(
+        _get_store(),
+        date_window_days=cfg.reconcile_date_window_days,
+        amount_exact=cfg.reconcile_amount_exact,
+    )
+    return ReconcileRunResult(**result)
+
+
+async def unusual_spend_list(args: EmptyArgs) -> UnusualSpendListResult:
+    del args
+    cfg = get_runtime_config().finance
+    return UnusualSpendListResult(flags=unusual_spend(_get_store(), sigma=cfg.unusual_spend_sigma))
+
+
 def _validated_decimal_text(value: str) -> str:
     try:
         Decimal(value)
     except InvalidOperation as exc:
         raise ValueError("amount must be a decimal string") from exc
     return value
+
+
+def _find_suggestion(store: FinanceStore, suggestion_id: str) -> dict[str, object] | None:
+    for suggestion in store.list_fin_suggestions(status="pending"):
+        if suggestion.get("id") == suggestion_id:
+            return suggestion
+    return None
+
+
+def _decoded_payload(payload_json: str) -> dict[str, object]:
+    decoded = json.loads(payload_json)
+    if not isinstance(decoded, dict):
+        raise ValueError("suggestion payload must be an object")
+    return decoded
 
 
 def _spec(

@@ -243,7 +243,9 @@ def test_finance_manifest_and_tools_shape(tmp_path: Path) -> None:
     assert manifest.name == "finance"
     assert manifest.data_scope.value == OWNER_PRIVATE
     assert manifest.permissions.guest is False
-    assert manifest.proactive_hooks == []
+    # FIN-c wires 4 proactive hooks (all tier=1 on the OWNER_PRIVATE module).
+    assert len(manifest.proactive_hooks) == 4
+    assert all(hook.tier == 1 for hook in manifest.proactive_hooks)
     assert manifest.ui.kind == "card"
     assert all(inspect.iscoroutinefunction(tool.callable_ref) for tool in manifest.tools)
     with pytest.raises(ValidationError):

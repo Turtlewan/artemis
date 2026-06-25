@@ -211,6 +211,71 @@ class FinanceStore:
     def reject_fin_suggestion(self, id: str) -> None:
         self._repo().reject_fin_suggestion(id)
 
+    def mark_fin_suggestion_accepted(self, id: str) -> None:
+        self._repo().mark_fin_suggestion_accepted(id)
+
+    def upsert_subscription(
+        self,
+        *,
+        merchant: str,
+        cadence: str,
+        amount: Decimal,
+        next_renewal: str | None = None,
+        last_seen_price: Decimal | None = None,
+        last_seen_date: str | None = None,
+    ) -> str:
+        return self._repo().upsert_subscription(
+            merchant=merchant,
+            cadence=cadence,
+            amount=amount,
+            next_renewal=next_renewal,
+            last_seen_price=last_seen_price,
+            last_seen_date=last_seen_date,
+        )
+
+    def list_subscriptions(self, *, active: bool = True) -> list[dict[str, object]]:
+        return self._repo().list_subscriptions(active=active)
+
+    def upsert_bill(
+        self,
+        *,
+        payee: str,
+        due_date: str,
+        amount: Decimal | None = None,
+        raw_ref: str | None = None,
+    ) -> str:
+        return self._repo().upsert_bill(
+            payee=payee,
+            due_date=due_date,
+            amount=amount,
+            raw_ref=raw_ref,
+        )
+
+    def list_bills(self, *, status: str | None = None) -> list[dict[str, object]]:
+        return self._repo().list_bills(status=status)
+
+    def mark_bill_paid(self, id: str) -> None:
+        self._repo().mark_bill_paid(id)
+
+    def merge_transactions(self, keep_id: str, drop_id: str) -> None:
+        self._repo().merge_transactions(keep_id, drop_id)
+
+    def merchant_amount_history(
+        self,
+        *,
+        merchant: str,
+        category_id: str | None = None,
+        lookback_days: int = 180,
+    ) -> list[Decimal]:
+        return self._repo().merchant_amount_history(
+            merchant=merchant,
+            category_id=category_id,
+            lookback_days=lookback_days,
+        )
+
+    def recurring_candidates(self, *, min_occurrences: int) -> list[dict[str, object]]:
+        return self._repo().recurring_candidates(min_occurrences=min_occurrences)
+
     def spend_summary(
         self,
         *,

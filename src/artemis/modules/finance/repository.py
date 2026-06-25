@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from decimal import Decimal
 from typing import Literal
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from artemis.memory.schema import now_iso
 from artemis.modules.finance.csv_import import CsvColumnMapping
-from artemis.modules.finance.schema import TransactionType
+from artemis.modules.finance.schema import BillStatus, SubscriptionCadence, TransactionType
 
 
 class FinanceRepository:
@@ -300,6 +301,233 @@ class FinanceRepository:
         )
         self.conn.commit()
 
+    def mark_fin_suggestion_accepted(self, id: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE fin_suggestion
+            SET status = 'accepted', updated_at = ?
+            WHERE id = ?
+            """,
+            (now_iso(), id),
+        )
+        self.conn.commit()
+
+    def upsert_subscription(
+        self,
+        *,
+        merchant: str,
+        cadence: str,
+        amount: Decimal,
+        next_renewal: str | None = None,
+        last_seen_price: Decimal | None = None,
+        last_seen_date: str | None = None,
+    ) -> str:
+        if cadence not in {item.value for item in SubscriptionCadence}:
+            raise ValueError(f"unsupported subscription cadence: {cadence}")
+        row = self.conn.execute(
+            """
+            SELECT id FROM subscription
+            WHERE merchant = ? AND cadence = ?
+            """,
+            (merchant, cadence),
+        ).fetchone()
+        now = now_iso()
+        if row is not None:
+            subscription_id = str(row["id"])
+            self.conn.execute(
+                """
+                UPDATE subscription
+                SET amount = ?, next_renewal = ?, last_seen_price = ?,
+                    last_seen_date = ?, active = 1, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    str(amount),
+                    next_renewal,
+                    _decimal_text(last_seen_price),
+                    last_seen_date,
+                    now,
+                    subscription_id,
+                ),
+            )
+            self.conn.commit()
+            return subscription_id
+
+        subscription_id = uuid4().hex
+        self.conn.execute(
+            """
+            INSERT INTO subscription (
+                id, merchant, cadence, amount, next_renewal, last_seen_price,
+                last_seen_date, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """,
+            (
+                subscription_id,
+                merchant,
+                cadence,
+                str(amount),
+                next_renewal,
+                _decimal_text(last_seen_price),
+                last_seen_date,
+                now,
+                now,
+            ),
+        )
+        self.conn.commit()
+        return subscription_id
+
+    def list_subscriptions(self, *, active: bool = True) -> list[dict[str, object]]:
+        if active:
+            rows = self.conn.execute(
+                "SELECT * FROM subscription WHERE active = 1 ORDER BY next_renewal"
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT * FROM subscription ORDER BY next_renewal").fetchall()
+        return [_subscription_row(row) for row in rows]
+
+    def upsert_bill(
+        self,
+        *,
+        payee: str,
+        due_date: str,
+        amount: Decimal | None = None,
+        raw_ref: str | None = None,
+    ) -> str:
+        row = self.conn.execute(
+            "SELECT id FROM bill WHERE payee = ? AND due_date = ?",
+            (payee, due_date),
+        ).fetchone()
+        now = now_iso()
+        if row is not None:
+            bill_id = str(row["id"])
+            self.conn.execute(
+                """
+                UPDATE bill
+                SET amount = COALESCE(?, amount), raw_ref = COALESCE(?, raw_ref), updated_at = ?
+                WHERE id = ?
+                """,
+                (_decimal_text(amount), raw_ref, now, bill_id),
+            )
+            self.conn.commit()
+            return bill_id
+
+        bill_id = uuid4().hex
+        self.conn.execute(
+            """
+            INSERT INTO bill (
+                id, payee, due_date, amount, status, raw_ref, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                bill_id,
+                payee,
+                due_date,
+                _decimal_text(amount),
+                BillStatus.OPEN.value,
+                raw_ref,
+                now,
+                now,
+            ),
+        )
+        self.conn.commit()
+        return bill_id
+
+    def list_bills(self, *, status: str | None = None) -> list[dict[str, object]]:
+        if status is None:
+            rows = self.conn.execute("SELECT * FROM bill ORDER BY due_date").fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM bill WHERE status = ? ORDER BY due_date",
+                (status,),
+            ).fetchall()
+        return [_bill_row(row) for row in rows]
+
+    def mark_bill_paid(self, id: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE bill
+            SET status = ?, paid_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (BillStatus.PAID.value, now_iso(), now_iso(), id),
+        )
+        self.conn.commit()
+
+    def merge_transactions(self, keep_id: str, drop_id: str) -> None:
+        if keep_id == drop_id:
+            return
+        self.conn.execute('DELETE FROM "transaction" WHERE id = ?', (drop_id,))
+        self.conn.execute(
+            'UPDATE "transaction" SET updated_at = ? WHERE id = ?',
+            (now_iso(), keep_id),
+        )
+        self.conn.commit()
+
+    def merchant_amount_history(
+        self,
+        *,
+        merchant: str,
+        category_id: str | None = None,
+        lookback_days: int = 180,
+    ) -> list[Decimal]:
+        clauses = [
+            "LOWER(TRIM(merchant)) = ?",
+            "txn_type IN ('purchase','refund')",
+            "txn_date >= date('now', ?)",
+        ]
+        params: list[object] = [
+            _normalize_merchant(merchant),
+            f"-{lookback_days} days",
+        ]
+        if category_id is not None:
+            clauses.append("category_id = ?")
+            params.append(category_id)
+        rows = self.conn.execute(
+            f"""
+            SELECT amount FROM "transaction"
+            WHERE {" AND ".join(clauses)}
+            ORDER BY txn_date ASC, created_at ASC
+            """,
+            params,
+        ).fetchall()
+        return [Decimal(str(row["amount"])) for row in rows]
+
+    def recurring_candidates(self, *, min_occurrences: int) -> list[dict[str, object]]:
+        rows = self.conn.execute(
+            """
+            SELECT id, txn_date, amount, currency, merchant, category_id, notes
+            FROM "transaction"
+            WHERE txn_type = 'purchase' AND merchant IS NOT NULL
+            ORDER BY merchant, amount, txn_date
+            """
+        ).fetchall()
+        groups: dict[tuple[str, Decimal, str], list[dict[str, object]]] = {}
+        for row in rows:
+            amount = Decimal(str(row["amount"])).quantize(Decimal("0.01"))
+            merchant = str(row["merchant"])
+            key = (_normalize_merchant(merchant), amount, str(row["currency"]))
+            groups.setdefault(key, []).append(_plain_row(row))
+
+        candidates: list[dict[str, object]] = []
+        for (normalized, amount, currency), group in groups.items():
+            if len(group) < min_occurrences:
+                continue
+            dates = [str(row["txn_date"]) for row in group]
+            candidates.append(
+                {
+                    "merchant": _merchant_label(group),
+                    "normalized_merchant": normalized,
+                    "amount": amount,
+                    "currency": currency,
+                    "occurrences": len(group),
+                    "dates": dates,
+                    "transaction_ids": [str(row["id"]) for row in group],
+                    "category_id": group[-1].get("category_id"),
+                    "due_dates": _due_dates(group),
+                }
+            )
+        return candidates
+
     def spend_summary(
         self,
         *,
@@ -407,6 +635,21 @@ def _transaction_row(row: sqlite3.Row) -> dict[str, object]:
     return result
 
 
+def _subscription_row(row: sqlite3.Row) -> dict[str, object]:
+    result = dict(row)
+    result["amount"] = Decimal(str(result["amount"]))
+    if result["last_seen_price"] is not None:
+        result["last_seen_price"] = Decimal(str(result["last_seen_price"]))
+    return result
+
+
+def _bill_row(row: sqlite3.Row) -> dict[str, object]:
+    result = dict(row)
+    if result["amount"] is not None:
+        result["amount"] = Decimal(str(result["amount"]))
+    return result
+
+
 def _decimal_from_sql(value: object) -> Decimal:
     if value is None:
         return Decimal("0")
@@ -436,3 +679,27 @@ def _suggestion_payload(payload_json: str) -> dict[str, object]:
     if not all(key in transaction for key in required):
         raise ValueError("suggestion payload missing transaction fields")
     return dict(transaction)
+
+
+def _normalize_merchant(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _merchant_label(rows: Sequence[dict[str, object]]) -> str:
+    value = rows[-1].get("merchant")
+    return str(value) if value is not None else ""
+
+
+_DUE_RE = re.compile(r"\bdue[:= ](?P<date>\d{4}-\d{2}-\d{2})\b", re.IGNORECASE)
+
+
+def _due_dates(rows: Sequence[dict[str, object]]) -> list[str]:
+    due_dates: list[str] = []
+    for row in rows:
+        notes = row.get("notes")
+        if not isinstance(notes, str):
+            continue
+        match = _DUE_RE.search(notes)
+        if match is not None:
+            due_dates.append(match.group("date"))
+    return due_dates
