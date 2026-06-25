@@ -23,6 +23,10 @@ class Source:
     kind: Literal["file", "web", "email", "email_attachment", "calendar_meeting"]
     uri: str
     scope: Scope
+    force_sensitive: bool = False
+    """One-directional override: True forces sensitivity="sensitive" and skips classification.
+    Callers may only UPGRADE to sensitive, never assert general. Set by journal, health,
+    and email connectors (whole-domain hard-sensitive). Finance connectors do NOT set this."""
 
 
 @dataclass(frozen=True)

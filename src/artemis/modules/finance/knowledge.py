@@ -1,4 +1,4 @@
-"""Finance summary-fact derivation and local knowledge/memory push."""
+"""Finance summary-fact derivation and local knowledge push."""
 
 from __future__ import annotations
 
@@ -15,26 +15,11 @@ from artemis.config import Settings
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.ingest.connectors import Source
 from artemis.ingest.pipeline import IngestPipeline
-from artemis.memory.write_path import MemoryWriteQueue
 from artemis.modules.finance.store import FinanceStore
-from artemis.sensitivity import Sensitivity
 
 logger = logging.getLogger(__name__)
 
 FinanceFactKind = Literal["subscription", "recurring_merchant", "spending_pattern"]
-
-
-class MemoryQueuePort(Protocol):
-    """Small seam implemented by ``MemoryWriteQueue`` and tests."""
-
-    def enqueue(
-        self,
-        text: str,
-        turn_id: str,
-        role: str | None = None,
-        *,
-        source_sensitivity: Sensitivity | None = None,
-    ) -> None: ...
 
 
 class IngestPipelinePort(Protocol):
@@ -130,15 +115,13 @@ async def push_finance_knowledge(
     facts: list[FinanceFact],
     *,
     ingest: IngestPipeline | IngestPipelinePort,
-    memory_queue: MemoryWriteQueue | MemoryQueuePort,
     settings: Settings,
 ) -> int:
-    """Best-effort push of sensitivity-tagged finance facts.
+    """Best-effort push of finance facts to the knowledge index.
 
     Each finance fact is staged under the owner-private scope directory, pushed
     through the configured ingest pipeline, and removed afterward. Failures are
-    degraded per fact without logging fact text, and no fact is ever pushed as
-    general sensitivity.
+    degraded per fact without logging fact text.
     """
     staging_dir = paths.scope_dir(settings, OWNER_PRIVATE) / "ingest-staging"
     staging_dir.mkdir(parents=True, exist_ok=True)
@@ -147,14 +130,11 @@ async def push_finance_knowledge(
     for fact in facts:
         staging_path = staging_dir / f"finance-{_safe_key(fact.key)}-{uuid4().hex}.txt"
         try:
-            # PRIVACY: every finance fact is pushed with sensitivity="sensitive"
-            # (ADR-029). The RAG-compose enforcer keeps these facts out of any
-            # hosted prompt. A finance fact must NEVER be tagged "general".
-            memory_queue.enqueue(
-                fact.text,
-                turn_id=f"finance:{fact.key}",
-                source_sensitivity="sensitive",
-            )
+            # PRIVACY (ADR-022 Refinement 2026-06-25 + owner rule): soft finance facts
+            # (subscriptions, spending patterns, recurring merchants) are general / hosted-OK
+            # and pushed to the KNOWLEDGE index only. Finance is EXCLUDED from general memory
+            # (owner-rule: financial -> Finance ledger only) -- do NOT re-add a memory enqueue.
+            # Access/identity-grade content in fact text is caught by sensitivity_detectors.
             staging_path.write_text(fact.text, encoding="utf-8")
             await ingest.ingest(Source(kind="file", uri=str(staging_path), scope=OWNER_PRIVATE))
         except Exception as exc:

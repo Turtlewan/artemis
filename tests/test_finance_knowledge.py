@@ -20,7 +20,6 @@ from artemis.modules.finance.manifest import finance_manifest
 from artemis.modules.finance.store import FinanceStore
 from artemis.modules.finance.tools import EmptyArgs, finance_knowledge_push
 from artemis.ports.types import Scope
-from artemis.sensitivity import Sensitivity
 
 
 class FakeKeyProvider:
@@ -33,32 +32,16 @@ class FakeKeyProvider:
         return True
 
 
-class FakeMemoryWriteQueue:
+class FakeIngestPipeline:
     def __init__(self, *, fail_first: bool = False) -> None:
         self.fail_first = fail_first
         self.calls = 0
-        self.records: list[tuple[str, str, Sensitivity | None]] = []
-
-    def enqueue(
-        self,
-        text: str,
-        turn_id: str,
-        role: str | None = None,
-        *,
-        source_sensitivity: Sensitivity | None = None,
-    ) -> None:
-        del role
-        self.calls += 1
-        if self.fail_first and self.calls == 1:
-            raise RuntimeError("forced enqueue failure")
-        self.records.append((text, turn_id, source_sensitivity))
-
-
-class FakeIngestPipeline:
-    def __init__(self) -> None:
         self.records: list[tuple[Source, str]] = []
 
     async def ingest(self, source: Source) -> object:
+        self.calls += 1
+        if self.fail_first and self.calls == 1:
+            raise RuntimeError("forced ingest failure")
         self.records.append((source, Path(source.uri).read_text(encoding="utf-8")))
         return object()
 
@@ -81,7 +64,7 @@ def test_derive_finance_facts_uses_summary_facts_only(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_push_finance_knowledge_tags_memory_sensitive_and_ingests(
+async def test_push_finance_knowledge_ingests_without_memory_write(
     tmp_path: Path,
 ) -> None:
     facts = [
@@ -97,23 +80,19 @@ async def test_push_finance_knowledge_tags_memory_sensitive_and_ingests(
         ),
     ]
     settings = Settings(data_root=tmp_path)
-    memory_queue = FakeMemoryWriteQueue()
     ingest = FakeIngestPipeline()
 
     pushed = await push_finance_knowledge(
         facts,
         ingest=ingest,
-        memory_queue=memory_queue,
         settings=settings,
     )
 
     assert pushed == 2
-    assert [record[0] for record in memory_queue.records] == [fact.text for fact in facts]
-    assert all(record[2] == "sensitive" for record in memory_queue.records)
-    assert all(record[2] != "general" for record in memory_queue.records)
     assert [record[1] for record in ingest.records] == [fact.text for fact in facts]
     assert all(source.kind == "file" for source, _text in ingest.records)
     assert all(source.scope == OWNER_PRIVATE for source, _text in ingest.records)
+    assert all(source.force_sensitive is False for source, _text in ingest.records)
     staging_dir = tmp_path / "dev" / OWNER_PRIVATE / "ingest-staging"
     assert staging_dir.exists()
     assert list(staging_dir.glob("*.txt")) == []
@@ -123,21 +102,17 @@ async def test_push_finance_knowledge_tags_memory_sensitive_and_ingests(
 async def test_memory_excludes_raw_financial_records(tmp_path: Path) -> None:
     store = _seed_store(tmp_path)
     facts = derive_finance_facts(store)
-    memory_queue = FakeMemoryWriteQueue()
     ingest = FakeIngestPipeline()
 
     pushed = await push_finance_knowledge(
         facts,
         ingest=ingest,
-        memory_queue=memory_queue,
         settings=Settings(data_root=tmp_path),
     )
 
     assert pushed == len(facts)
-    assert set(text for text, _turn_id, _sensitivity in memory_queue.records) == {
-        fact.text for fact in facts
-    }
-    for text, _turn_id, _sensitivity in memory_queue.records:
+    assert {text for _source, text in ingest.records} == {fact.text for fact in facts}
+    for _source, text in ingest.records:
         assert "raw_ref" not in text
         assert "txn-raw-one-off" not in text
         assert "receipt-123" not in text
@@ -152,30 +127,25 @@ async def test_push_degrades_per_fact_without_propagating(tmp_path: Path) -> Non
             text="Owner regularly spends at TrainCard.", kind="recurring_merchant", key="b"
         ),
     ]
-    memory_queue = FakeMemoryWriteQueue(fail_first=True)
-    ingest = FakeIngestPipeline()
+    ingest = FakeIngestPipeline(fail_first=True)
 
     pushed = await push_finance_knowledge(
         facts,
         ingest=ingest,
-        memory_queue=memory_queue,
         settings=Settings(data_root=tmp_path),
     )
 
     assert pushed == 1
-    assert memory_queue.records == [(facts[1].text, "finance:b", "sensitive")]
     assert [text for _source, text in ingest.records] == [facts[1].text]
 
 
 def test_finance_knowledge_tool_and_manifest_wiring(tmp_path: Path) -> None:
     store = _seed_store(tmp_path)
     ingest = FakeIngestPipeline()
-    memory_queue = FakeMemoryWriteQueue()
 
     manifest = finance_manifest(
         store,
         ingest_pipeline=ingest,  # type: ignore[arg-type]
-        memory_queue=memory_queue,  # type: ignore[arg-type]
         settings=Settings(data_root=tmp_path),
     )
 
@@ -189,23 +159,25 @@ async def test_finance_knowledge_push_requires_handles() -> None:
     from artemis.modules.finance import tools
 
     previous_ingest = tools._ingest
-    previous_memory_queue = tools._memory_queue
     previous_settings = tools._settings
     tools._ingest = None
-    tools._memory_queue = None
     tools._settings = None
     try:
         with pytest.raises(RuntimeError):
             await finance_knowledge_push(EmptyArgs())
     finally:
         tools._ingest = previous_ingest
-        tools._memory_queue = previous_memory_queue
         tools._settings = previous_settings
 
 
 def test_finance_package_imports_no_remote_reasoning_ports() -> None:
     finance_dir = Path(__file__).parents[1] / "src" / "artemis" / "modules" / "finance"
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in finance_dir.glob("*.py"))
+    combined = "\n".join(
+        line
+        for path in finance_dir.glob("*.py")
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#")
+    )
     assert "model_adapters" not in combined
     assert "Codex" not in combined
     assert "responder_cloud" not in combined

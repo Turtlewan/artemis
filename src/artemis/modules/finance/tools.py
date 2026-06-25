@@ -12,7 +12,6 @@ from pydantic import BaseModel, field_validator
 from artemis.config import Settings
 from artemis.ingest.pipeline import IngestPipeline
 from artemis.manifest import ActionRisk, ToolSpec
-from artemis.memory.write_path import MemoryWriteQueue
 from artemis.modules.finance.events import Emit, _noop_emit
 from artemis.modules.finance.extraction import FinanceExtractor
 from artemis.modules.finance.knowledge import derive_finance_facts, push_finance_knowledge
@@ -26,7 +25,6 @@ _store: FinanceStore | None = None
 _extractor: FinanceExtractor | None = None
 _gmail_cache: GmailReadCache | None = None
 _ingest: IngestPipeline | None = None
-_memory_queue: MemoryWriteQueue | None = None
 _settings: Settings | None = None
 _emit: Emit = _noop_emit
 
@@ -306,13 +304,11 @@ def init_finance_extractor(extractor: FinanceExtractor, gmail_cache: GmailReadCa
 
 def init_finance_knowledge(
     ingest: IngestPipeline,
-    memory_queue: MemoryWriteQueue,
     settings: Settings,
 ) -> None:
     """Set Finance knowledge push dependencies used by the tool callable."""
-    global _ingest, _memory_queue, _settings
+    global _ingest, _settings
     _ingest = ingest
-    _memory_queue = memory_queue
     _settings = settings
 
 
@@ -479,7 +475,7 @@ def build_finance_tool_specs() -> list[ToolSpec]:
         ),
         _spec(
             "finance_knowledge_push",
-            "Push local finance summary facts to owner memory and knowledge.",
+            "Push local finance summary facts to owner knowledge.",
             EmptyArgs,
             FinanceKnowledgePushResult,
             finance_knowledge_push,
@@ -500,10 +496,10 @@ def _get_extractor() -> tuple[FinanceExtractor, GmailReadCache]:
     return _extractor, _gmail_cache
 
 
-def _get_knowledge_handles() -> tuple[IngestPipeline, MemoryWriteQueue, Settings]:
-    if _ingest is None or _memory_queue is None or _settings is None:
+def _get_knowledge_handles() -> tuple[IngestPipeline, Settings]:
+    if _ingest is None or _settings is None:
         raise RuntimeError("finance knowledge not initialised")
-    return _ingest, _memory_queue, _settings
+    return _ingest, _settings
 
 
 async def spend_summary(args: SpendSummaryArgs) -> SpendSummaryResult:
@@ -673,12 +669,11 @@ async def unusual_spend_list(args: EmptyArgs) -> UnusualSpendListResult:
 
 async def finance_knowledge_push(args: EmptyArgs) -> FinanceKnowledgePushResult:
     del args
-    ingest, memory_queue, settings = _get_knowledge_handles()
+    ingest, settings = _get_knowledge_handles()
     facts = derive_finance_facts(_get_store())
     pushed = await push_finance_knowledge(
         facts,
         ingest=ingest,
-        memory_queue=memory_queue,
         settings=settings,
     )
     return FinanceKnowledgePushResult(pushed=pushed)

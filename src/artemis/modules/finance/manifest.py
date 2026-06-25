@@ -5,7 +5,6 @@ from __future__ import annotations
 from artemis.config import Settings
 from artemis.ingest.pipeline import IngestPipeline
 from artemis.manifest import DataScope, ModuleManifest, Permissions, UiSurface
-from artemis.memory.write_path import MemoryWriteQueue
 from artemis.modules.finance import tools
 from artemis.modules.finance.events import Emit, _noop_emit
 from artemis.modules.finance.extraction import FinanceExtractor
@@ -19,7 +18,6 @@ def finance_manifest(
     store: FinanceStore,
     registry: TemplateRegistry | None = None,
     ingest_pipeline: IngestPipeline | None = None,
-    memory_queue: MemoryWriteQueue | None = None,
     *,
     extractor: FinanceExtractor | None = None,
     gmail_cache: GmailReadCache | None = None,
@@ -30,10 +28,10 @@ def finance_manifest(
     tools.init_finance_tools(store, emit=emit)
     if extractor is not None and gmail_cache is not None:
         tools.init_finance_extractor(extractor, gmail_cache)
-    if ingest_pipeline is not None and memory_queue is not None and settings is not None:
-        tools.init_finance_knowledge(ingest_pipeline, memory_queue, settings)
-    elif ingest_pipeline is not None and memory_queue is not None:
-        tools.init_finance_knowledge(ingest_pipeline, memory_queue, store.settings)
+    if ingest_pipeline is not None and settings is not None:
+        tools.init_finance_knowledge(ingest_pipeline, settings)
+    elif ingest_pipeline is not None:
+        tools.init_finance_knowledge(ingest_pipeline, store.settings)
     if registry is not None:
         register_finance_templates(registry)
     return ModuleManifest(

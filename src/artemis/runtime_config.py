@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from artemis import paths
 from artemis.config import Settings, get_settings
+from artemis.sensitivity import Sensitivity
 
 _HHMM_RE = re.compile(r"^\d{2}:\d{2}$")
 
@@ -242,6 +243,46 @@ class ReactionConfig(BaseModel):
         return value
 
 
+class SensitivityConfig(BaseModel):
+    """Ground Rules v1 sensitivity policy owner tunables."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    hard_sensitive_domains: tuple[str, ...] = Field(
+        default=("journal", "health", "email"),
+        description=(
+            "Whole-domain force-sensitive sources. Connectors for these domains "
+            "set Source.force_sensitive=True; classification is skipped entirely."
+        ),
+    )
+    access_grade_patterns: tuple[str, ...] = Field(
+        default=(
+            "full_card_number",
+            "exceeds_masked_tail",
+            "nric",
+            "dob",
+            "home_address",
+        ),
+        description=(
+            "Content-grade detector IDs that hard-lock a document to sensitive "
+            "regardless of source domain. Maps to sensitivity_detectors.py functions."
+        ),
+    )
+    classifier_fail_closed: bool = Field(
+        default=True,
+        description=(
+            "When True (mandatory), an uncertain or failing classifier result "
+            "always resolves to sensitive. Must not be set to False in production."
+        ),
+    )
+    owner_overrides: dict[str, Sensitivity] = Field(
+        default_factory=dict,
+        description=(
+            "Owner sensitivity answers graduated from review (source_id/review_id -> sensitivity)."
+        ),
+    )
+
+
 class RuntimeConfig(BaseModel):
     """Aggregate owner policy config for all runtime-tunable cluster surfaces."""
 
@@ -266,6 +307,10 @@ class RuntimeConfig(BaseModel):
     reaction: ReactionConfig = Field(
         default_factory=ReactionConfig,
         description="Reaction fraud, reconciler, and travel-buffer tunables.",
+    )
+    sensitivity: SensitivityConfig = Field(
+        default_factory=SensitivityConfig,
+        description="Ground Rules v1 sensitivity tagging policy tunables.",
     )
 
 

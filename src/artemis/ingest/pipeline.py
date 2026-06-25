@@ -93,7 +93,16 @@ class IngestPipeline:
                 item=item,
             )
 
-        document.sensitivity = await self._classify_source(document)
+        # Ground-rules layer: if the source is force-flagged (journal/health/email
+        # whole-domain), skip classification entirely and hard-lock to sensitive.
+        if source.force_sensitive:
+            document.sensitivity = "sensitive"
+            logger.debug(
+                "force_sensitive set: skipping classifier source_id=%s",
+                document.source_id,
+            )
+        else:
+            document.sensitivity = await self._classify_source(document)
         document.category = None
         logger.debug(
             "classified source sensitivity source_id=%s label=%s",
@@ -127,6 +136,17 @@ class IngestPipeline:
         )
 
     async def _classify_source(self, document: Document) -> Sensitivity:
+        from artemis.sensitivity_detectors import is_content_sensitive
+
+        # Deterministic layer: fires before the classifier for highest-value items
+        # (card numbers, NRIC, DOB, address). Code-based; cannot be prompt-injected.
+        if is_content_sensitive(document.text):
+            logger.debug(
+                "content detector fired: failing to sensitive source_id=%s",
+                document.source_id,
+            )
+            return "sensitive"
+
         sensitivity: Sensitivity = "sensitive"
         if self._classifier is None:
             return sensitivity
