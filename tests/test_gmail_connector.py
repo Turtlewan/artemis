@@ -40,6 +40,7 @@ from artemis.modules.gmail.tools import (
 )
 from artemis.ports.model import ModelResponse
 from artemis.ports.types import Message, RetrievedChunk, Scope, Vector
+from artemis.sensitivity import Sensitivity
 from artemis.untrusted.quarantine import QuarantinedReader
 
 KEY = b"1" * 32
@@ -140,7 +141,15 @@ class FakeMemoryQueue:
     def __init__(self) -> None:
         self.items: list[tuple[str, str, str | None]] = []
 
-    def enqueue(self, text: str, turn_id: str, role: str | None = None) -> None:
+    def enqueue(
+        self,
+        text: str,
+        turn_id: str,
+        role: str | None = None,
+        *,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> None:
+        del source_sensitivity  # accepted to match the M4b MemoryWriteQueue signature
         self.items.append((text, turn_id, role))
 
 

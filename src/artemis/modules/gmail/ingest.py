@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from typing import Protocol
@@ -12,17 +13,43 @@ from artemis.ingest.connectors import Connector, RawItem, Source
 from artemis.ingest.pipeline import IngestPipeline
 from artemis.memory.write_path import MemoryWriteQueue
 from artemis.ports.types import Scope
-from artemis.untrusted.quarantine import QuarantinedReader
+from artemis.sensitivity import Sensitivity, SensitivityClassifierProtocol
+from artemis.untrusted.quarantine import Extract, QuarantinedReader
 
 from .cache import GmailReadCache
 from .client import GmailApiPort, extract_body_text, list_attachment_parts
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryQueuePort(Protocol):
     """Small seam implemented by ``MemoryWriteQueue`` and test fakes."""
 
-    def enqueue(self, text: str, turn_id: str, role: str | None = None) -> None:
+    def enqueue(
+        self,
+        text: str,
+        turn_id: str,
+        role: str | None = None,
+        *,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> None:
         """Queue sanitized memory text."""
+        ...
+
+
+class QuarantinedReaderPort(Protocol):
+    """Small seam implemented by ``QuarantinedReader`` and test fakes."""
+
+    async def read(
+        self,
+        *,
+        raw_content: str,
+        source_url: str,
+        source_domain: str,
+        query: str,
+        max_tokens: int = 1024,
+    ) -> Extract:
+        """Return a privileged-safe extract for raw untrusted content."""
         ...
 
 
@@ -128,15 +155,22 @@ class GmailIngestor:
 
 
 class GmailMemoryExtractor:
-    """Quarantine raw mail before enqueueing sanitized memory text."""
+    """Quarantine raw mail before enqueueing sanitized memory text.
+
+    Sensitivity is classified once per email on the quarantined Extract summary,
+    never raw mail. Classification fails closed to ``"sensitive"``, and the
+    memory fact inherits the per-email tag through ``source_sensitivity``.
+    """
 
     def __init__(
         self,
-        reader: QuarantinedReader,
+        reader: QuarantinedReader | QuarantinedReaderPort,
         queue: MemoryWriteQueue | MemoryQueuePort,
+        classifier: SensitivityClassifierProtocol | None = None,
     ) -> None:
         self._reader = reader
         self._queue = queue
+        self._classifier = classifier
 
     async def extract(self, *, message_id: str, body: str) -> bool:
         """Extract sanitized facts from untrusted body text and enqueue them."""
@@ -148,11 +182,23 @@ class GmailMemoryExtractor:
         )
         if extract.parse_failed:
             return False
+        sensitivity: Sensitivity = "sensitive"
+        if self._classifier is not None:
+            try:
+                sensitivity = await self._classifier.classify(extract.summary)
+            except Exception:
+                sensitivity = "sensitive"
+        logger.debug("Gmail extract %s classified as %s", message_id, sensitivity)
         parts = [extract.summary.strip(), *[claim.strip() for claim in extract.claims]]
         text = "\n".join(part for part in parts if part)
         if not text:
             return False
-        self._queue.enqueue(text, turn_id=f"gmail:{message_id}", role="gmail")
+        self._queue.enqueue(
+            text,
+            turn_id=f"gmail:{message_id}",
+            role="gmail",
+            source_sensitivity=sensitivity,
+        )
         return True
 
 
