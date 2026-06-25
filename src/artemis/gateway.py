@@ -24,8 +24,8 @@ from artemis.ports.types import PersonId, Scope
 if TYPE_CHECKING:
     from artemis.identity.key_provider import KeyProvider
     from artemis.ports.model import ModelPort
-    from artemis.ports.retrieval import EmbeddingModel
-    from artemis.ports.types import Fact
+    from artemis.ports.retrieval import EmbeddingModel, Reranker
+    from artemis.ports.types import Fact, RetrievedChunk
     from artemis.registry import ToolRegistry
     from artemis.sensitivity import ReleaseAuditEntry, SensitivityClassifierProtocol
 
@@ -125,6 +125,7 @@ def compose_brain(
     embedder: EmbeddingModel | None = None,
     model: ModelPort | None = None,
     key_provider: KeyProvider | None = None,
+    reranker: Reranker | None = None,
 ) -> Brain:
     """Build a wired Brain from settings.
 
@@ -144,6 +145,7 @@ def compose_brain(
     classifier: SensitivityClassifierProtocol | None = None
     enforcer = None
     retrieve_fn = None
+    agentic = None
     recall_fn = None
     audit_log = None
     if model is None:
@@ -169,12 +171,17 @@ def compose_brain(
             import sqlite_vec  # type: ignore[import-untyped]
 
             import artemis.paths as paths
+            from artemis.adapters.lancedb_store import LanceDBVectorStore
+            from artemis.adapters.reranker import FakeReranker
             from artemis.data.sqlcipher import sqlcipher_open
+            from artemis.identity.scope import GENERAL
             from artemis.memory import build_write_path, memory_manifest
             from artemis.memory.repository import BitemporalRepository
             from artemis.memory.schema import create_schema
             from artemis.memory.store import SqliteMemoryStore
             from artemis.memory.write_path import MemoryWriteQueue
+            from artemis.retrieval.agentic import AgenticRetriever
+            from artemis.retrieval.retriever import AdaptiveRetriever
 
             db_path = paths.scope_dir(settings, OWNER_PRIVATE) / "relational" / "memory.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -198,6 +205,54 @@ def compose_brain(
 
             async def recall_fn() -> list[Fact]:
                 return await memory_store.inject_context(OWNER_PERSON_ID, 512)
+
+            store_owner = LanceDBVectorStore(
+                OWNER_PRIVATE,
+                settings,
+                settings.codex_model,
+                settings.embedding_dimension,
+                is_unlocked=key_provider.is_owner_unlocked,
+            )
+            store_general = LanceDBVectorStore(
+                GENERAL,
+                settings,
+                settings.codex_model,
+                settings.embedding_dimension,
+                is_unlocked=lambda: True,
+            )
+            stores: dict[str, LanceDBVectorStore] = {
+                OWNER_PRIVATE: store_owner,
+                GENERAL: store_general,
+            }
+
+            def store_for(scope: str) -> LanceDBVectorStore:
+                store = stores.get(scope)
+                if store is None:
+                    raise ValueError(f"No store for scope: {scope!r}")
+                return store
+
+            retriever = AdaptiveRetriever(
+                embedder,
+                store_for,
+                reranker if reranker is not None else FakeReranker(),
+            )
+            agentic = AgenticRetriever(retriever, model)
+
+            async def retrieve_fn(query: str) -> list[RetrievedChunk]:
+                import asyncio
+
+                owner_chunks, general_chunks = await asyncio.gather(
+                    retriever.retrieve(query, OWNER_PRIVATE),
+                    retriever.retrieve(query, GENERAL),
+                )
+                seen: set[str] = set()
+                merged: list[RetrievedChunk] = []
+                for chunk in owner_chunks + general_chunks:
+                    if chunk.chunk.chunk_id in seen:
+                        continue
+                    seen.add(chunk.chunk.chunk_id)
+                    merged.append(chunk)
+                return merged
 
         except Exception:
             logger.warning(
@@ -232,9 +287,6 @@ def compose_brain(
                     + "\n"
                 )
 
-        # retrieve_fn unwired — no AdaptiveRetriever composed in compose_brain (same gap as the M3-c agentic= flag); planning must compose the retriever.
-        retrieve_fn = None
-
     router = SemanticRouter(registry, embedder)
     return Brain(
         router,
@@ -245,6 +297,7 @@ def compose_brain(
         memory=memory,
         write_queue=write_queue,
         owner_person_id=owner_person_id,
+        agentic=agentic,
         enforcer=enforcer,
         retrieve_fn=retrieve_fn,
         recall_fn=recall_fn,

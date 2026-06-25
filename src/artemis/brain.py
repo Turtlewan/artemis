@@ -391,21 +391,27 @@ class Brain:
         chunks: tuple[RetrievedChunk, ...],
         facts: tuple[Fact, ...],
     ) -> list[Message]:
+        from artemis.untrusted.spotlight import SPOTLIGHT_INSTRUCTION, spotlight
+
         blocks: list[str] = []
+        system_parts: list[str] = []
         if chunks:
-            blocks.append(
-                "Retrieved context:\n"
-                + "\n".join(
-                    f"- [{retrieved.chunk.chunk_id}] {retrieved.chunk.text}" for retrieved in chunks
-                )
+            raw_block = "\n".join(
+                f"[{retrieved.chunk.chunk_id}] {retrieved.chunk.text}" for retrieved in chunks
             )
+            nonce, spotlighted = spotlight(raw_block)
+            system_parts.append(SPOTLIGHT_INSTRUCTION.format(nonce=nonce))
+            blocks.append("Retrieved context:\n" + spotlighted)
         fact_block = render_inject_block(facts)
         if fact_block:
             blocks.append(fact_block)
         if not blocks:
             return [Message(role="user", content=request_text)]
+        combined_system = (
+            "\n\n".join(system_parts) + "\n\n" if system_parts else ""
+        ) + "\n\n".join(blocks)
         return [
-            Message(role="system", content="\n\n".join(blocks)),
+            Message(role="system", content=combined_system),
             Message(role="user", content=request_text),
         ]
 
