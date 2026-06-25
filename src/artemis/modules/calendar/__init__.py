@@ -11,6 +11,21 @@ TODO(CAL-b): compose_brain wiring.
 from artemis.integrations.google.scopes import register_google_scopes
 from artemis.modules.calendar.cache import CalendarSyncEngine, EventCacheStore
 from artemis.modules.calendar.client import CalendarClient, FakeCalendarClient, GoogleCalendarClient
+from artemis.modules.calendar.create_from_extract import (
+    CreateFromExtractArgs,
+    EventExtract,
+    HeldEventIdArgs,
+    HeldEventStatus,
+    HeldEventStore,
+    HeldTentativeEvent,
+    HeldTentativeEventList,
+    ListHeldEventsArgs,
+    approve_held_event,
+    create_from_extract,
+    create_held_event_schema,
+    discard_held_event,
+    list_held_events,
+)
 from artemis.modules.calendar.manifest import CalendarTools, make_calendar_manifest
 from artemis.modules.calendar.preferences import CalPrefs, PreferencesStore
 from artemis.modules.calendar.untrusted import (
@@ -32,11 +47,24 @@ __all__ = [
     "CalendarExtract",
     "CalendarSyncEngine",
     "CalendarTools",
+    "CreateFromExtractArgs",
+    "EventExtract",
     "EventCacheStore",
     "FakeCalendarClient",
     "GoogleCalendarClient",
+    "HeldEventIdArgs",
+    "HeldEventStatus",
+    "HeldEventStore",
+    "HeldTentativeEvent",
+    "HeldTentativeEventList",
+    "ListHeldEventsArgs",
     "PreferencesStore",
     "CALENDAR_QUARANTINE_QUERY",
+    "approve_held_event",
+    "create_from_extract",
+    "create_held_event_schema",
+    "discard_held_event",
+    "list_held_events",
     "make_calendar_manifest",
     "quarantine_event_text",
 ]

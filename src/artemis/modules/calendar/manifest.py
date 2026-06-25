@@ -4,12 +4,25 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Awaitable, Callable
+from functools import partial
 
 from artemis.identity.key_provider import KeyProvider
 from artemis.integrations.google.scopes import register_google_scopes
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec
 from artemis.modules.calendar.cache import CalendarSyncEngine, EventCacheStore
 from artemis.modules.calendar.client import CalendarClient
+from artemis.modules.calendar.create_from_extract import (
+    CreateFromExtractArgs,
+    HeldEventIdArgs,
+    HeldEventStore,
+    HeldTentativeEvent,
+    HeldTentativeEventList,
+    ListHeldEventsArgs,
+    approve_held_event_tool,
+    create_from_extract_tool,
+    discard_held_event_tool,
+    list_held_events_tool,
+)
 from artemis.modules.calendar.hooks import build_calendar_hooks
 from artemis.modules.calendar.overlay import (
     ApproveRejectArgs,
@@ -194,6 +207,7 @@ def make_calendar_overlay_manifest(overlay_tools: OverlayTools) -> list[ToolSpec
 def make_calendar_manifest(
     tools: CalendarTools,
     write_tools: CalendarWriteTools,
+    held_event_store: HeldEventStore | None = None,
     overlay_tools: OverlayTools | None = None,
     *,
     schedule_task_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
@@ -386,6 +400,52 @@ def make_calendar_manifest(
                 return_schema=WriteResult,
                 callable_ref=write_tools.set_reminders,
                 action_risk=ActionRisk.WRITE,
+            ),
+            *(
+                [
+                    ToolSpec(
+                        name="create_from_extract",
+                        description=(
+                            "Create an internal held tentative event from a sanitised extract."
+                        ),
+                        args_schema=CreateFromExtractArgs,
+                        return_schema=HeldTentativeEvent,
+                        callable_ref=partial(create_from_extract_tool, store=held_event_store),
+                        action_risk=ActionRisk.WRITE,
+                    ),
+                    ToolSpec(
+                        name="approve_held_event",
+                        description=(
+                            "Approve a held tentative event through the gated calendar write path."
+                        ),
+                        args_schema=HeldEventIdArgs,
+                        return_schema=HeldTentativeEvent,
+                        callable_ref=partial(
+                            approve_held_event_tool,
+                            store=held_event_store,
+                            write_tools=write_tools,
+                        ),
+                        action_risk=ActionRisk.HIGH_STAKES,
+                    ),
+                    ToolSpec(
+                        name="list_held_events",
+                        description="List Calendar held tentative events by status.",
+                        args_schema=ListHeldEventsArgs,
+                        return_schema=HeldTentativeEventList,
+                        callable_ref=partial(list_held_events_tool, store=held_event_store),
+                        action_risk=ActionRisk.READ,
+                    ),
+                    ToolSpec(
+                        name="discard_held_event",
+                        description="Discard an internal held tentative event.",
+                        args_schema=HeldEventIdArgs,
+                        return_schema=HeldTentativeEvent,
+                        callable_ref=partial(discard_held_event_tool, store=held_event_store),
+                        action_risk=ActionRisk.WRITE,
+                    ),
+                ]
+                if held_event_store is not None
+                else []
             ),
             *(
                 [
