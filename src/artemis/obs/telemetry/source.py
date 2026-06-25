@@ -44,6 +44,11 @@ class TelemetrySink:
 
         pass
 
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+        """Ignore injection flags; quarantine telemetry is content-free elsewhere."""
+
+        pass
+
 
 class SqliteTelemetrySource:
     """Read telemetry rows using the Curiosity ``TelemetrySource`` contract."""

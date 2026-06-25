@@ -7,7 +7,9 @@ import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
+from artemis.obs.sink import NullSink, ObservabilitySink
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message
 from artemis.untrusted.spotlight import SPOTLIGHT_INSTRUCTION, spotlight
@@ -47,6 +49,11 @@ class Extract:
     flagged_injection: bool
     parse_failed: bool
     tokens_used: int
+
+    @property
+    def usable(self) -> bool:
+        """True only when the extract is neither parse-failed nor injection-flagged."""
+        return not self.parse_failed and not self.flagged_injection
 
 
 class QuarantineError(Exception):
@@ -89,7 +96,13 @@ class QuarantinedReader:
     this primitive later.
     """
 
-    def __init__(self, model: ModelPort, role: str) -> None:
+    def __init__(
+        self,
+        model: ModelPort,
+        role: str,
+        *,
+        sink: ObservabilitySink | None = None,
+    ) -> None:
         if not role:
             raise QuarantineError("quarantine role must be non-empty")
         signature = inspect.signature(model.complete)
@@ -98,6 +111,7 @@ class QuarantinedReader:
                 raise QuarantineError("quarantine model complete must be toolless")
         self._model = model
         self._role = role
+        self._sink: ObservabilitySink = sink if sink is not None else NullSink()
 
     async def read(
         self,
@@ -140,6 +154,18 @@ class QuarantinedReader:
                 parse_failed=True,
                 tokens_used=tokens_used,
             )
+
+        if flagged_injection:
+            self._sink.on_injection_flagged(
+                source_domain,
+                now=datetime.now(tz=timezone.utc),  # noqa: UP017
+            )
+            logger.warning(
+                "Injection attempt flagged from %s; summary and claims blanked",
+                source_domain,
+            )
+            summary = ""
+            claims = ()
 
         return Extract(
             source_url=source_url,

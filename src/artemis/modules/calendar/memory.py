@@ -49,12 +49,18 @@ class CalendarMemoryExtractor:
             return
 
         extract = await quarantine_event_text(self._reader, event)
-        if extract.parse_failed:
+        if not extract.usable:
             logger.warning(
-                "calendar memory extraction skipped parse-failed event %s", event.event_id
+                "calendar memory extraction skipped unusable event %s "
+                "(parse_failed=%s, flagged=%s)",
+                event.event_id,
+                extract.parse_failed,
+                extract.flagged_injection,
             )
             return
-        text = extract.summary + "\n" + "\n".join(extract.claims)
+        text = (extract.summary + "\n" + "\n".join(extract.claims)).strip()
+        if not text:
+            return
         self._queue.enqueue(text=text, turn_id=f"calendar:{event.event_id}")
 
     async def extract_batch(self, events: Sequence[CachedEvent]) -> None:

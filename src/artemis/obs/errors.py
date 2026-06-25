@@ -95,3 +95,6 @@ class ErrorCaptureSink:
             )
         )
         get_logger(component).error("captured", extra={"error_type": type(exc).__name__})
+
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+        """No-op: injection telemetry is recorded by the dedicated reader sink."""

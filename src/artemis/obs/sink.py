@@ -37,6 +37,10 @@ class ObservabilitySink(Protocol):
         """Record a component error without traceback content."""
         ...
 
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+        """Record an injection-attempt detection without untrusted content."""
+        ...
+
 
 class NullSink:
     """No-op sink used as the backward-compatible default."""
@@ -61,6 +65,9 @@ class NullSink:
         pass
 
     def on_error(self, component: str, exc: BaseException, *, now: datetime) -> None:
+        pass
+
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
         pass
 
 
@@ -103,6 +110,13 @@ class CompositeSink:
                 sink.on_error(component, exc, now=now)
             except Exception as child_exc:
                 self._log_child_failure(sink, child_exc)
+
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+        for sink in self._sinks:
+            try:
+                sink.on_injection_flagged(source_domain, now=now)
+            except Exception as exc:
+                self._log_child_failure(sink, exc)
 
     def _log_child_failure(self, sink: ObservabilitySink, exc: BaseException) -> None:
         get_logger("obs").warning(

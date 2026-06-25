@@ -95,7 +95,7 @@ class GmailUrgencyPreFilter:
             extract = extracts.get(msg.message_id)
             extract_summary = ""
             extract_failed = True
-            if extract is not None and not extract.parse_failed:
+            if extract is not None and extract.usable:
                 extract_summary = extract.summary[:500]
                 extract_failed = False
             candidate = UrgencyCandidate(

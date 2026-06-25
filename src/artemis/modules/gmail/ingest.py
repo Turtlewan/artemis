@@ -180,7 +180,7 @@ class GmailMemoryExtractor:
             source_domain="gmail",
             query="facts about the owner worth remembering from this email",
         )
-        if extract.parse_failed:
+        if not extract.usable:
             return False
         sensitivity: Sensitivity = "sensitive"
         if self._classifier is not None:

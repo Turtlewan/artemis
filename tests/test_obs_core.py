@@ -68,6 +68,9 @@ class SpySink:
     def on_error(self, component: str, exc: BaseException, *, now: datetime) -> None:
         self.errors.append((component, exc, now))
 
+    def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+        pass
+
 
 class RaisingSink:
     def on_route_decision(

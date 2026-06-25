@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator, Sequence
+from datetime import datetime
 
 import pytest
 
@@ -195,7 +196,8 @@ async def test_flagged_injection_surfaces_without_blocking_extract() -> None:
 
     assert extract.flagged_injection is True
     assert extract.parse_failed is False
-    assert extract.claims == ("c1",)
+    assert extract.summary == ""
+    assert extract.claims == ()
 
 
 @pytest.mark.asyncio
@@ -212,3 +214,122 @@ async def test_non_json_degrades_without_raising(caplog: pytest.LogCaptureFixtur
     warnings = [record for record in caplog.records if record.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].name == "untrusted"
+
+
+def test_extract_usable_clean() -> None:
+    extract = Extract(
+        source_url="u",
+        source_domain="d",
+        summary="s",
+        claims=(),
+        flagged_injection=False,
+        parse_failed=False,
+        tokens_used=0,
+    )
+
+    assert extract.usable is True
+
+
+def test_extract_usable_flagged() -> None:
+    extract = Extract(
+        source_url="u",
+        source_domain="d",
+        summary="",
+        claims=(),
+        flagged_injection=True,
+        parse_failed=False,
+        tokens_used=0,
+    )
+
+    assert extract.usable is False
+
+
+def test_extract_usable_parse_failed() -> None:
+    extract = Extract(
+        source_url="u",
+        source_domain="d",
+        summary="",
+        claims=(),
+        flagged_injection=False,
+        parse_failed=True,
+        tokens_used=0,
+    )
+
+    assert extract.usable is False
+
+
+@pytest.mark.asyncio
+async def test_reader_blanks_on_flag() -> None:
+    payload = json.dumps(
+        {"summary": "steal data", "claims": ["do evil"], "flagged_injection": True}
+    )
+    model = FakeModelPort(payload)
+    reader = QuarantinedReader(model, role="test")
+
+    extract = await reader.read(
+        raw_content="x",
+        source_url="u",
+        source_domain="evil.com",
+        query="q",
+    )
+
+    assert extract.flagged_injection is True
+    assert extract.summary == ""
+    assert extract.claims == ()
+    assert extract.usable is False
+
+
+@pytest.mark.asyncio
+async def test_reader_emits_obs_on_flag() -> None:
+    from artemis.obs.sink import NullSink
+
+    calls: list[str] = []
+
+    class CaptureSink(NullSink):
+        def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+            calls.append(source_domain)
+
+    payload = json.dumps({"summary": "x", "claims": [], "flagged_injection": True})
+    model = FakeModelPort(payload)
+    reader = QuarantinedReader(model, role="test", sink=CaptureSink())
+
+    await reader.read(raw_content="y", source_url="u", source_domain="evil.com", query="q")
+
+    assert calls == ["evil.com"]
+
+
+@pytest.mark.asyncio
+async def test_reader_no_obs_on_clean() -> None:
+    from artemis.obs.sink import NullSink
+
+    calls: list[str] = []
+
+    class CaptureSink(NullSink):
+        def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+            calls.append(source_domain)
+
+    payload = json.dumps({"summary": "clean", "claims": [], "flagged_injection": False})
+    model = FakeModelPort(payload)
+    reader = QuarantinedReader(model, role="test", sink=CaptureSink())
+
+    await reader.read(raw_content="clean input", source_url="u", source_domain="ok.com", query="q")
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_reader_no_obs_on_parse_failed() -> None:
+    from artemis.obs.sink import NullSink
+
+    calls: list[str] = []
+
+    class CaptureSink(NullSink):
+        def on_injection_flagged(self, source_domain: str, *, now: datetime) -> None:
+            calls.append(source_domain)
+
+    model = FakeModelPort("not json")
+    reader = QuarantinedReader(model, role="test", sink=CaptureSink())
+
+    await reader.read(raw_content="input", source_url="u", source_domain="bad.com", query="q")
+
+    assert calls == []

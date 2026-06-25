@@ -19,13 +19,22 @@ logger = get_logger("calendar.untrusted")
 
 @dataclass(frozen=True)
 class CalendarExtract:
-    """Calendar-domain wrapper around a sanitized DR-a extract."""
+    """Calendar-domain wrapper around a sanitized DR-a extract.
+
+    When ``flagged_injection=True``, ``summary`` and ``claims`` are guaranteed blank.
+    ``parse_failed`` and ``flagged_injection`` are preserved for telemetry and routing.
+    """
 
     source_event_id: str
     summary: str
     claims: tuple[str, ...]
     flagged_injection: bool
     parse_failed: bool
+
+    @property
+    def usable(self) -> bool:
+        """True only when the extract is neither parse-failed nor injection-flagged."""
+        return not self.parse_failed and not self.flagged_injection
 
 
 async def quarantine_event_text(reader: QuarantinedReader, event: CachedEvent) -> CalendarExtract:
