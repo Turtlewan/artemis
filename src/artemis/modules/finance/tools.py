@@ -9,9 +9,13 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, field_validator
 
+from artemis.config import Settings
+from artemis.ingest.pipeline import IngestPipeline
 from artemis.manifest import ActionRisk, ToolSpec
+from artemis.memory.write_path import MemoryWriteQueue
 from artemis.modules.finance.events import Emit, _noop_emit
 from artemis.modules.finance.extraction import FinanceExtractor
+from artemis.modules.finance.knowledge import derive_finance_facts, push_finance_knowledge
 from artemis.modules.finance.reconcile import reconcile, unusual_spend
 from artemis.modules.finance.recurring import detect_recurring
 from artemis.modules.finance.store import FinanceStore
@@ -21,6 +25,9 @@ from artemis.runtime_config import get_runtime_config
 _store: FinanceStore | None = None
 _extractor: FinanceExtractor | None = None
 _gmail_cache: GmailReadCache | None = None
+_ingest: IngestPipeline | None = None
+_memory_queue: MemoryWriteQueue | None = None
+_settings: Settings | None = None
 _emit: Emit = _noop_emit
 
 
@@ -277,6 +284,12 @@ class UnusualSpendListResult(BaseModel):
     flags: list[dict[str, object]]
 
 
+class FinanceKnowledgePushResult(BaseModel):
+    """Finance knowledge push result."""
+
+    pushed: int
+
+
 def init_finance_tools(store: FinanceStore, *, emit: Emit = _noop_emit) -> None:
     """Set the Finance store used by module-level tool callables."""
     global _store, _emit
@@ -289,6 +302,18 @@ def init_finance_extractor(extractor: FinanceExtractor, gmail_cache: GmailReadCa
     global _extractor, _gmail_cache
     _extractor = extractor
     _gmail_cache = gmail_cache
+
+
+def init_finance_knowledge(
+    ingest: IngestPipeline,
+    memory_queue: MemoryWriteQueue,
+    settings: Settings,
+) -> None:
+    """Set Finance knowledge push dependencies used by the tool callable."""
+    global _ingest, _memory_queue, _settings
+    _ingest = ingest
+    _memory_queue = memory_queue
+    _settings = settings
 
 
 def build_finance_tool_specs() -> list[ToolSpec]:
@@ -452,6 +477,14 @@ def build_finance_tool_specs() -> list[ToolSpec]:
             UnusualSpendListResult,
             unusual_spend_list,
         ),
+        _spec(
+            "finance_knowledge_push",
+            "Push local finance summary facts to owner memory and knowledge.",
+            EmptyArgs,
+            FinanceKnowledgePushResult,
+            finance_knowledge_push,
+            ActionRisk.WRITE,
+        ),
     ]
 
 
@@ -465,6 +498,12 @@ def _get_extractor() -> tuple[FinanceExtractor, GmailReadCache]:
     if _extractor is None or _gmail_cache is None:
         raise RuntimeError("finance extractor not initialised")
     return _extractor, _gmail_cache
+
+
+def _get_knowledge_handles() -> tuple[IngestPipeline, MemoryWriteQueue, Settings]:
+    if _ingest is None or _memory_queue is None or _settings is None:
+        raise RuntimeError("finance knowledge not initialised")
+    return _ingest, _memory_queue, _settings
 
 
 async def spend_summary(args: SpendSummaryArgs) -> SpendSummaryResult:
@@ -630,6 +669,19 @@ async def unusual_spend_list(args: EmptyArgs) -> UnusualSpendListResult:
     del args
     cfg = get_runtime_config().finance
     return UnusualSpendListResult(flags=unusual_spend(_get_store(), sigma=cfg.unusual_spend_sigma))
+
+
+async def finance_knowledge_push(args: EmptyArgs) -> FinanceKnowledgePushResult:
+    del args
+    ingest, memory_queue, settings = _get_knowledge_handles()
+    facts = derive_finance_facts(_get_store())
+    pushed = await push_finance_knowledge(
+        facts,
+        ingest=ingest,
+        memory_queue=memory_queue,
+        settings=settings,
+    )
+    return FinanceKnowledgePushResult(pushed=pushed)
 
 
 def _validated_decimal_text(value: str) -> str:
