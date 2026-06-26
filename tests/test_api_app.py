@@ -373,14 +373,17 @@ def test_domain_reads_are_unlock_gated_and_typed(tmp_path: Path) -> None:
 
 def _pair(fixture: Fixture, phone: Phone, device_id: str) -> _JsonResponse:
     code = fixture.pairing_codes.mint()
-    return fixture.client.post(
-        "/app/pair",
-        json={
-            "device_id": device_id,
-            "public_key_b64": phone.public_key_b64,
-            "pairing_code": code,
-            "code_signature_b64": phone.sign_pairing(code, device_id),
-        },
+    return cast(
+        _JsonResponse,
+        fixture.client.post(
+            "/app/pair",
+            json={
+                "device_id": device_id,
+                "public_key_b64": phone.public_key_b64,
+                "pairing_code": code,
+                "code_signature_b64": phone.sign_pairing(code, device_id),
+            },
+        ),
     )
 
 
