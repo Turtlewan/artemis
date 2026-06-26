@@ -27,6 +27,8 @@ artemis-dev-email-rules = "artemis.dev.email_rules:main"
 [dependency-groups]
 agentic = [
     "litellm>=1.89.4",
+    "openhands-sdk>=1.29.2",
+    "openhands-tools>=1.29.2",
     "pydantic-ai>=2.0.0",
 ]
 dev = [
