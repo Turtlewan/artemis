@@ -309,6 +309,7 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [030](../adr/ADR-030-tauri-client-transport.md) | Tauri client transport: the Rust core owns the session token; it never enters the webview |
 | [031](../adr/ADR-031-agentic-runtime-host-computer-use.md) | Agentic runtime: one unified plan→act→verify executor + Rung 0→4 host-computer-use ladder + blast-radius authority; coding subsystem borrows the OpenHands SDK under an Artemis planner/agent-inbox/GATE/router. Dev sandbox = no-network Windows AppContainer |
 | [032](../adr/ADR-032-reactions-runtime-composition.md) | Cross-module reactions runtime composition: claim-check event payload · continuous bounded worker · observe-first manual go-live gate · at-least-once idempotent effects · depth-counter cascade guard |
+| [033](../adr/ADR-033-windows-host-v1.md) | **Windows-host v1**: run on the dev box now, Mac = later migration (off critical path). Substitutes: Ollama/CUDA · Windows voice twin · TPM/Hello unlock. Security wall = lighter interim (SQLCipher DEK sealed to TPM/DPAPI + Hello; phone-attested SE broker deferred to Mac). 8GB-VRAM model juggling accepted |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·
