@@ -49,3 +49,6 @@ Thumbs.db
 
 # --- Codex build run logs (transient apex-code dispatch streams; not project docs) ---
 docs/progress/codex-*.log
+
+# Playwright MCP scratch output
+.playwright-mcp/
