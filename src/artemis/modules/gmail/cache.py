@@ -9,7 +9,7 @@ from pathlib import Path
 
 from artemis import paths
 from artemis.config import Settings
-from artemis.data.sqlcipher import sqlcipher_open
+from artemis.data.sqlcipher import set_row_factory, sqlcipher_open
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 
@@ -152,7 +152,7 @@ class GmailReadCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         key_hex = key.as_hex()
         conn = sqlcipher_open(path, key_hex)
-        conn.row_factory = sqlite3.Row
+        set_row_factory(conn)
         _create_schema(conn)
         return conn
 

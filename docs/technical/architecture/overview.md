@@ -256,7 +256,7 @@ A module is uniform **only where the hub depends on it**, free everywhere else:
 **Built (Windows/WSL2 dev box, Codex coder, ADR-026):** the entire dev-buildable queue — core spine M0–M7 + OBS + DR +
 M8 Gmail/Calendar/Productivity + Finance + the cross-module reactions runtime (ADR-021/032, ships DORMANT in `observe`) +
 the end-to-end sensitivity ingestion wall (ADR-029) + the headless agentic executor engine (ADR-031, behind the optional
-`[agentic]` dep group) + the Tauri client (behind a mocked `invoke`) + the Windows voice-dev twin (ADR-001 wire-compatible).
+`[agentic]` dep group) + the Tauri client (behind a mocked `invoke`) + the Windows voice-dev twin (ADR-001 wire-compatible) + owner-private SQLite stores encrypted at rest on Windows via real SQLCipher keyed by a DPAPI-sealed per-scope DEK (WindowsKeyProvider; ADR-033 Phase 1 — boundary = offline-disk-theft + cross-user; same-user-credential gate deferred to m2-win-b).
 Each was host-verified with full `uv run mypy` + `uv run pytest -q` and an independent cross-model review on high-stakes specs.
 **Gated / unbuilt (in `docs/changes/`):** Mac-gated (`M0-b/c/e/f`, `M2-a/c/d`, `M3-d`, `M5-a-audio-sidecar`), MSVC-gated
 (`CLIENT-auth` + the whole Rust compile) and Tauri-gated (`GATE-b`) tails — they wait on the Mac Mini / MSVC C++ Build Tools.

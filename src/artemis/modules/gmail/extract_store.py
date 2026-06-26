@@ -11,7 +11,7 @@ from pathlib import Path
 
 from artemis import paths
 from artemis.config import Settings
-from artemis.data.sqlcipher import sqlcipher_open
+from artemis.data.sqlcipher import set_row_factory, sqlcipher_open
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.memory.schema import now_iso
@@ -61,7 +61,7 @@ class EmailExtractStore:
         db_path = self._db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlcipher_open(db_path, key.as_hex())
-        conn.row_factory = sqlite3.Row
+        set_row_factory(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS email_extract ("
             "source_ref TEXT PRIMARY KEY, "

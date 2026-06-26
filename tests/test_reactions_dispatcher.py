@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal, cast
@@ -10,6 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from artemis.config import Settings
+from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import FakeKeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.manifest import ActionRisk, ToolSpec
@@ -428,7 +428,7 @@ def test_ledger_database_has_single_stateful_row(ledger: ReactionLedger) -> None
     ledger.record_refire("r", "k", now="t2", state_hash="h2")
 
     db_path = ledger._db_path()
-    with sqlite3.connect(db_path) as conn:
+    with sqlcipher_open(db_path, (b"0" * 32).hex()) as conn:
         count = conn.execute("SELECT COUNT(*) FROM reaction_ledger").fetchone()
     assert count is not None
     assert int(count[0]) == 1

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Literal, cast
@@ -11,6 +10,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from artemis.config import Settings
+from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import FakeKeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.manifest import ActionRisk, ToolSpec
@@ -558,7 +558,7 @@ def test_prune_older_than_uses_last_fired_at(ledger: ReactionLedger) -> None:
     ledger.record_refire("stateful", "same", now="2026-06-25T00:00:00+00:00", state_hash="b")
 
     db_path = ledger._db_path()
-    with sqlite3.connect(db_path) as conn:
+    with sqlcipher_open(db_path, (b"0" * 32).hex()) as conn:
         count = conn.execute("SELECT COUNT(*) FROM reaction_ledger").fetchone()
     assert count is not None
     assert int(count[0]) == 1

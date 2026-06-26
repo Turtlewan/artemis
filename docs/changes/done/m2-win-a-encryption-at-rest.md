@@ -48,7 +48,7 @@ bound to this Windows user+machine. The Windows Hello *unlock gesture* is the si
 
 ## Exact changes
 
-- [ ] **Task 1 — real `sqlcipher_open`** (`src/artemis/data/sqlcipher.py`). Replace the stub body:
+- [x] **Task 1 — real `sqlcipher_open`** (`src/artemis/data/sqlcipher.py`). Replace the stub body:
   validate `key_hex` is exactly 64 hex chars first (raise `ValueError`, never echoing the value). Import
   `sqlcipher3` lazily — **the `sqlcipher3-binary` wheel provides it; do NOT accept the `sqlcipher3`
   source package** (comment the import: `import sqlcipher3  # from sqlcipher3-binary wheel; not the source build`).
@@ -70,7 +70,7 @@ bound to this Windows user+machine. The Windows Hello *unlock gesture* is the si
     raw `.db` bytes contain neither the row value nor `b"SQLite format 3"`; **and the wrong-key /
     corrupted-file exception text + its `__cause__`/`__context__` chain contain no substring of `key_hex`.**
 
-- [ ] **Task 2 — DPAPI seal/unseal** (`src/artemis/identity/dpapi.py`, new). `dpapi_seal(plaintext: bytes,
+- [x] **Task 2 — DPAPI seal/unseal** (`src/artemis/identity/dpapi.py`, new). `dpapi_seal(plaintext: bytes,
   *, entropy: bytes) -> bytes` and `dpapi_unseal(blob: bytes, *, entropy: bytes) -> bytearray` via `ctypes`
   to `crypt32.CryptProtectData`/`CryptUnprotectData`, passing the entropy as the optional `pOptionalEntropy`
   `DATA_BLOB`, and `kernel32.LocalFree` on the returned blob. **`entropy` is REQUIRED (no default) — callers
@@ -86,7 +86,7 @@ bound to this Windows user+machine. The Windows Hello *unlock gesture* is the si
     sealed with entropy `e1` fails to unseal with `e2`; **a blob sealed by Windows user A cannot be unsealed
     by a second Windows account on the same machine** (user-scope confirmed); `dpapi_unseal` returns `bytearray`.
 
-- [ ] **Task 3 — `WindowsKeyProvider`** (`src/artemis/identity/windows_key_provider.py`, new). Implements
+- [x] **Task 3 — `WindowsKeyProvider`** (`src/artemis/identity/windows_key_provider.py`, new). Implements
   the `KeyProvider` protocol. Constructor `(settings: Settings, *, scopes: tuple[Scope, ...] = (OWNER_PRIVATE,))`.
   - **`__init__` asserts the key dir is owner-private (FLAG fix):** `<data_root>` MUST resolve under
     `%APPDATA%`/`%LOCALAPPDATA%` (inherited owner-only ACL); assert at construction, else raise

@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
 
+from artemis.data.sqlcipher import set_row_factory
 from artemis.memory.schema import now_iso
 from artemis.modules.finance.csv_import import CsvColumnMapping
 from artemis.modules.finance.schema import BillStatus, SubscriptionCadence, TransactionType
@@ -21,7 +22,7 @@ class FinanceRepository:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
-        self.conn.row_factory = sqlite3.Row
+        set_row_factory(self.conn)
 
     def create_account(
         self,

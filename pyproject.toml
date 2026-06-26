@@ -18,6 +18,7 @@ dependencies = [
     "tldextract>=5.3.1",
     "cryptography>=49.0.0",
     "trafilatura>=2.1.0",
+    "sqlcipher3-wheels>=0.5.7",
 ]
 
 [project.scripts]

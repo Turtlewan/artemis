@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 
+from artemis.data.sqlcipher import set_row_factory
 from artemis.memory.entities import EntityRef, EntityType
 from artemis.modules.productivity.schema import (
     ProjectStatus,
@@ -54,7 +55,7 @@ class ProductivityRepository:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        self._conn.row_factory = sqlite3.Row
+        set_row_factory(self._conn)
 
     def create_project(
         self,

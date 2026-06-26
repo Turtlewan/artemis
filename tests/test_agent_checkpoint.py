@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -10,6 +9,7 @@ from artemis import paths
 from artemis.agentic.checkpoint import CheckpointCorruptedError, SqliteCheckpointStore
 from artemis.agentic.types import CheckpointStore, ExecutorState, Plan, PlanStep
 from artemis.config import Settings
+from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import FakeKeyProvider, ScopeLockedError
 from artemis.identity.scope import OWNER_PRIVATE
 
@@ -143,7 +143,7 @@ def test_checkpoint_store_has_expected_schema(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save("task-1", ExecutorState.PLANNING, _plan(), 0, None)
 
-    with sqlite3.connect(store._db_path()) as conn:
+    with sqlcipher_open(store._db_path(), (b"1" * 32).hex()) as conn:
         columns = conn.execute("PRAGMA table_info(agent_checkpoint)").fetchall()
 
     assert [column[1] for column in columns] == [

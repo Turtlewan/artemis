@@ -256,7 +256,7 @@ def compose_brain(
             import artemis.paths as paths
             from artemis.adapters.lancedb_store import LanceDBVectorStore
             from artemis.adapters.reranker import FakeReranker
-            from artemis.data.sqlcipher import sqlcipher_open
+            from artemis.data.sqlcipher import set_row_factory, sqlcipher_open
             from artemis.identity.scope import GENERAL
             from artemis.memory import build_write_path, memory_manifest
             from artemis.memory.repository import BitemporalRepository
@@ -273,7 +273,7 @@ def compose_brain(
             conn.enable_load_extension(True)
             conn.load_extension(sqlite_vec.loadable_path())
             conn.enable_load_extension(False)
-            conn.row_factory = __import__("sqlite3").Row
+            set_row_factory(conn)
             create_schema(
                 conn,
                 embedder_model_id=settings.codex_model,
