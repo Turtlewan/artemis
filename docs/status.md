@@ -208,7 +208,7 @@ The whole engine lives behind the optional `[dependency-groups] agentic` group (
 network-deny is INDEPENDENTLY HOST-VALIDATED** (in-sandbox 1.1.1.1:80 blocked, host connects — kernel block, no admin). All 9 specs
 archived to `done/`; `BUILD-ORDER.md` Group A marked complete. **Build narrative + the per-spec flags (2 composition seams wait on GATE-b:
 spine approve→graduate · inbox deliver-count; agentic-group supply-chain bump before live cloud-coder; rung2 icacls error-mapping) →
-`docs/handoff/2026-06-26.md` build-session 2.** Earlier brain-Codex work (M4-d-1, migrations, model-adapter) committed 2026-06-22.)
+`docs/handoff/2026-06-26.md` build-session 2.** **THEN Group C `distill-datagen-pipeline` BUILT (`e73535c` — standalone `tools/distill/`, 10 tests green) + Group B `M5-a-win-sidecar` CORE built (`4a574a7` — wire-protocol twin + dep-fix; `[voice-dev]` now resolves via `[tool.uv] environments` win32+darwin). ⚠️ M5-a is BLOCKED-FORK (NOT archived): `socket.AF_UNIX` absent on Windows Python → live transport needs a TCP-loopback decision (planning; owner deferred). M5-b/c/d unbuilt. → build-session 3.** Earlier brain-Codex work (M4-d-1, migrations, model-adapter) committed 2026-06-22.)
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 

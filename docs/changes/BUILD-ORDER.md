@@ -32,16 +32,16 @@ host-validated. 2 composition seams (spine approve→graduate · inbox deliver-c
 ### Group B — Voice (M5 dev twin) — independent of A
 | Order | Spec | Notes |
 |-------|------|-------|
-| B1 | `M5-a-win-sidecar` | Python sidecar (wake/VAD/STT/TTS), `[voice-dev]` extra |
-| B2 | `M5-b-stt-tts` | Moonshine STT + Kokoro/Piper TTS behind ports |
-| B3 | `M5-c-speaker-id` | ECAPA-TDNN speaker-ID (voiceprint test Mac-gated) |
-| B4 | `M5-d-voice-loop-orchestrator` | orchestrator (tests vs the win-sidecar) |
+| B1 | `M5-a-win-sidecar` | ⚠️ **CORE BUILT `4a574a7`** (wire-protocol twin + state machine + barge-in + fakes; full mypy+pytest green) + **dep-fix done** ([voice-dev] resolves: livekit/moonshine names + win32 marker + `[tool.uv] environments`). **BLOCKED-FORK (planning): `socket.AF_UNIX` absent on Windows Python → live transport can't run on the dev box; needs TCP-loopback decision (framing unchanged). Spec stays here, NOT archived.** |
+| B2 | `M5-b-stt-tts` | Moonshine STT + Kokoro/Piper TTS behind ports — UNBUILT (after the B1 transport decision) |
+| B3 | `M5-c-speaker-id` | ECAPA-TDNN speaker-ID (voiceprint test Mac-gated) — UNBUILT |
+| B4 | `M5-d-voice-loop-orchestrator` | orchestrator (tests vs the win-sidecar) — UNBUILT (consumes the B1 transport) |
 
 ### Group C — Quick wins (independent, any time)
 | Spec | Notes |
 |------|-------|
 | `fix-finance-hooks-date-stability` | ✅ DONE `f0be86c` (greened the red baseline that was blocking all builds) |
-| `distill-datagen-pipeline` | offline `tools/distill/` teacher→JSONL pipeline (pre-Mac) |
+| `distill-datagen-pipeline` | ✅ DONE `e73535c` (standalone `tools/distill/` teacher→JSONL pipeline; 10 tests green) |
 
 **Concurrency:** A, B, C are mutually independent (disjoint files, no cross-prereqs) → may run concurrently;
 owner priority is **A first**. Within A/B follow the wave order; C any time.
