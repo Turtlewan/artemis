@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 artemis-google-auth = "artemis.integrations.google.cli:main"
+artemis-dev-email-rules = "artemis.dev.email_rules:main"
 
 [dependency-groups]
 dev = [
