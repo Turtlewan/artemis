@@ -1,4 +1,5 @@
 <!-- amended 2026-06-11 per m5-m6-voice-heartbeat.md BLOCKs B6, FLAG F12 -->
+<!-- amended 2026-06-26 sidecar transport rendezvous: brain audio client uses audio.sock when socket.AF_UNIX exists; otherwise reads run/audio.port and connects to 127.0.0.1:<port>. -->
 <!-- amended 2026-06-25 Windows dev re-scope — see docs/research/2026-06-25-voice-windows-dev/README.md -->
 ---
 spec: m5-d-voice-loop-orchestrator

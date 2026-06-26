@@ -5,6 +5,7 @@ import os
 import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Literal
 
 from artemis.sidecar.audio.protocol import (
     FrameKind,
@@ -23,6 +24,7 @@ from artemis.sidecar.audio.protocol import (
 
 CommandHandler = Callable[[JsonObject], Awaitable[None]]
 SpeakerPcmHandler = Callable[[bytes], Awaitable[None]]
+Endpoint = tuple[Literal["unix"], Path] | tuple[Literal["tcp"], str, int]
 
 
 class IPCServer:
@@ -35,9 +37,11 @@ class IPCServer:
         speaker_pcm_handler: SpeakerPcmHandler | None = None,
     ) -> None:
         self.socket_path = data_root / slot / "run" / "audio.sock"
+        self.port_path = data_root / slot / "run" / "audio.port"
         self._command_handler = command_handler
         self._speaker_pcm_handler = speaker_pcm_handler
         self._server_socket: socket.socket | None = None
+        self._endpoint: Endpoint | None = None
         self._accept_task: asyncio.Task[None] | None = None
         self._client_tasks: set[asyncio.Task[None]] = set()
         self._writer: asyncio.StreamWriter | None = None
@@ -47,14 +51,30 @@ class IPCServer:
         if self.socket_path.exists():
             self.socket_path.unlink()
         af_unix = getattr(socket, "AF_UNIX", None)
-        if af_unix is None:
-            raise RuntimeError("AF_UNIX sockets are unavailable in this Python build")
-        server_socket = socket.socket(af_unix, socket.SOCK_STREAM)
-        server_socket.bind(str(self.socket_path))
-        server_socket.listen()
-        server_socket.setblocking(False)
+        if af_unix is not None:
+            if self.port_path.exists():
+                self.port_path.unlink()
+            server_socket = socket.socket(af_unix, socket.SOCK_STREAM)
+            server_socket.bind(str(self.socket_path))
+            server_socket.listen()
+            server_socket.setblocking(False)
+            os.chmod(self.socket_path, 0o600)
+            self._endpoint = ("unix", self.socket_path)
+        else:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.bind(("127.0.0.1", 0))
+            server_socket.listen()
+            server_socket.setblocking(False)
+            port = server_socket.getsockname()[1]
+            tmp_path = self.port_path.with_name(f"{self.port_path.name}.tmp")
+            tmp_path.write_text(str(port), encoding="ascii")
+            try:
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                pass
+            os.replace(tmp_path, self.port_path)
+            self._endpoint = ("tcp", "127.0.0.1", port)
         self._server_socket = server_socket
-        os.chmod(self.socket_path, 0o600)
         self._accept_task = asyncio.create_task(self._accept_loop())
 
     async def close(self) -> None:
@@ -77,6 +97,17 @@ class IPCServer:
         if self._server_socket is not None:
             self._server_socket.close()
             self._server_socket = None
+        if self._endpoint is not None:
+            if self._endpoint[0] == "unix" and self.socket_path.exists():
+                self.socket_path.unlink()
+            elif self._endpoint[0] == "tcp" and self.port_path.exists():
+                self.port_path.unlink()
+            self._endpoint = None
+
+    def endpoint(self) -> Endpoint:
+        if self._endpoint is None:
+            raise RuntimeError("IPC server has not started")
+        return self._endpoint
 
     async def serve_forever(self) -> None:
         if self._server_socket is None:

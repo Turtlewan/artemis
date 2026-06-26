@@ -8,13 +8,14 @@ from pathlib import Path
 import pytest
 
 from artemis.sidecar.audio.capture import FakeCapture
-from artemis.sidecar.audio.ipc_server import IPCServer
+from artemis.sidecar.audio.ipc_server import Endpoint, IPCServer
 from artemis.sidecar.audio.orchestrator import AudioOrchestrator
 from artemis.sidecar.audio.playback import FakePlayback
 from artemis.sidecar.audio.protocol import (
     CHANNELS,
     SAMPLE_RATE,
     FrameKind,
+    GetStatus,
     Play,
     StartListening,
     decode_frame,
@@ -46,13 +47,18 @@ async def _open_unix_connection(path: Path) -> tuple[asyncio.StreamReader, async
     return await asyncio.open_connection(sock=client_socket)
 
 
-@pytest.mark.skipif(
-    not hasattr(socket, "AF_UNIX"), reason="AF_UNIX unavailable in this Python build"
-)
+async def _open_ipc_connection(
+    endpoint: Endpoint,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    if endpoint[0] == "unix":
+        return await _open_unix_connection(endpoint[1])
+    return await asyncio.open_connection(endpoint[1], endpoint[2])
+
+
 async def test_e2e_fake_socket_flow(tmp_path: Path) -> None:
     capture = FakeCapture()
     wake = FakeWakeWord(trigger_after_n=1)
-    vad = FakeVAD([VADEvent.SPEECH_START, VADEvent.SPEECH_END])
+    vad = FakeVAD([VADEvent.NONE, VADEvent.SPEECH_START, VADEvent.SPEECH_END])
     playback = FakePlayback()
     holder: dict[str, AudioOrchestrator] = {}
 
@@ -79,16 +85,27 @@ async def test_e2e_fake_socket_flow(tmp_path: Path) -> None:
     holder["orchestrator"] = orchestrator
     await ipc.start()
     run_task = asyncio.create_task(orchestrator.run())
-    reader, writer = await _open_unix_connection(ipc.socket_path)
+    endpoint = ipc.endpoint()
+    reader, writer = await _open_ipc_connection(endpoint)
     try:
-        mode = ipc.socket_path.stat().st_mode & 0o777
-        assert mode == 0o600
+        if endpoint[0] == "unix":
+            mode = ipc.socket_path.stat().st_mode & 0o777
+            assert mode == 0o600
+        else:
+            assert ipc.port_path.read_text(encoding="ascii") == str(endpoint[2])
+
+        writer.write(encode_json(GetStatus()))
+        await writer.drain()
+        assert await _read_json(reader) == {"state": "idle", "type": "status"}
 
         await capture.inject(b"\x00\x00")
         assert await _read_json(reader) == {"type": "wakeDetected"}
 
         writer.write(encode_json(StartListening()))
         await writer.drain()
+        writer.write(encode_json(GetStatus()))
+        await writer.drain()
+        assert await _read_json(reader) == {"state": "capturing", "type": "status"}
         await capture.inject(b"\x00\x00")
         assert await _read_json(reader) == {"type": "speechStart"}
         await capture.inject(b"\x00\x00")
