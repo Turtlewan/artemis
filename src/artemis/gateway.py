@@ -19,7 +19,10 @@ from artemis.identity.scope import (
     LockedError,
     primary_scope,
 )
+from artemis.identity.tier import tier_for
+from artemis.manifest import DataScope
 from artemis.ports.types import PersonId, Scope
+from artemis.ports.voice import SpeakerID
 
 if TYPE_CHECKING:
     from artemis.identity.key_provider import KeyProvider
@@ -34,6 +37,9 @@ logger = logging.getLogger(__name__)
 OWNER_PERSON_ID: PersonId = _OWNER_PERSON_ID
 """Backward-compatible owner person id alias for auth and gateway callers."""
 
+GUEST_PERSON_ID: PersonId = PersonId("guest")
+"""Shared least-privilege guest person id for unknown voice speakers."""
+
 OWNER_SCOPE: Scope = OWNER_PRIVATE
 """Backward-compatible owner scope alias for existing M1 surface tests."""
 
@@ -45,9 +51,20 @@ class Gateway:
     attaches it before the Brain (brain.md's hard ordering).
     """
 
-    def __init__(self, brain: Brain, key_provider: KeyProvider | None = None) -> None:
+    def __init__(
+        self,
+        brain: Brain,
+        key_provider: KeyProvider | None = None,
+        speaker_id: SpeakerID | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self._brain = brain
         self._key_provider = key_provider
+        self._speaker_id = speaker_id
+        if self._speaker_id is None and key_provider is not None and settings is not None:
+            from artemis.voice.speaker_id import EcapaSpeakerID, VoiceprintStore
+
+            self._speaker_id = EcapaSpeakerID(VoiceprintStore(settings, key_provider))
 
     def _resolve_identity(self) -> Identity:
         """Resolve the owner-authenticated text-surface identity."""
@@ -64,6 +81,17 @@ class Gateway:
         """Return a guest identity for the deferred voice-ID surface."""
         # M5: voice-ID will call this; no runtime caller in M2.
         return Identity(person_id, "guest")
+
+    def _resolve_voice_identity(self, audio: bytes) -> Identity:
+        """Resolve voice identity without treating voice-ID as key unlock."""
+        if self._speaker_id is None:
+            return self._resolve_guest(GUEST_PERSON_ID)
+        person_id = self._speaker_id.identify(audio)
+        if person_id == OWNER_PERSON_ID:
+            return Identity(OWNER_PERSON_ID, "owner")
+        if person_id is not None:
+            return self._resolve_guest(person_id)
+        return self._resolve_guest(GUEST_PERSON_ID)
 
     async def handle_text(
         self,
@@ -103,6 +131,41 @@ class Gateway:
         """Stream a text response through the Brain with an authenticated scope."""
         async for chunk in self._brain.respond_stream(request_text, scope):
             yield chunk
+
+    async def handle_voice(self, audio: bytes, transcript: str) -> BrainResponse:
+        """Process a voice turn after speaker-ID scope attach.
+
+        Voice-ID routes identity but never unlocks the owner DEK. Owner Tier-1
+        requests while locked return a phone-unlock prompt before any Brain
+        response can serve sensitive owner data.
+        """
+        identity = self._resolve_voice_identity(audio)
+        scope = primary_scope(identity)
+        module_fq = await self._brain.pre_route(transcript, scope)
+        data_scope = self._data_scope_for_module(module_fq)
+        tier = tier_for(data_scope)
+        if (
+            identity.role == "owner"
+            and tier == "tier1"
+            and self._key_provider is not None
+            and not self._key_provider.is_owner_unlocked()
+        ):
+            return BrainResponse(
+                text="NEEDS_PHONE_UNLOCK",
+                path="needs-unlock",
+                tool_used=None,
+                escalated=False,
+            )
+        return await self._brain.respond(transcript, scope)
+
+    def _data_scope_for_module(self, module_fq: str | None) -> DataScope | None:
+        if module_fq is None:
+            return None
+        module_name = module_fq.split(".", 1)[0]
+        manifest = self._brain._registry.manifests().get(module_name)
+        if manifest is None:
+            return None
+        return manifest.data_scope
 
     async def pre_route(self, request_text: str) -> str | None:
         """Classify a request and return the top candidate tool id, if any.
