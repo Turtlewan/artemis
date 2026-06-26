@@ -126,6 +126,7 @@ def _dispatcher(
     staging: FakeActionStagingService | None = None,
     capture: FakeCaptureService | None = None,
     notices: list[str] | None = None,
+    mode: Literal["observe", "live"] = "live",
 ) -> tuple[ReactionDispatcher, FakeToolRegistry, FakeActionStagingService, FakeCaptureService]:
     tool_registry = registry or FakeToolRegistry()
     action_staging = staging or FakeActionStagingService()
@@ -139,6 +140,7 @@ def _dispatcher(
         capture_service=cast(CaptureService, capture_service),
         notice_sink=notices.append if notices is not None else None,
         logger=logging.getLogger("tests.reactions.dispatcher"),
+        mode=mode,
     )
     return (
         dispatcher,
@@ -331,7 +333,7 @@ async def test_a4_email_to_task_uses_inert_capture_suggestion(
 
 
 @pytest.mark.anyio
-async def test_degrade_does_not_abort_other_reactions_and_claim_persists(
+async def test_degrade_refires_failed_reaction_without_aborting_siblings(
     ledger: ReactionLedger,
 ) -> None:
     bus = EventBus()
@@ -352,9 +354,13 @@ async def test_degrade_does_not_abort_other_reactions_and_claim_persists(
     bus.emit(_event())
     assert await dispatcher.drain_once() == 1
 
-    assert len(registry.calls["finance.bad"]) == 1
+    # ADR-032 Fork 4 (effect-then-claim, at-least-once): a failing reaction is NEVER claimed,
+    # so it re-fires on the next drain; the successful sibling is claimed once and does not
+    # re-fire. One failing reaction never aborts the other.
+    assert len(registry.calls["finance.bad"]) == 2
     assert len(registry.calls["finance.good"]) == 1
-    assert ledger.try_claim("bad", "bad:txn-1:event-1", now="later") is False
+    assert ledger.has_fired("bad", "bad:txn-1:event-1") is False
+    assert ledger.has_fired("good", "good:txn-1:event-1") is True
 
 
 @pytest.mark.anyio

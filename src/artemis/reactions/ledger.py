@@ -16,6 +16,8 @@ from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 
+_LEDGER_TTL_DAYS = 90
+
 
 class ReactionLedger:
     """SQLCipher-backed fire-once and stateful-refire ledger."""
@@ -55,6 +57,15 @@ class ReactionLedger:
             )
             return cursor.rowcount == 1
 
+    def has_fired(self, rule_name: str, stable_key: str) -> bool:
+        """Return whether a fire-once reaction key already exists."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM reaction_ledger WHERE rule_name = ? AND stable_key = ?",
+                (rule_name, stable_key),
+            ).fetchone()
+        return row is not None
+
     def record_refire(
         self,
         rule_name: str,
@@ -87,3 +98,12 @@ class ReactionLedger:
                 (rule_name, stable_key),
             ).fetchone()
         return None if row is None else row[0]
+
+    def prune_older_than(self, cutoff_iso: str) -> int:
+        """Delete ledger rows whose latest fire timestamp is older than ``cutoff_iso``."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM reaction_ledger WHERE last_fired_at < ?",
+                (cutoff_iso,),
+            )
+            return cursor.rowcount

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from artemis.reactions.compose import compose_reactions
     from artemis.reactions.dispatcher import ReactionDispatcher
     from artemis.reactions.emit import DomainEvent, EventBus, EventType
     from artemis.reactions.ledger import ReactionLedger
@@ -29,6 +30,7 @@ __all__ = [
     "ReactionTier",
     "Reconciler",
     "TIER_A_BUILTINS",
+    "compose_reactions",
 ]
 
 
@@ -53,4 +55,8 @@ def __getattr__(name: str) -> object:
         from artemis.reactions import rulestore
 
         return getattr(rulestore, name)
+    if name == "compose_reactions":
+        from artemis.reactions.compose import compose_reactions
+
+        return compose_reactions
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

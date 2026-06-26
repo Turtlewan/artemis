@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextvars import ContextVar
 from enum import StrEnum
 from typing import Self
 
@@ -44,6 +45,7 @@ class DomainEvent(BaseModel):
     payload: dict[str, str | int | float | bool] = Field(default_factory=dict)
     occurred_at: str
     dedup_key: str
+    depth: int = 0
 
     @model_validator(mode="after")
     def _validate_payload_and_dedup_key(self) -> Self:
@@ -58,6 +60,19 @@ class DomainEvent(BaseModel):
 
 
 Subscriber = Callable[[DomainEvent], None]
+reaction_depth: ContextVar[int | None] = ContextVar("reaction_depth", default=None)
+
+
+def depth_stamping_emit(bus: EventBus) -> Callable[[DomainEvent], None]:
+    """Return an emit wrapper that stamps reaction cascades with ``depth + 1``."""
+
+    def _emit(event: DomainEvent) -> None:
+        current = reaction_depth.get()
+        if current is not None:
+            event = event.model_copy(update={"depth": current + 1})
+        bus.emit(event)
+
+    return _emit
 
 
 class EventBus:

@@ -12,6 +12,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -215,6 +216,14 @@ class ReactionConfig(BaseModel):
         default=90,
         description="I-3/C3 fallback airport buffer for domestic trips.",
     )
+    reactions_mode: Literal["observe", "live"] = Field(
+        default="observe",
+        description="ADR-032 Fork 3 go-live gate: observe = dry-run (WOULD only), live = act.",
+    )
+    max_reaction_depth: int = Field(
+        default=5,
+        description="ADR-032 Fork 6 cascade guard: max reaction event-hops before drop.",
+    )
 
     @field_validator("reconciler_nightly_time")
     @classmethod
@@ -240,6 +249,13 @@ class ReactionConfig(BaseModel):
     def _validate_buffer_minutes(cls, value: int) -> int:
         if value < 0:
             raise ValueError("buffer minutes must be at least 0")
+        return value
+
+    @field_validator("max_reaction_depth")
+    @classmethod
+    def _validate_max_reaction_depth(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("max_reaction_depth must be at least 1")
         return value
 
 
