@@ -32,15 +32,17 @@ Simplicity check: considered a generic key-value blob store — rejected: a type
 | `src/artemis/agentic/checkpoint.py` | create | `SqliteCheckpointStore` implementing `CheckpointStore`; owner-private SQLCipher; `save`/`load`. |
 | `tests/test_agent_checkpoint.py` | create | round-trip, unknown-task→None, resume-after-reconstruct, owner-private path. |
 
-## Exact changes
 - Table `agent_checkpoint(task_id TEXT PRIMARY KEY, state TEXT NOT NULL, plan_json TEXT NOT NULL, step_index INTEGER NOT NULL, last_verified_output TEXT)`.
 - `save(task_id, state, plan, step_index, last_verified_output)` = `INSERT OR REPLACE` (`state=state.value`, `plan_json=plan.model_dump_json()`).
 - `load(task_id) -> CheckpointRow | None` = `SELECT *` → `CheckpointRow(task_id=…, state=ExecutorState(row["state"]), plan=Plan.model_validate_json(row["plan_json"]), step_index=…, last_verified_output=…)` or `None`.
+- **Parameterised SQL only (BLOCK):** every statement uses DB-API `?` bound parameters — f-string/`%` interpolation of `task_id`/`plan_json`/`step_index`/`last_verified_output` is prohibited (`task_id` traces to `Task.goal`, `last_verified_output` is adversarial-capable tool output).
+- **No content logging (FLAG):** `save()`/`load()` must NOT log or print `plan_json` or `last_verified_output` at any level (they carry owner-task goal text + tool stdout).
+- **Corrupted-row fails clean (FLAG):** if `Plan.model_validate_json` raises `ValidationError`, `load()` raises `CheckpointCorruptedError(task_id)` (message = task_id only, NO pydantic field detail) and logs the raw error at WARNING internally — never propagates pydantic schema detail upward.
 - Construction + `_connect()` + `_db_path()` copied from `ReactionLedger`; DB filename `agent_checkpoint.db` under `scope_dir(settings, OWNER_PRIVATE)/agentic/`.
 
 ## Tasks
 - [ ] Task 1: Implement `SqliteCheckpointStore` per Exact changes (mirror `ReactionLedger` construction). — files: `src/artemis/agentic/checkpoint.py` — done when: `save` then `load` round-trips `state`/`plan`/`step_index`/`last_verified_output`; `load("missing")` is `None`; a freshly-reconstructed store `load`s a previously-saved task (durability); `uv run mypy` clean.
-- [ ] Task 2: Tests. — files: `tests/test_agent_checkpoint.py` — done when: round-trip, None-on-missing, durability-across-reconstruct, and owner-private-path assertions pass under `uv run pytest -q`.
+- [ ] Task 2: Tests. — files: `tests/test_agent_checkpoint.py` — done when: round-trip, None-on-missing, durability-across-reconstruct, owner-private-path, **locked-scope-raises (degrades closed, no fallback open)**, **no-content-in-logs (caplog: no plan_json/last_verified_output)**, and **corrupted-plan_json → CheckpointCorruptedError (task_id only, no pydantic detail)** assertions pass under `uv run pytest -q`.
 
 ## Wave plan
 Wave 1: [Task 1] | Wave 2: [Task 2]

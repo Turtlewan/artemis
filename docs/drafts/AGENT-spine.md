@@ -42,20 +42,21 @@ Simplicity check: considered using a heavier agent framework runtime — rejecte
 ## Exact changes (loop shape — `executor.py`)
 - `Executor(*, planner, registry, checkpoint, inbox, authority, workspace_root)`.
 - `async def run(task: Task) -> TaskResult`:
-  1. **PLAN** — `plan = await self._plan(task)` (planner → `Plan`); `checkpoint.save(task.id, PLANNING→ACTING, plan, 0, None)`.
+  1. **PLAN** — `plan = await self._plan(task)` (planner → `Plan`); `checkpoint.save(task.id, PLANNING→ACTING, plan, 0, None)`. **`task.goal` is UNTRUSTED input** (may be built from email/web/user text): `_plan` enforces role-separation — Artemis instructions in the system layer, `task.goal` in the user-content layer ONLY (never concatenated into the system prompt). A classifier pre-filter on `task.goal` is DEFERRED to a later spec (stated, not implicit); role-separation is required now.
   2. For each `step` from `step_index`:
      - **budget** — `reliability.check(task, steps_done, tokens_used)`; on breach → `await inbox.ask("budget/no-progress: continue?")`; `None`/"no" → `FAILED`, checkpoint, return.
      - **authorize** — `decision = authority.authorize(step, workspace_root=…)` (seam aligned: takes the `PlanStep`); if `not decision.auto` → `await inbox.ask(...)` referencing `decision.pending`; on owner approval (via staging) `authority.graduate(decision.pending.id)` + proceed, else park (`WAITING_OWNER`, checkpoint, return). A `decision.error` (e.g. stage failed) → park, never proceed (fail-closed).
      - **ACT** — dispatch `step.tool_ref` via `registry.get_tool(...).callable_ref(validated_args)` (ADR-016 await).
      - **VERIFY** — `verified = reliability.verify(step.verify, result)` (deterministic read-back); record `StepResult`.
      - **checkpoint** — `checkpoint.save(task.id, VERIFYING, plan, step_index+1, result_output)`.
-     - on `not verified` → bounded re-plan/retry with **phase-boundary context reset** (drop failed-attempt transcript; reconstruct from checkpoint); exhaust retries → circuit-breaker → inbox.
+     - on `not verified` → bounded re-plan/retry with **phase-boundary context reset** (drop failed-attempt transcript; reconstruct from checkpoint). **Every re-planned step re-enters the loop from the top of the per-step block (budget→authorize→ACT→VERIFY) — NO step dispatches to ACT without a fresh `authority.authorize`, whether it came from the original plan or a re-plan (auth is never inherited; a prompt-injected failure must not steer an ungated boundary step).** Exhaust retries → circuit-breaker → `inbox.ask`; **a circuit-breaker `inbox.ask` timeout (`None`) → `FAILED`, checkpoint, return (fail-closed, same as a budget timeout — never silent-continue/abort).**
   3. all steps verified → `DONE`, checkpoint, return `TaskResult(ok=True, ...)`.
+  - **ToolRegistry entries are trusted-static** (Artemis-defined, not loaded from untrusted sources); if that ever changes, tool descriptions must be audited for embedded instructions (tool-poisoning).
 - `resume(task_id)` = `checkpoint.load` → continue the loop from `step_index`.
 - `reliability.py`: `BudgetTracker` (token/step ceilings, pre-call check), `CircuitBreaker` (no-progress trip), `verify(check_id, result) -> bool` (deterministic resolver: `exists:<path>` / `exit0` / `equals:<expected>` / a registered predicate — extensible, NEVER an LLM call).
 
 ## Tasks
-- [ ] Task 1: Add `pydantic-ai` to the `[agentic]` optional dependency group + lock. — files: `pyproject.toml` — done when: `uv sync --extra agentic` resolves; base `uv sync` still lean; package name/version typosquat+maintenance verified.
+- [ ] Task 1: Add `pydantic-ai` (pinned to a concrete verified floor, e.g. `pydantic-ai>=X.Y.Z`) to the `[agentic]` optional dependency group + lock; audit it. — files: `pyproject.toml` — done when: `uv sync --extra agentic` resolves; base `uv sync` still lean; **`uv run pip-audit` is clean for `pydantic-ai` + its transitive deps**; a concrete version floor is pinned (not bare `>=…`); name/maintenance verified.
 - [ ] Task 2: Implement `reliability.py` (BudgetTracker, CircuitBreaker, deterministic `verify`). — files: `src/artemis/agentic/reliability.py` — done when: budget breach is detected pre-call; the no-progress detector trips after N unverified steps; `verify` resolves the deterministic check ids and contains NO model call; `uv run mypy` clean.
 - [ ] Task 3: Implement `Executor.run`/`resume` (the loop composing checkpoint/inbox/authority/registry per Exact changes). — files: `src/artemis/agentic/executor.py` — done when: a happy-path task plans→acts→verifies→DONE with a checkpoint per step; an unverified step triggers bounded re-plan with context reset; an authority-gated step parks until approval; a budget/circuit-breaker breach escalates to the inbox (never silent); `resume` continues from the checkpoint; verification never calls the model.
 - [ ] Task 4: Tests. — files: `tests/test_agent_executor.py` — done when: happy-path, verify-fail-replan, authority-gated-park-then-approve, budget→inbox, circuit-breaker→inbox, resume-from-checkpoint, and no-self-judgement (a fake "model says ok" but failing deterministic check → not DONE) all pass under `uv run pytest -q`.
@@ -78,6 +79,7 @@ The following actions will run autonomously during build. Approving this spec ap
 |---------|---------|
 | `uv add --optional agentic pydantic-ai` (or pyproject edit + `uv lock`) | Add the planner primitive to the optional group. |
 | `uv sync --extra agentic` | Install the agentic extra for build/test. |
+| `uv run pip-audit` | Supply-chain audit of the new `pydantic-ai` dep + transitive (A03). |
 | `uv run mypy` | Full-project type check. |
 | `uv run ruff check . && uv run ruff format --check .` | Lint + format gate. |
 | `uv run pytest -q` | Full test suite. |
