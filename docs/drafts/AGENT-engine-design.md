@@ -95,10 +95,12 @@ class OwnerInbox(Protocol):            # AskOwnerTool is the executor-facing wra
    planner(Claude/Opus)/coder split + a custom OpenHands `ConfirmationPolicy` that defers
    `WAITING_FOR_CONFIRMATION` to the Artemis `AuthorityGate`/inbox (no executor-layer changes).
 
-6. **Sandbox (`sandbox.py`, AGENT-rung2)** — Artemis Windows **restricted-token + Job Object** wrap
-   (reuse the `apex-coder`/Codex isolation pattern) around the local runtime / Rung-2 command exec;
-   built swap-able (the workspace seam) → Docker/remote on Mac. macOS `sandbox-exec` interim stays the
-   Mac analogue (ADR-031 C).
+6. **Sandbox (`sandbox.py`, AGENT-rung2)** — Artemis Windows **no-network AppContainer + Job Object**
+   (kernel outbound-block via a capability-free package SID, NO admin — research 2026-06-26; NOT the
+   network-ON Codex restricted-token profile) around the local runtime / Rung-2 command exec; the
+   workspace is ACL-granted to the package SID. Built swap-able (the workspace seam) → Docker
+   `--network none`/remote on Mac. (macOS `sandbox-exec` was the earlier interim; AppContainer is the
+   real Windows mechanism — ADR-031 C + Refinement 2026-06-26.)
 
 ## New dependencies (per spec, typosquat-checked at gate)
 - AGENT-spine: `pydantic-ai` (the executor primitive — ADR-022/031 D engine).
@@ -113,7 +115,7 @@ These are non-negotiable across the series; each spec's review verifies them:
 4. **Untrusted output = data, not instructions.** Subprocess stdout/stderr, tool results, and OpenHands outputs are adversarial-capable; the spine treats them as data (prompt-injection defence). Raw stderr is not surfaced externally without sanitisation.
 5. **No shell-string exec.** Commands run as an argv list (`shell=False`); no dynamic shell evaluation.
 6. **Parameterised queries** on every owner-private store (no f-string/`%` SQL).
-7. **A claimed boundary must be mechanically enforced** (e.g. network-deny via WFP/SID, not a label) — or the privilege it backs (IN_SANDBOX auto-run) is withheld/gated.
+7. **A claimed boundary must be mechanically enforced** — network-deny via a **no-network Windows AppContainer** (kernel block, no admin; `docs/research/2026-06-26-windows-network-deny/`), not a label — or the privilege it backs (IN_SANDBOX auto-run) is withheld/gated.
 8. **No internal-state leak** in decision/return values exposed to the planner (no resolved absolute paths / exception detail).
 
 ## What this series does NOT cover (out of pass)
