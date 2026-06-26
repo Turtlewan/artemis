@@ -11,8 +11,12 @@ from artemis.config import Settings
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.ingest.connectors import Connector, RawItem, Source
 from artemis.ingest.pipeline import IngestPipeline
+from artemis.memory.schema import now_iso
 from artemis.memory.write_path import MemoryWriteQueue
+from artemis.modules.gmail.classify import EmailClassifier
+from artemis.modules.gmail.extract_store import EmailExtractStore
 from artemis.ports.types import Scope
+from artemis.reactions import DomainEvent, EventType
 from artemis.sensitivity import Sensitivity, SensitivityClassifierProtocol
 from artemis.untrusted.quarantine import Extract, QuarantinedReader
 
@@ -20,6 +24,10 @@ from .cache import GmailReadCache
 from .client import GmailApiPort, extract_body_text, list_attachment_parts
 
 logger = logging.getLogger(__name__)
+
+
+def _noop_emit(_e: DomainEvent) -> None:
+    """Default event sink used when no reaction bus is composed."""
 
 
 class MemoryQueuePort(Protocol):
@@ -166,11 +174,18 @@ class GmailMemoryExtractor:
         self,
         reader: QuarantinedReader | QuarantinedReaderPort,
         queue: MemoryWriteQueue | MemoryQueuePort,
-        classifier: SensitivityClassifierProtocol | None = None,
+        sensitivity_classifier: SensitivityClassifierProtocol | None = None,
+        *,
+        classifier: EmailClassifier | None = None,
+        extract_store: EmailExtractStore | None = None,
+        emit: Callable[[DomainEvent], None] = _noop_emit,
     ) -> None:
         self._reader = reader
         self._queue = queue
+        self._sensitivity_classifier = sensitivity_classifier
         self._classifier = classifier
+        self._extract_store = extract_store
+        self._emit = emit
 
     async def extract(self, *, message_id: str, body: str) -> bool:
         """Extract sanitized facts from untrusted body text and enqueue them."""
@@ -182,10 +197,56 @@ class GmailMemoryExtractor:
         )
         if not extract.usable:
             return False
-        sensitivity: Sensitivity = "sensitive"
         if self._classifier is not None:
             try:
-                sensitivity = await self._classifier.classify(extract.summary)
+                structured = await self._classifier.classify(extract)
+                if structured is not None:
+                    stored = False
+                    if self._extract_store is not None:
+                        try:
+                            self._extract_store.put(structured)
+                            stored = True
+                        except Exception:
+                            logger.warning(
+                                "gmail structured extract store failed for %s",
+                                message_id,
+                                exc_info=True,
+                            )
+                    # No store at all → skip the emit: an EMAIL_INGESTED whose source_ref
+                    # resolves to nothing is an orphan (same safety rule as a put failure;
+                    # R2 cross-model review). Production compositions always inject a store.
+                    if stored:
+                        try:
+                            # Post-detect Option-B: scalar claim-check payload only, no content.
+                            self._emit(
+                                DomainEvent(
+                                    event_type=EventType.EMAIL_INGESTED,
+                                    source_module="gmail",
+                                    payload={
+                                        "message_id": message_id,
+                                        "source_ref": f"gmail:{message_id}",
+                                        "has_commitment": structured.has_commitment,
+                                        "has_event": structured.has_event,
+                                        "has_gift_signal": structured.has_gift_signal,
+                                    },
+                                    occurred_at=now_iso(),
+                                    dedup_key=f"email-ingested:{message_id}",
+                                )
+                            )
+                        except Exception:
+                            logger.warning(
+                                "gmail email-ingested emit failed for %s",
+                                message_id,
+                                exc_info=True,
+                            )
+            except Exception:
+                logger.warning(
+                    "gmail structured classification failed for %s", message_id, exc_info=True
+                )
+        sensitivity: Sensitivity = "sensitive"
+        if self._sensitivity_classifier is not None:
+            try:
+                sensitivity = await self._sensitivity_classifier.classify(extract.summary)
             except Exception:
                 sensitivity = "sensitive"
         logger.debug("Gmail extract %s classified as %s", message_id, sensitivity)

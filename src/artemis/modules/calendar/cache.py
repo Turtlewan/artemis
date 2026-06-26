@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,8 +16,16 @@ from artemis.config import Settings
 from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
+from artemis.memory.schema import now_iso
 from artemis.modules.calendar.client import CalendarClient, InvalidSyncTokenError
 from artemis.modules.calendar.preferences import CalPrefs
+from artemis.reactions import DomainEvent, EventType
+
+logger = logging.getLogger(__name__)
+
+
+def _noop_emit(_e: DomainEvent) -> None:
+    """Default event sink used when no reaction bus is composed."""
 
 
 @dataclass(frozen=True)
@@ -179,10 +189,44 @@ class EventCacheStore:
 class CalendarSyncEngine:
     """Incremental sync from Google Calendar into the owner-private cache."""
 
-    def __init__(self, client: CalendarClient, store: EventCacheStore, prefs: CalPrefs) -> None:
+    def __init__(
+        self,
+        client: CalendarClient,
+        store: EventCacheStore,
+        prefs: CalPrefs,
+        *,
+        emit: Callable[[DomainEvent], None] = _noop_emit,
+    ) -> None:
         self._client = client
         self._store = store
         self._prefs = prefs
+        self._emit = emit
+
+    def _emit_event_ingested(self, event: CachedEvent) -> None:
+        """Emit scalar-only calendar ingest payload; external text stays in the cache."""
+        try:
+            self._emit(
+                DomainEvent(
+                    event_type=EventType.EVENT_INGESTED,
+                    source_module="calendar",
+                    payload={
+                        "event_id": event.event_id,
+                        "calendar_id": event.calendar_id,
+                        "start_dt": event.start_dt,
+                        "end_dt": event.end_dt,
+                        "externally_authored": event.externally_authored,
+                    },
+                    occurred_at=now_iso(),
+                    dedup_key=f"event-ingested:{event.event_id}:{event.calendar_id}",
+                )
+            )
+        except Exception:
+            logger.warning(
+                "calendar event-ingested emit failed for %s/%s",
+                event.calendar_id,
+                event.event_id,
+                exc_info=True,
+            )
 
     def _tag_externally_authored(self, event_raw: dict[str, object], owner_email: str) -> bool:
         owner = owner_email.casefold()
@@ -269,7 +313,11 @@ class CalendarSyncEngine:
                 show_deleted=False,
             )
             for event_raw in _raw_items(page):
-                self._store.upsert(self._to_cached_event(event_raw, calendar_id, owner_email))
+                if event_raw.get("status") == "cancelled":
+                    continue
+                cached = self._to_cached_event(event_raw, calendar_id, owner_email)
+                self._store.upsert(cached)
+                self._emit_event_ingested(cached)
                 added += 1
             page_token = _optional_str(page.get("nextPageToken"))
             next_token = str(page.get("nextSyncToken", next_token))
@@ -310,7 +358,9 @@ class CalendarSyncEngine:
                             status_filter=["confirmed", "tentative", "cancelled"],
                         )
                     )
-                    self._store.upsert(self._to_cached_event(event_raw, calendar_id, owner_email))
+                    cached = self._to_cached_event(event_raw, calendar_id, owner_email)
+                    self._store.upsert(cached)
+                    self._emit_event_ingested(cached)
                     if existed:
                         updated += 1
                     else:
