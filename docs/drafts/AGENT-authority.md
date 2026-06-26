@@ -34,16 +34,29 @@ Simplicity check: considered folding authority into the spine — rejected: the 
 | `src/artemis/agentic/authority.py` | create | `AuthorityGate`: `classify`, `authorize`, `graduate`; owner-private allowlist store. |
 | `tests/test_agent_authority.py` | create | in-sandbox→auto, novel boundary→needs_approval+staged, post-graduation→auto, changed-signature→re-ask, fail-closed, persistence. |
 
-## Exact changes
-- `signature(tool_ref, args, crossing) -> str` = stable hash over `tool_ref` + a canonicalised target (e.g. for a command: the normalised argv/script path + the network host if any; for a file op: the resolved path relative to workspace root) + `crossing.value`. Canonicalisation rules listed in the docstring.
-- `classify(tool_ref, args, *, workspace_root) -> Crossing`: returns `IN_SANDBOX` only if the action declares no network AND every write target resolves under `workspace_root` AND it is marked disposable; else `BOUNDARY`. Unknown → `BOUNDARY`.
-- `authorize(tool_ref, args, summary, *, workspace_root) -> AuthDecision`: `classify`; if `IN_SANDBOX` → `AuthDecision(auto=True)`. If `BOUNDARY`: if `signature` in the allowlist → `AuthDecision(auto=True)` (graduated); else `stage(...)` via `ActionStagingService` and return `AuthDecision(auto=False, pending=<PendingAction>, signature=<sig>)`.
-- `graduate(signature)` = insert the signature into the owner-private allowlist (called after owner approval). `is_graduated(signature) -> bool`.
-- Allowlist table `agent_allowlist(signature TEXT PRIMARY KEY, tool_ref TEXT, approved_at TEXT)` under OWNER_PRIVATE `.../agentic/`.
+### Signature (canonicalisation pinned in-spec — FLAG, was docstring-deferred)
+`signature(tool_ref, args, crossing) -> str` = `sha256` (minimum) over the canonical tuple, with the EXACT fields per crossing kind defined HERE (not the docstring):
+- **command/script:** the normalised **absolute argv tuple** (full args, not just the script name) + any behaviour-affecting env var names+values declared on the step.
+- **file op:** the **resolved absolute target path** (`Path.resolve()`, symlinks followed).
+- **network:** **host + port + protocol**.
+- **always include `crossing.value`** so a command and a file op to the same path can never share a graduated approval.
+Excluded (and why): transient run-ids/timestamps (non-semantic). A change to any included field → a new signature → re-ask.
+
+### Hardened classification (BLOCK — fail-open path-escape fix)
+`classify(step: PlanStep, *, workspace_root) -> Crossing`: returns `IN_SANDBOX` only if ALL hold — no declared network, AND every write target satisfies `resolved_target.is_relative_to(resolved_workspace_root)` where BOTH are `Path.resolve()`d (symlinks followed) — a string-prefix check is forbidden — AND the action is disposable. ANY resolution error (missing path / OS error / symlink loop) → `BOUNDARY`. Unknown/unclassifiable → `BOUNDARY`. (Fail-closed: a `../`/symlink/unicode escape must NOT be misclassified `IN_SANDBOX`.)
+
+### Authorize (BLOCK — fail-closed on stage error; seam aligned to the backbone)
+`authorize(step: PlanStep, *, workspace_root) -> AuthDecision` (takes the `PlanStep`, deriving `tool_ref`/`args` from it — aligns with the backbone seam #4 `authorize(step)`): `classify`; `IN_SANDBOX` → `AuthDecision(auto=True)`. `BOUNDARY`: if `is_graduated(signature)` → `AuthDecision(auto=True)`; else call `ActionStagingService.stage(...)` and return `AuthDecision(auto=False, pending=<PendingAction>, signature=<sig>)`. **If `stage()` raises (IPC/db/unavailable), `authorize` MUST propagate the error or return `AuthDecision(auto=False, error=<reason>)` — it must NEVER return `auto=True` as a result of an error.** `AuthDecision`'s caller-visible fields are limited to `auto: bool`, the opaque `PendingAction` ref, and a short summary string — NO resolved internal paths / exception detail (those would widen the prompt-injection surface via the planner).
+
+### Graduation tied to confirmed approval (BLOCK — anti self-approval)
+A bare `graduate(signature)` callable from the executor loop is a prompt-injection self-approval bypass. Instead: **graduation is gated on confirmed staging approval.** `graduate(action_id)` re-reads `ActionStagingService.store.get(action_id)`; it writes the allowlist row ONLY if that PendingAction's status is the confirmed-approved terminal state AND its recomputed signature matches. A signature that was never staged-and-approved cannot be enrolled. (Equivalent acceptable design: graduation fires as a passive listener inside the staging-approval path so the allowlist write never flows through the executor at all.) `is_graduated(signature) -> bool`.
+
+### Allowlist store (FLAG — parameterised queries explicit)
+Table `agent_allowlist(signature TEXT PRIMARY KEY, tool_ref TEXT, approved_at TEXT)` under OWNER_PRIVATE `.../agentic/`. ALL INSERT/SELECT use `?` placeholder parameterisation (`execute(sql, (param,))`) — never f-string/`%` interpolation (signature/tool_ref trace to LLM/tool-response content). SQLCipher is already a pinned+audited dep (ReactionLedger precedent) — no new dependency.
 
 ## Tasks
-- [ ] Task 1: Implement `AuthorityGate` (`classify`/`authorize`/`graduate`/`is_graduated` + signature canonicalisation + owner-private allowlist). — files: `src/artemis/agentic/authority.py` — done when: in-sandbox→auto (no stage); novel boundary→needs_approval + a staged PendingAction; a graduated signature→auto; a changed target→new signature→re-asks; unknown→boundary; `uv run mypy` clean.
-- [ ] Task 2: Tests. — files: `tests/test_agent_authority.py` — done when: all six behaviours above + allowlist persistence pass under `uv run pytest -q` (use a fake/real `ActionStagingService` to assert stage is called exactly for novel boundary crossings).
+- [ ] Task 1: Implement `AuthorityGate` (`classify(step,*,workspace_root)`/`authorize(step,*,workspace_root)`/`graduate(action_id)`/`is_graduated` + in-spec signature canonicalisation + owner-private parameterised allowlist). — files: `src/artemis/agentic/authority.py` — done when: in-sandbox→auto (no stage); novel boundary→needs_approval + a staged PendingAction; a graduated signature→auto; a changed target→new signature→re-asks; unknown→boundary; **a `../`/symlink target escaping `workspace_root` (via `Path.resolve()`/`is_relative_to`) classifies BOUNDARY (fail-open fix)**; **`stage()` raising never yields `auto=True`**; **`graduate(action_id)` writes the allowlist ONLY when that action is staging-approved + its signature matches** (a never-approved signature cannot enrol); queries are parameterised; `uv run mypy` clean.
+- [ ] Task 2: Tests. — files: `tests/test_agent_authority.py` — done when: all behaviours above pass under `uv run pytest -q`, INCLUDING: symlink/`..` escape → BOUNDARY; `stage()` raises → no auto-run (error surfaces); `graduate()` with a non-approved/forged action → refused; `AuthDecision` exposes no resolved internal path. Use a fake/real `ActionStagingService` to assert stage is called exactly for novel boundary crossings.
 
 ## Wave plan
 Wave 1: [Task 1] | Wave 2: [Task 2]
@@ -100,9 +113,13 @@ The following actions will run autonomously during build. Approving this spec ap
 ## Acceptance Criteria
 - [ ] In-sandbox auto → verify: a no-network, workspace-confined action authorizes `auto=True` with no stage call.
 - [ ] Novel boundary asks → verify: a network/out-of-workspace action returns `auto=False` + a staged PendingAction.
-- [ ] Graduation → verify: after `graduate(signature)`, the same crossing authorizes `auto=True`; a changed target produces a different signature and re-asks.
-- [ ] Fail-closed → verify: an unclassifiable action classifies `BOUNDARY`.
-- [ ] Owner-private durable → verify: the allowlist persists under OWNER_PRIVATE and survives reconstruct.
+- [ ] Path-escape fail-closed (BLOCK) → verify: a `..`/symlink target resolving outside `workspace_root` classifies `BOUNDARY` (not auto), via `Path.resolve()` + `is_relative_to` (no string-prefix check).
+- [ ] Stage-error fail-closed (BLOCK) → verify: when `ActionStagingService.stage()` raises, `authorize` never returns `auto=True` (error propagates / `auto=False, error=…`).
+- [ ] No self-approval (BLOCK) → verify: `graduate(action_id)` enrols the allowlist ONLY when that action is staging-approved and its recomputed signature matches; a forged/unapproved action is refused.
+- [ ] Graduation → verify: after a genuine approval+`graduate`, the same crossing authorizes `auto=True`; a changed target → different signature → re-asks.
+- [ ] No internal-state leak → verify: `AuthDecision` exposes `auto`, the opaque PendingAction ref, and a short summary only — no resolved absolute paths / exception detail.
+- [ ] Fail-closed classify → verify: an unclassifiable action classifies `BOUNDARY`.
+- [ ] Owner-private durable → verify: the allowlist persists under OWNER_PRIVATE (parameterised queries) and survives reconstruct.
 - [ ] Whole project clean → verify: `uv run mypy`, `uv run ruff check . && uv run ruff format --check .`, `uv run pytest -q` all pass.
 
 ## Progress

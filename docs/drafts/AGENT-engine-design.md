@@ -78,13 +78,15 @@ class OwnerInbox(Protocol):            # AskOwnerTool is the executor-facing wra
    partial-result/park path). The `AskOwnerTool` is the executor-facing tool wrapper; `AgentInbox` is
    the persistence+delivery+resolve store. **Shared primitive** — the coding subsystem reuses it.
 
-4. **AuthorityGate (`authority.py`)** — ADR-031 C blast-radius rule. `classify(tool_ref, args) ->
-   Crossing` (in-sandbox = no network, workspace-confined, disposable; boundary = network / writes
-   outside workspace / real-world effect). `authorize(step) -> auto | needs_approval`: `IN_SANDBOX` →
-   auto; `BOUNDARY` → graduated allowlist (owner-private store keyed by a command/script signature):
-   novel crossing → stage via **`ActionStagingService.stage`** + notify via inbox; once approved, that
-   *specific* signature graduates to auto; a new crossing by an approved script re-asks. Specific, not
-   a blank cheque.
+4. **AuthorityGate (`authority.py`)** — ADR-031 C blast-radius rule. `classify(step, *, workspace_root)
+   -> Crossing` (in-sandbox = no network, workspace-confined via `Path.resolve()`+`is_relative_to`,
+   disposable; boundary = network / writes outside workspace / real-world effect; any resolution error
+   or unknown → BOUNDARY, fail-closed). `authorize(step, *, workspace_root) -> AuthDecision`: `IN_SANDBOX`
+   → auto; `BOUNDARY` → graduated allowlist (owner-private store keyed by an in-spec-pinned command/
+   script signature): novel crossing → stage via **`ActionStagingService.stage`** + notify via inbox;
+   once **staging-approved**, `graduate(action_id)` (verifies the approval, NOT a bare signature — anti
+   prompt-injection self-approval) enrols that *specific* signature to auto; a new crossing re-asks.
+   Fail-closed: a `stage()` error never yields auto. Specific, not a blank cheque.
 
 5. **Coder subsystem (`coder/`)** — binds OpenHands **V1 `openhands-sdk`** behind Artemis layers
    (ADR-031 Refinement 2026-06-26): `workspace.py` = the workspace-abstraction seam (`LocalWorkspace`
@@ -102,6 +104,17 @@ class OwnerInbox(Protocol):            # AskOwnerTool is the executor-facing wra
 - AGENT-spine: `pydantic-ai` (the executor primitive — ADR-022/031 D engine).
 - AGENT-coder: `openhands-sdk` (+ `openhands-tools`/`-agent-server`/`-workspace`), `litellm`.
   (Heavy; an optional `[agentic]` dep group — keep the dev base lean, mirror the docling-extra precedent.)
+
+## Security invariants — apply to EVERY AGENT-* spec (from the 2026-06-26 domain reviews)
+These are non-negotiable across the series; each spec's review verifies them:
+1. **Fail-closed everywhere.** Any exceptional path (gate raises, stage raises, classification/resolution error, sandbox spawn error) must NEVER yield auto-run/auto-approve. Error → park/ask/refuse, never proceed.
+2. **Hardened path confinement.** Workspace checks use `Path.resolve()` (symlinks followed) + `is_relative_to(resolved_root)` — never a string prefix; any resolution error → BOUNDARY/refuse. (Applies to AGENT-authority classify AND AGENT-rung01 fileops.)
+3. **No self-approval.** Graduation/allowlist enrolment is gated on CONFIRMED staging approval (verify the PendingAction status + signature), never a bare call reachable from the executor loop — a prompt-injected step must not be able to self-approve a crossing.
+4. **Untrusted output = data, not instructions.** Subprocess stdout/stderr, tool results, and OpenHands outputs are adversarial-capable; the spine treats them as data (prompt-injection defence). Raw stderr is not surfaced externally without sanitisation.
+5. **No shell-string exec.** Commands run as an argv list (`shell=False`); no dynamic shell evaluation.
+6. **Parameterised queries** on every owner-private store (no f-string/`%` SQL).
+7. **A claimed boundary must be mechanically enforced** (e.g. network-deny via WFP/SID, not a label) — or the privilege it backs (IN_SANDBOX auto-run) is withheld/gated.
+8. **No internal-state leak** in decision/return values exposed to the planner (no resolved absolute paths / exception detail).
 
 ## What this series does NOT cover (out of pass)
 Rung 3 (app-control + Anthropic Computer Use vision loop), Rung 4 (host-watch), GEPA self-improvement —

@@ -45,7 +45,7 @@ Simplicity check: considered using a heavier agent framework runtime — rejecte
   1. **PLAN** — `plan = await self._plan(task)` (planner → `Plan`); `checkpoint.save(task.id, PLANNING→ACTING, plan, 0, None)`.
   2. For each `step` from `step_index`:
      - **budget** — `reliability.check(task, steps_done, tokens_used)`; on breach → `await inbox.ask("budget/no-progress: continue?")`; `None`/"no" → `FAILED`, checkpoint, return.
-     - **authorize** — `decision = authority.authorize(step.tool_ref, step.args, summary, workspace_root=…)`; if `not decision.auto` → `await inbox.ask(...)` referencing the staged action; on approval `authority.graduate(decision.signature)` + proceed, else park (`WAITING_OWNER`, checkpoint, return).
+     - **authorize** — `decision = authority.authorize(step, workspace_root=…)` (seam aligned: takes the `PlanStep`); if `not decision.auto` → `await inbox.ask(...)` referencing `decision.pending`; on owner approval (via staging) `authority.graduate(decision.pending.id)` + proceed, else park (`WAITING_OWNER`, checkpoint, return). A `decision.error` (e.g. stage failed) → park, never proceed (fail-closed).
      - **ACT** — dispatch `step.tool_ref` via `registry.get_tool(...).callable_ref(validated_args)` (ADR-016 await).
      - **VERIFY** — `verified = reliability.verify(step.verify, result)` (deterministic read-back); record `StepResult`.
      - **checkpoint** — `checkpoint.save(task.id, VERIFYING, plan, step_index+1, result_output)`.
