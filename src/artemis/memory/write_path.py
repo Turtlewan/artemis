@@ -108,6 +108,45 @@ class MemoryWritePath:
 
         return result
 
+    async def add_module_fact(
+        self,
+        *,
+        subject: str,
+        relation: str,
+        object_: str,
+        category: str,
+        source_ref: str,
+        confidence: float = 1.0,
+        sensitivity: Sensitivity = "sensitive",
+    ) -> str:
+        """Structured module-initiated fact push: no extractor, explicit sensitivity
+        (fail-closed sensitive), source_ref -> source_turn_id provenance. The detecting module
+        already decided this fact; memory never re-extracts from text here.
+        """
+        embedding = (await self._embedder.embed_documents([f"{subject} {relation} {object_}"]))[0]
+        try:
+            subject_entity_id = self.entity_repo.resolve_or_create_entity(
+                subject, EntityType.PERSON
+            )
+        except Exception as exc:
+            logger.warning(
+                "entity resolution failed (%s); storing module fact without entity link",
+                type(exc).__name__,
+            )
+            subject_entity_id = None
+        return self._repo.add(
+            subject,
+            relation,
+            object_,
+            confidence,
+            embedding,
+            source_turn_id=source_ref,
+            extractor_model="module",
+            sensitivity=sensitivity,
+            category=category,
+            subject_entity_id=subject_entity_id,
+        )
+
     def _candidates_for(self, embedding: Sequence[float]) -> list[Candidate]:
         candidates: list[Candidate] = []
         for fact_id, _distance in self._repo.semantic_candidates(embedding, self._candidate_k):

@@ -108,6 +108,21 @@ class RaisingExtractor:
         raise RuntimeError("boom")
 
 
+class SpyExtractor(FakeExtractor):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def extract(
+        self,
+        text: str,
+        *,
+        context: str | None = None,
+        source_sensitivity: Sensitivity | None = None,
+    ) -> list[ExtractedFact]:
+        self.calls += 1
+        return await super().extract(text, context=context, source_sensitivity=source_sensitivity)
+
+
 class ExplodingWritePath:
     def __init__(self) -> None:
         self.turn_ids: list[str] = []
@@ -291,6 +306,56 @@ async def test_write_path_add_update_delete_noop_and_provenance(
     assert deleted.facts_deleted == 1
     assert repo.as_of(fact_keys=[fact_key]) == []
     assert len(repo.history(fact_key)) == 3
+
+
+@pytest.mark.asyncio
+async def test_module_fact_push_persists_category_sensitivity_without_extractor(
+    repo: BitemporalRepository,
+) -> None:
+    extractor = SpyExtractor()
+    write_path = MemoryWritePath(
+        repo,
+        FakeEmbedder(),
+        extractor,  # type: ignore[arg-type]
+        FakeDecider(),  # type: ignore[arg-type]
+        extractor_model_id="fake-extractor",
+    )
+
+    fact_id = await write_path.add_module_fact(
+        subject="owner",
+        relation="gift_signal",
+        object_="likes fountain pens",
+        category="gift_signal",
+        source_ref="module:gift-detector:T1",
+        sensitivity="general",
+    )
+
+    fact = repo.get_fact(fact_id)
+    assert fact.subject == "owner"
+    assert fact.relation == "gift_signal"
+    assert fact.object == "likes fountain pens"
+    assert fact.category == "gift_signal"
+    assert fact.sensitivity == "general"
+    assert fact.source_turn_id == "module:gift-detector:T1"
+    assert fact.extractor_model == "module"
+    assert extractor.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_module_fact_push_defaults_to_sensitive(repo: BitemporalRepository) -> None:
+    write_path = _write_path(repo)
+
+    fact_id = await write_path.add_module_fact(
+        subject="owner",
+        relation="gift_signal",
+        object_="likes leather notebooks",
+        category="gift_signal",
+        source_ref="module:gift-detector:T2",
+    )
+
+    fact = repo.get_fact(fact_id)
+    assert fact.category == "gift_signal"
+    assert fact.sensitivity == "sensitive"
 
 
 @pytest.mark.asyncio
