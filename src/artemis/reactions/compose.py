@@ -24,6 +24,7 @@ from artemis.reactions.recipes.comms import (
     CaptureServiceLike as CommsCaptureService,
 )
 from artemis.reactions.recipes.comms import (
+    FetchExtractFn,
     TripAssemblerLike,
     register_comms_reactions,
 )
@@ -97,8 +98,6 @@ def compose_reactions(
     maps: MapsConnector | None = None,
 ) -> tuple[EventBus, ReactionDispatcher, Coroutine[object, object, None]]:
     """Wire the reaction graph and return ``(bus, dispatcher, worker_coro)``."""
-    del get_linked_task_ref_fn, fetch_extract
-
     bus = EventBus()
     stamped_emit = depth_stamping_emit(bus)
     ledger = ReactionLedger(settings, key_provider)
@@ -135,12 +134,14 @@ def compose_reactions(
         capture_service=cast(CommsCaptureService, capture_service),
         calendar_from_extract_fn=calendar_from_extract_fn,
         trip_assembler=cast(TripAssemblerLike, trip_assembler),
+        fetch_extract=cast(FetchExtractFn, fetch_extract),
         memory=memory,
     )
     register_self_reactions(
         registry,
         capture_service=cast(SelfCaptureService, capture_service),
         mark_bill_paid_fn=resolved_mark_bill_paid_fn,
+        get_linked_task_ref_fn=get_linked_task_ref_fn,
         complete_task_fn=complete_task_fn or _missing_complete_task_fn,
         reconciler=_RequiredReconciler() if reconciler is None else reconciler,
         fraud_notify_fn=fraud_notify_fn or cast(FraudNotifyFn, _missing_fraud_notify_fn),

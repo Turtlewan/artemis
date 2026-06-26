@@ -3,17 +3,17 @@
 A4 routes commitment-looking email into the inert CaptureService suggestion
 inbox. A5/A7 convert flight and meeting email extracts into held tentative
 calendar events; flight extracts also pass through the Trip assembler so the
-planning cluster owns the downstream airport-leave block. Both rules bind to
-``email-ingested`` and use ``message_id`` as the dispatcher idempotency field.
+planning cluster owns the downstream airport-leave block. These reactions route
+only on cheap email-ingested flags, then fetch the laundered structured extract
+via ``source_ref`` before reading content.
 
-The gift-signal recipe is intentionally not registered here yet: the live
-memory store still exposes the older person-scoped ``add_fact(person_id, fact)``
-port, not the ADR-021 module-initiated ``add_fact(source_kind, source_ref, ...)``
-path required for ``reaction:gift_signal``.
+The gift-signal recipe is registered here and writes a general-tagged module
+fact through ``MemoryWritePath.add_module_fact`` (ADR-032 Decision 6).
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Protocol, cast
@@ -22,13 +22,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
 from artemis.memory import EntityRef, TripExtract, TripLegKind
+from artemis.memory.write_path import MemoryWritePath
 from artemis.modules.calendar.create_from_extract import EventExtract, HeldTentativeEvent
+from artemis.modules.gmail.structured import StructuredEmailExtract
 from artemis.reactions.emit import DomainEvent, EventType
 from artemis.reactions.rulestore import ReactionRule, ReactionTier
 from artemis.registry import ToolRegistry
 
 _EMAIL_TO_TASK_REF = "reaction:email_to_task"
 _EMAIL_TO_HELD_EVENT_REF = "reaction:email_to_held_event"
+_GIFT_SIGNAL_REF = "reaction:gift_signal"
+_SOURCE_REF_RE = re.compile(r"^gmail:[A-Za-z0-9_-]+$")
 
 
 class CaptureServiceLike(Protocol):
@@ -47,7 +51,8 @@ class TripAssemblerLike(Protocol):
         ...
 
 
-CalendarFromExtractFn = Callable[[EventExtract], Awaitable[HeldTentativeEvent]]
+CalendarFromExtractFn = Callable[[EventExtract, str], Awaitable[HeldTentativeEvent]]
+FetchExtractFn = Callable[[str], Awaitable[StructuredEmailExtract | None]]
 
 
 class ReactionResult(BaseModel):
@@ -76,23 +81,29 @@ async def react_commitment_to_task(
     event: DomainEvent,
     *,
     capture_service: CaptureServiceLike,
+    fetch_extract: FetchExtractFn,
 ) -> ReactionResult:
     """A4 Tier-B: email commitment flag -> inert task suggestion.
 
-    The live Gmail pre-flight stores only sanitized extract fields on the event
-    args; raw email bodies are never accepted by this callable.
+    The live Gmail pre-flight stores only routing flags and a claim-check
+    ``source_ref`` on the event args; content comes from the structured extract
+    store.
     """
     if event.event_type is not EventType.EMAIL_INGESTED or not _payload_bool(
-        event, "commitment_detected"
+        event, "has_commitment"
     ):
         return ReactionResult(status="skipped", ref=None, undoable=False)
-    summary = _payload_str(event, "extract_summary")
-    if summary is None:
+    source_ref = _payload_str(event, "source_ref")
+    if not _valid_source_ref(source_ref):
+        return ReactionResult(status="skipped", ref=None, undoable=False)
+    assert source_ref is not None
+    structured = await fetch_extract(source_ref)
+    if structured is None or not structured.summary:
         return ReactionResult(status="skipped", ref=None, undoable=False)
 
     suggestion_id = await capture_service.suggest_from_text(
         "email",
-        summary,
+        structured.summary,
         untrusted=True,
     )
     return ReactionResult(status="suggested", ref=suggestion_id, undoable=False)
@@ -101,8 +112,9 @@ async def react_commitment_to_task(
 async def react_email_to_held_event(
     event: DomainEvent,
     *,
-    calendar_from_extract_fn: Callable[[EventExtract, str], Awaitable[HeldTentativeEvent]],
+    calendar_from_extract_fn: CalendarFromExtractFn,
     trip_assembler: TripAssemblerLike,
+    fetch_extract: FetchExtractFn,
 ) -> ReactionResult:
     """A5/A7 Tier-B: flight/meeting email -> held tentative calendar event.
 
@@ -110,29 +122,79 @@ async def react_email_to_held_event(
     assembler's ``TRIP_ASSEMBLED`` emit and owns any airport-leave block; this
     recipe never calls Maps and never writes to Google.
     """
-    if event.event_type is not EventType.EMAIL_INGESTED:
+    if event.event_type is not EventType.EMAIL_INGESTED or not _payload_bool(event, "has_event"):
         return ReactionResult(status="skipped", ref=None, undoable=False)
-    event_kind = _payload_str(event, "event_kind")
-    if event_kind not in {"flight", "meeting"}:
+    source_ref = _payload_str(event, "source_ref")
+    if not _valid_source_ref(source_ref):
+        return ReactionResult(status="skipped", ref=None, undoable=False)
+    assert source_ref is not None
+    structured = await fetch_extract(source_ref)
+    if structured is None or structured.event_kind not in {"flight", "meeting"}:
         return ReactionResult(status="skipped", ref=None, undoable=False)
 
-    extract = _event_extract(event)
+    extract = _event_extract_from_structured(structured)
     if extract is None:
         return ReactionResult(status="skipped", ref=None, undoable=False)
 
-    if event_kind == "flight":
-        trip_assembler.assemble(_trip_extract(event, extract))
+    if structured.event_kind == "flight":
+        trip_assembler.assemble(_trip_extract_from_structured(structured, extract))
 
-    held = await calendar_from_extract_fn(extract, event_kind)
+    held = await calendar_from_extract_fn(extract, structured.event_kind)
     return ReactionResult(status="held", ref=held.id, undoable=True)
+
+
+async def react_gift_signal(
+    event: DomainEvent,
+    *,
+    memory: MemoryWritePath,
+    fetch_extract: FetchExtractFn,
+) -> ReactionResult:
+    """Tier-B: email gift signal -> general-tagged module memory fact."""
+    if event.event_type is not EventType.EMAIL_INGESTED or not _payload_bool(
+        event, "has_gift_signal"
+    ):
+        return ReactionResult(status="skipped", ref=None, undoable=False)
+    source_ref = _payload_str(event, "source_ref")
+    if not _valid_source_ref(source_ref):
+        return ReactionResult(status="skipped", ref=None, undoable=False)
+    assert source_ref is not None
+    structured = await fetch_extract(source_ref)
+    if structured is None or not structured.gift_item or not structured.gift_recipient:
+        return ReactionResult(status="skipped", ref=None, undoable=False)
+    fact_id = await memory.add_module_fact(
+        subject=structured.gift_recipient,
+        relation="interested_in",
+        object_=structured.gift_item,
+        category="gift_signal",
+        source_ref=source_ref,
+        sensitivity="general",
+    )
+    return ReactionResult(status="noted", ref=fact_id, undoable=True)
+
+
+async def _missing_fetch_extract(source_ref: str) -> StructuredEmailExtract | None:
+    # Fail loud on misconfiguration: a silent None would make every comms reaction
+    # skip every event with no diagnostic (R6c cross-model review).
+    del source_ref
+    raise RuntimeError("fetch_extract is required for comms reactions")
+
+
+class _MissingMemory:
+    """Lazy sentinel: a gift_signal fired without a wired memory write path raises a
+    clear error on use instead of an AttributeError on None (R6c cross-model review).
+    Registration still succeeds, so compositions that never fire a gift are unaffected."""
+
+    async def add_module_fact(self, **_kwargs: object) -> str:
+        raise RuntimeError("memory is required for the gift_signal reaction")
 
 
 def register_comms_reactions(
     registry: ToolRegistry,
     *,
     capture_service: CaptureServiceLike,
-    calendar_from_extract_fn: Callable[[EventExtract, str], Awaitable[HeldTentativeEvent]],
+    calendar_from_extract_fn: CalendarFromExtractFn,
     trip_assembler: TripAssemblerLike,
+    fetch_extract: FetchExtractFn = _missing_fetch_extract,
     memory: object | None = None,
 ) -> tuple[ReactionRule, ...]:
     """Register built comms reaction tools and return rule bindings.
@@ -141,14 +203,18 @@ def register_comms_reactions(
     ``email-ingested/message_id`` -> A4 ``reaction:email_to_task`` and A5/A7
     ``reaction:email_to_held_event``. Legacy commitment-detection pushes migrate
     to A4 because graduation/observability matter; simple urgency notifiers stay
-    as dumb Gmail hooks. ``memory`` is accepted for the future gift-signal recipe
-    but intentionally unused until the module fact-push prerequisite exists.
+    as dumb Gmail hooks. Gift-signal writes a general-tagged fact through the
+    module memory write path.
     """
-    del memory
+    mem = cast(MemoryWritePath, memory if memory is not None else _MissingMemory())
 
     task_callable = cast(
         Callable[[ReactionArgs], Awaitable[ReactionResult]],
-        partial(_email_to_task_tool, capture_service=capture_service),
+        partial(
+            _email_to_task_tool,
+            capture_service=capture_service,
+            fetch_extract=fetch_extract,
+        ),
     )
     held_callable = cast(
         Callable[[ReactionArgs], Awaitable[ReactionResult]],
@@ -156,7 +222,12 @@ def register_comms_reactions(
             _email_to_held_event_tool,
             calendar_from_extract_fn=calendar_from_extract_fn,
             trip_assembler=trip_assembler,
+            fetch_extract=fetch_extract,
         ),
+    )
+    gift_callable = cast(
+        Callable[[ReactionArgs], Awaitable[ReactionResult]],
+        partial(_gift_signal_tool, memory=mem, fetch_extract=fetch_extract),
     )
     _register_tool(
         registry,
@@ -169,6 +240,12 @@ def register_comms_reactions(
         _EMAIL_TO_HELD_EVENT_REF,
         "Comms A5/A7 email flight or meeting to held event.",
         held_callable,
+    )
+    _register_tool(
+        registry,
+        _GIFT_SIGNAL_REF,
+        "Comms email gift signal to general-tagged memory fact.",
+        gift_callable,
     )
 
     return (
@@ -189,6 +266,14 @@ def register_comms_reactions(
             dedup_key_fields=("message_id",),
             stateful=True,
         ),
+        ReactionRule(
+            name=_GIFT_SIGNAL_REF,
+            event_type=EventType.EMAIL_INGESTED,
+            tier=ReactionTier.B,
+            external_effect=False,
+            reaction_ref=_GIFT_SIGNAL_REF,
+            dedup_key_fields=("message_id",),
+        ),
     )
 
 
@@ -196,54 +281,73 @@ async def _email_to_task_tool(
     args: ReactionArgs,
     *,
     capture_service: CaptureServiceLike,
+    fetch_extract: FetchExtractFn,
 ) -> ReactionResult:
     return await react_commitment_to_task(
         _event_from_args(args),
         capture_service=capture_service,
+        fetch_extract=fetch_extract,
     )
 
 
 async def _email_to_held_event_tool(
     args: ReactionArgs,
     *,
-    calendar_from_extract_fn: Callable[[EventExtract, str], Awaitable[HeldTentativeEvent]],
+    calendar_from_extract_fn: CalendarFromExtractFn,
     trip_assembler: TripAssemblerLike,
+    fetch_extract: FetchExtractFn,
 ) -> ReactionResult:
     return await react_email_to_held_event(
         _event_from_args(args),
         calendar_from_extract_fn=calendar_from_extract_fn,
         trip_assembler=trip_assembler,
+        fetch_extract=fetch_extract,
     )
 
 
-def _event_extract(event: DomainEvent) -> EventExtract | None:
-    summary = _payload_str(event, "extract_summary")
-    start = _payload_str(event, "start_datetime") or _payload_str(event, "start_dt")
-    end = _payload_str(event, "end_datetime") or _payload_str(event, "end_dt")
-    raw_ref = _raw_ref(event)
-    if summary is None or start is None or end is None or raw_ref is None:
+async def _gift_signal_tool(
+    args: ReactionArgs,
+    *,
+    memory: MemoryWritePath,
+    fetch_extract: FetchExtractFn,
+) -> ReactionResult:
+    return await react_gift_signal(
+        _event_from_args(args),
+        memory=memory,
+        fetch_extract=fetch_extract,
+    )
+
+
+def _event_extract_from_structured(structured: StructuredEmailExtract) -> EventExtract | None:
+    if (
+        not structured.summary
+        or structured.start_datetime is None
+        or structured.end_datetime is None
+    ):
         return None
     return EventExtract(
-        summary=summary,
-        start_datetime=start,
-        end_datetime=end,
-        location=_payload_str(event, "location"),
-        description=_payload_str(event, "description"),
-        attendee_emails=_csv_tuple(_payload_str(event, "attendee_emails")),
-        raw_ref=raw_ref,
+        summary=structured.summary,
+        start_datetime=structured.start_datetime,
+        end_datetime=structured.end_datetime,
+        location=structured.location,
+        description=structured.description,
+        attendee_emails=structured.attendee_emails,
+        raw_ref=structured.source_ref,
     )
 
 
-def _trip_extract(event: DomainEvent, extract: EventExtract) -> TripExtract:
+def _trip_extract_from_structured(
+    structured: StructuredEmailExtract, extract: EventExtract
+) -> TripExtract:
     return TripExtract(
         kind=TripLegKind.FLIGHT,
-        title=_payload_str(event, "title") or extract.summary,
+        title=structured.title or extract.summary,
         start_dt=extract.start_datetime,
         end_dt=extract.end_datetime,
-        origin=_payload_str(event, "origin"),
-        destination=_payload_str(event, "destination"),
-        confirmation_ref=_payload_str(event, "confirmation_ref"),
-        co_travellers=_csv_tuple(_payload_str(event, "co_travellers")),
+        origin=structured.origin,
+        destination=structured.destination,
+        confirmation_ref=structured.confirmation_ref,
+        co_travellers=structured.co_travellers,
         raw_ref=extract.raw_ref,
     )
 
@@ -327,17 +431,5 @@ def _payload_bool(event: DomainEvent, key: str) -> bool:
     return event.payload.get(key) is True
 
 
-def _raw_ref(event: DomainEvent) -> str | None:
-    raw_ref = _payload_str(event, "raw_ref")
-    if raw_ref is not None:
-        return raw_ref
-    message_id = _payload_str(event, "message_id")
-    if message_id is None:
-        return None
-    return f"{message_id}:0"
-
-
-def _csv_tuple(value: str | None) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    return tuple(part.strip() for part in value.split(",") if part.strip())
+def _valid_source_ref(s: str | None) -> bool:
+    return s is not None and _SOURCE_REF_RE.match(s) is not None
