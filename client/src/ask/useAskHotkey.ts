@@ -38,15 +38,24 @@ export function useAskHotkey(): AskHotkeyController {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void listen<null>("ask:summon", () => {
-      open();
-    }).then((cleanup) => {
-      if (disposed) {
-        cleanup();
-        return;
-      }
-      unlisten = cleanup;
-    });
+    try {
+      void listen<null>("ask:summon", () => {
+        open();
+      })
+        .then((cleanup) => {
+          if (disposed) {
+            cleanup();
+            return;
+          }
+          unlisten = cleanup;
+        })
+        .catch(() => {
+          // Tauri event transport unavailable — the ask hotkey degrades silently.
+        });
+    } catch {
+      // Tauri internals not present (non-Tauri context / init not ready) — degrade
+      // silently rather than crashing the whole app at mount.
+    }
 
     return () => {
       disposed = true;
