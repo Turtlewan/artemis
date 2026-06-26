@@ -1,9 +1,12 @@
-<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md; amended 2026-06-11 per doc cleanup (spec count + spoke wave) -->
+<!-- aligned 2026-06-11 to ADR-012/013 + contracts.md; amended 2026-06-11 per doc cleanup (spec count + spoke wave); status/ADR-index refreshed 2026-06-26 (Windows-build reality; ADR-029…032). Body subsystem sections (agentic/reactions/sensitivity) refresh is carried in status.md Open Questions. -->
 # Artemis — System Overview
 
-_Status: **consolidated refresh (2026-06-08; count updated 2026-06-11).** Reflects the full design as locked across ADR-001…011 and
-spec'd as the M0–M7 core spine + OBS + DR + CLIENT + M8 spoke wave (60 specs `status: ready` in `docs/changes/`).
-Supersedes the SP0 phase-3 decomposition snapshot. This is the platform map — every subsystem, its boundary,
+_Status: **design map current; build status refreshed 2026-06-26.** The architecture below is locked across ADR-001…032.
+**Most of the corpus is now BUILT** — the dev-buildable queue (core spine M0–M7 + OBS + DR + the M8 Gmail/Calendar/Productivity
+spoke wave + Finance + reactions runtime + sensitivity wall + the agentic executor engine + the Tauri client behind a mocked
+invoke + the Windows voice-dev twin) was implemented and host-verified on the **Windows/WSL2 dev box** by **Codex (`gpt-5.5`)**
+as coder (ADR-026, supersedes the earlier "DeepSeek-on-the-Mini" handoff plan). Only **Mac- / MSVC- / Tauri-gated tails** remain
+unbuilt in `docs/changes/` (see § Build status). This is the platform map — every subsystem, its boundary,
 and how they connect — at altitude; depth lives in the linked ADRs, [`brain.md`](./brain.md),
 [`data-model.md`](./data-model.md), [`app-flow.md`](./app-flow.md), and the per-module docs under
 [`../modules/`](../modules/). Build order is in [`../../../ROADMAP.md`](../../../ROADMAP.md)._
@@ -250,9 +253,14 @@ A module is uniform **only where the hub depends on it**, free everywhere else:
 5. **Scope tags** — every datum tagged via `data_scope`; the crypto wall + sensitivity Tier enforce it.
 
 ## Build status & spec map
-**60 specs `status: ready`** in `docs/changes/` — the full core + spoke wave is designed, spec'd, reviewed, and gated;
-nothing is built yet (DeepSeek builds on the Mac Mini when it arrives — see ROADMAP §"Build handoff — start here").
-The core spine builds in dependency order; **M2-d is a hard gate before M3/M4**:
+**Built (Windows/WSL2 dev box, Codex coder, ADR-026):** the entire dev-buildable queue — core spine M0–M7 + OBS + DR +
+M8 Gmail/Calendar/Productivity + Finance + the cross-module reactions runtime (ADR-021/032, ships DORMANT in `observe`) +
+the end-to-end sensitivity ingestion wall (ADR-029) + the headless agentic executor engine (ADR-031, behind the optional
+`[agentic]` dep group) + the Tauri client (behind a mocked `invoke`) + the Windows voice-dev twin (ADR-001 wire-compatible).
+Each was host-verified with full `uv run mypy` + `uv run pytest -q` and an independent cross-model review on high-stakes specs.
+**Gated / unbuilt (in `docs/changes/`):** Mac-gated (`M0-b/c/e/f`, `M2-a/c/d`, `M3-d`, `M5-a-audio-sidecar`), MSVC-gated
+(`CLIENT-auth` + the whole Rust compile) and Tauri-gated (`GATE-b`) tails — they wait on the Mac Mini / MSVC C++ Build Tools.
+`docs/changes/BUILD-ORDER.md` is the live queue truth. The core spine builds in dependency order; **M2-d is a hard gate before M3/M4**:
 
 ```
 M0 foundation → M1 thin brain → M2 security wall → M3 knowledge → M4 memory
@@ -297,6 +305,10 @@ UI) run on the Mini, mirroring the M2 pattern.
 | [025](../adr/ADR-025-tauri-client-auth-wall-reroot.md) | Tauri client auth/wall re-root: unlock = **custom P-256 challenge-response + native hardware sealing** (Windows TPM/Hello · macOS SE/Touch ID), reusing the M2-a verifier; supersedes ADR-023 §4; recovery passphrase unchanged |
 | [026](../adr/ADR-026-codex-build-coder.md) | Build coder = **Codex CLI (`gpt-5.5`)** for Artemis core (supersedes DeepSeek); coder-tier policy retired; `cross_model_review` default-satisfied (Claude plans/reviews → Codex builds). (027 = APEX-system ADR.) |
 | [028](../adr/ADR-028-client-spatial-navigation.md) | **Client navigation = spatial "travel-zoom" command-map** (pan + scroll-zoom + travel-then-expand; brain core; floating Ask pop-up; photo background) — supersedes the Review/Chat/Status tab-shell. Mockup: `docs/research/mockups/travel-zoom-workspace.html` |
+| [029](../adr/ADR-029-sensitivity-ingestion-gate.md) | Sensitivity ingestion gate: cheap local-model classify at the ingest seam (fail-closed), enforced end-to-end (M3a/M4b/M8b1 + RAG-compose `PrivacyWallError`); retires the regex false-negative leak |
+| [030](../adr/ADR-030-tauri-client-transport.md) | Tauri client transport: the Rust core owns the session token; it never enters the webview |
+| [031](../adr/ADR-031-agentic-runtime-host-computer-use.md) | Agentic runtime: one unified plan→act→verify executor + Rung 0→4 host-computer-use ladder + blast-radius authority; coding subsystem borrows the OpenHands SDK under an Artemis planner/agent-inbox/GATE/router. Dev sandbox = no-network Windows AppContainer |
+| [032](../adr/ADR-032-reactions-runtime-composition.md) | Cross-module reactions runtime composition: claim-check event payload · continuous bounded worker · observe-first manual go-live gate · at-least-once idempotent effects · depth-counter cascade guard |
 
 ## Still parked / maybe
 Documents vault · Media/Watchlist · Sleep/Recovery · full CaMeL capability data-plane · knowledge-graph layer ·
