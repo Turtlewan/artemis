@@ -1,6 +1,6 @@
 ---
 spec: AGENT-types
-status: draft
+status: ready
 cross_model_review: false
 token_profile: lean
 autonomy_level: L2

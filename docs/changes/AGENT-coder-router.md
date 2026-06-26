@@ -1,6 +1,6 @@
 ---
 spec: AGENT-coder-router
-status: draft
+status: ready
 cross_model_review: false
 token_profile: balanced
 autonomy_level: L2

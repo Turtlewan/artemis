@@ -1,6 +1,6 @@
 ---
 spec: AGENT-authority
-status: draft
+status: ready
 cross_model_review: true
 token_profile: balanced
 autonomy_level: L2
