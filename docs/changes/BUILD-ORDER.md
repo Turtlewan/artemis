@@ -29,14 +29,14 @@ host-validated. 2 composition seams (spine approve→graduate · inbox deliver-c
 | A4 | `AGENT-coder-router` → `AGENT-coder` (+`litellm`/`openhands-sdk`) | ✅ `865b10b` · `a97be1e` |
 | A5 | `AGENT-rung2` (AppContainer sandbox) | ✅ `b09255c` |
 
-### Group B — Voice (M5 dev twin) — independent of A
-| Order | Spec | Notes |
-|-------|------|-------|
-| B1 | `M5-a-win-sidecar` | ⚠️ **CORE BUILT `4a574a7`** (wire-protocol twin + state machine + barge-in + fakes; full mypy+pytest green) + **dep-fix done** ([voice-dev] resolves). **TRANSPORT FORK RESOLVED 2026-06-26** (owner: bare TCP-loopback for the Windows twin; framing unchanged; Mac keeps AF_UNIX) → resolution spec **`m5-a-win-transport` (ready)**. Build that next → then archive M5-a-win-sidecar + m5-a-win-transport together. |
-| B1.1 | `m5-a-win-transport` | **READY (Light)** — AF_UNIX-or-TCP-loopback transport seam in `IPCServer.start()` + `audio.port` rendezvous + un-skip the e2e socket test. Completes M5-a-win-sidecar. |
-| B2 | `M5-b-stt-tts` | Moonshine STT + Kokoro/Piper TTS behind ports — UNBUILT (after the B1 transport decision) |
-| B3 | `M5-c-speaker-id` | ECAPA-TDNN speaker-ID (voiceprint test Mac-gated) — UNBUILT |
-| B4 | `M5-d-voice-loop-orchestrator` | orchestrator (tests vs the win-sidecar) — UNBUILT (consumes the B1 transport) |
+### Group B — Voice (M5 dev twin) — ✅ COMPLETE 2026-06-26 (baseline green @ `3819a92`, 865 passed)
+All dev-buildable voice specs built (Codex/Opus), host-verified (full mypy + pytest), security-reviewed, committed, archived to `done/`. Real models/mic/AEC stay GATED on-Mac (per-spec Task 5/6). The e2e socket test now runs on Windows (TCP-loopback). 1 security follow-up (harmonize the two voice gates — see `docs/progress/M5-c/M5-d`).
+| Order | Spec | Status |
+|-------|------|--------|
+| B1 | `M5-a-win-sidecar` (+ `m5-a-win-transport`) | ✅ `4a574a7` + `d2770d6` (wire-protocol twin + AF_UNIX-or-TCP-loopback transport seam; [voice-dev] deps resolve) |
+| B2 | `M5-b-stt-tts` | ✅ `64c703f` (Stt/Tts port adapters, lazy MLX + fakes) |
+| B3 | `M5-c-speaker-id` | ✅ `704b7cd` (voice identity wall — voice-ID≠key, Tier-0-keyed voiceprints) |
+| B4 | `M5-d-voice-loop-orchestrator` | ✅ `3819a92` (cascade + instant-ack + barge-in + latency + fail-closed voice gate) |
 
 ### Group C — Quick wins (independent, any time)
 | Spec | Notes |
