@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import inspect
 from decimal import Decimal
 from pathlib import Path
@@ -48,7 +49,8 @@ def test_hooks_miss_empty_store(store: FinanceStore) -> None:
 
 
 def test_hooks_hit_with_count_id_scalar_payloads(store: FinanceStore) -> None:
-    today = "2026-06-25"
+    anchor = datetime.datetime.now(datetime.UTC).date()
+    today = anchor.isoformat()
     subscription_id = store.upsert_subscription(
         merchant="Music Box",
         cadence="monthly",
@@ -64,8 +66,9 @@ def test_hooks_hit_with_count_id_scalar_payloads(store: FinanceStore) -> None:
     bill_id = store.upsert_bill(payee="Power", due_date=today, amount=Decimal("88.00"))
     account_id = store.create_account("Card", "card")
     for index, amount in enumerate(("10.00", "11.00", "9.00", "10.50", "60.00"), start=1):
+        txn_date = (anchor - datetime.timedelta(days=6 - index)).isoformat()
         store.add_transaction(
-            txn_date=f"2026-06-{19 + index:02d}",
+            txn_date=txn_date,
             amount=Decimal(amount),
             merchant="Lunch",
             source="manual",
