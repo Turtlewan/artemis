@@ -43,6 +43,13 @@ GUEST_PERSON_ID: PersonId = PersonId("guest")
 OWNER_SCOPE: Scope = OWNER_PRIVATE
 """Backward-compatible owner scope alias for existing M1 surface tests."""
 
+NEEDS_UNLOCK_PROMPT: str = "That needs your phone unlock first."
+"""Spoken voice prompt for locked owner Tier-1 requests."""
+
+
+class NeedsPhoneUnlock(RuntimeError):  # noqa: N818 - spec requires this import name.
+    """Raised when a voice turn needs owner key unlock before serving Tier-1 data."""
+
 
 class Gateway:
     """Text ingress Gateway -- attaches scope before the Brain sees the request.
@@ -157,6 +164,23 @@ class Gateway:
                 escalated=False,
             )
         return await self._brain.respond(transcript, scope)
+
+    async def handle_voice_stream(self, audio: bytes, transcript: str) -> AsyncIterator[str]:
+        """Stream a voice response after fail-closed voice-ID and Tier gating.
+
+        Voice-ID resolves identity only; owner Tier-1 requests require a real
+        unlocked key provider before any streamed Brain response can start.
+        """
+        identity = self._resolve_voice_identity(audio)
+        scope = primary_scope(identity)
+        module_fq = await self._brain.pre_route(transcript, scope)
+        data_scope = self._data_scope_for_module(module_fq)
+        tier = tier_for(data_scope)
+        if identity.role == "owner" and tier == "tier1":
+            if self._key_provider is None or not self._key_provider.is_owner_unlocked():
+                raise NeedsPhoneUnlock
+        async for chunk in self._brain.respond_stream(transcript, scope):
+            yield chunk
 
     def _data_scope_for_module(self, module_fq: str | None) -> DataScope | None:
         if module_fq is None:
