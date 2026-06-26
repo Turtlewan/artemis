@@ -151,18 +151,14 @@ class Gateway:
         module_fq = await self._brain.pre_route(transcript, scope)
         data_scope = self._data_scope_for_module(module_fq)
         tier = tier_for(data_scope)
-        if (
-            identity.role == "owner"
-            and tier == "tier1"
-            and self._key_provider is not None
-            and not self._key_provider.is_owner_unlocked()
-        ):
-            return BrainResponse(
-                text="NEEDS_PHONE_UNLOCK",
-                path="needs-unlock",
-                tool_used=None,
-                escalated=False,
-            )
+        if identity.role == "owner" and tier == "tier1":
+            if self._key_provider is None or not self._key_provider.is_owner_unlocked():
+                return BrainResponse(
+                    text="NEEDS_PHONE_UNLOCK",
+                    path="needs-unlock",
+                    tool_used=None,
+                    escalated=False,
+                )
         return await self._brain.respond(transcript, scope)
 
     async def handle_voice_stream(self, audio: bytes, transcript: str) -> AsyncIterator[str]:

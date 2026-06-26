@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 import socket
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -221,6 +222,27 @@ async def test_windows_sandbox_live_network_denied_or_host_guarded(tmp_path: Pat
     )
 
     assert result.exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_windows_sandbox_maps_icacls_failure_to_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # icacls ACL-grant runs with check=True -> CalledProcessError (a
+    # SubprocessError, NOT an OSError). run() must map it to a fail-closed
+    # CommandResult, never let it propagate unhandled.
+    def _boom(*_args: object, **_kwargs: object) -> CommandResult:
+        raise subprocess.CalledProcessError(1, ["icacls", str(tmp_path)])
+
+    monkeypatch.setattr("artemis.agentic.sandbox._mpssvc_running", lambda: True)
+    monkeypatch.setattr("artemis.agentic.sandbox._run_appcontainer_process", _boom)
+
+    result = await WindowsAppContainerSandbox().run(
+        (_python_executable(), "-c", "print('x')"), workspace_root=tmp_path
+    )
+
+    assert result.exit_code == 2
+    assert "sandbox setup failed" in result.stderr
 
 
 def _outside_network_connects() -> bool:

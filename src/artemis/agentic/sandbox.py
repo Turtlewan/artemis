@@ -114,6 +114,11 @@ class WindowsAppContainerSandbox:
             return CommandResult(exit_code=2, stdout="", stderr=str(exc))
         except OSError as exc:
             return CommandResult(exit_code=2, stdout="", stderr=f"sandbox launch failed: {exc}")
+        except subprocess.CalledProcessError as exc:
+            # icacls ACL-grant (check=True) raises CalledProcessError, a
+            # SubprocessError not an OSError -> map to a fail-closed result so
+            # run() always honours the "return a CommandResult" contract.
+            return CommandResult(exit_code=2, stdout="", stderr=f"sandbox setup failed: {exc}")
 
 
 class DockerSandbox:

@@ -113,6 +113,25 @@ async def test_voice_owner_tier1_locked_needs_phone_unlock() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_owner_tier1_absent_key_provider_fails_closed() -> None:
+    # An absent key_provider means "cannot verify unlock" -> treat as locked
+    # (fail-closed), the same posture as handle_voice_stream. Before the fix the
+    # gate's `key_provider is not None` clause skipped, falling through to brain.
+    brain = _FakeBrain(DataScope.OWNER_PRIVATE)
+    gateway = Gateway(
+        cast(Brain, brain),
+        key_provider=None,
+        speaker_id=FakeSpeakerID({b"voice": OWNER_PERSON_ID}),
+    )
+
+    response = await gateway.handle_voice(b"voice", "show my journal")
+
+    assert response.text == "NEEDS_PHONE_UNLOCK"
+    assert response.path == "needs-unlock"
+    assert brain.respond_calls == []
+
+
+@pytest.mark.asyncio
 async def test_voice_owner_tier0_locked_proceeds_with_owner_scope() -> None:
     brain = _FakeBrain(DataScope.SHARED)
     gateway = Gateway(
