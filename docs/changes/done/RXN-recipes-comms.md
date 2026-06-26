@@ -1,9 +1,20 @@
 ---
 spec: rxn-recipes-comms
-status: ready
+status: superseded
 token_profile: balanced
 autonomy_level: L2
 ---
+
+<!-- SUPERSEDED 2026-06-26 by Wave R-comp (ADR-032). The ADR-021 read-from-payload comms
+     reactions were rebuilt by R6c (fetch-via-ref rework of A4/A5/A7 + react_gift_signal) on
+     R4m's MemoryWritePath.add_module_fact — see docs/changes/done/{R6c-comms-fetch-via-ref,
+     R4m-memory-module-fact}.md (commits 0054d32 / fc5a25b). The live comms.py is the R6c
+     version. The ONE piece NOT carried into the ADR-032 rework is the "email-to-self clip"
+     channel (route a self-addressed email's extract into the capture/memory inbox) — that
+     residual is logged as an Open Question in status.md (owner decides if still wanted; the
+     iOS Share Extension was always deferred/not-built). This spec is retired to done/ for the
+     record; do NOT build it (it would conflict with the live R6c comms.py). -->
+
 <!-- Wave R · per-cluster reaction recipes (Comms/email). Consumes the reaction infra (RXN-emit /
      RXN-rulestore / RXN-dispatcher) + capabilities (CAL-create-from-extract, TRIP-entity, MAPS-connector)
      + CaptureService (M8-d-c2). Defines ReactionRules + reaction callables for the A-cluster email
