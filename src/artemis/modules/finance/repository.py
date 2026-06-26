@@ -442,6 +442,11 @@ class FinanceRepository:
             ).fetchall()
         return [_bill_row(row) for row in rows]
 
+    def get_bill(self, id: str) -> dict[str, object] | None:
+        """Return a bill row by id, including lifecycle linkage fields."""
+        row = self.conn.execute("SELECT * FROM bill WHERE id = ?", (id,)).fetchone()
+        return _bill_row(row) if row is not None else None
+
     def mark_bill_paid(self, id: str) -> None:
         self.conn.execute(
             """

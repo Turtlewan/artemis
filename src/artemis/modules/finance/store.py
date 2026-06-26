@@ -254,6 +254,10 @@ class FinanceStore:
     def list_bills(self, *, status: str | None = None) -> list[dict[str, object]]:
         return self._repo().list_bills(status=status)
 
+    def get_bill(self, id: str) -> dict[str, object] | None:
+        """Return a bill row by id, including linked task metadata."""
+        return self._repo().get_bill(id)
+
     def mark_bill_paid(self, id: str) -> None:
         self._repo().mark_bill_paid(id)
 

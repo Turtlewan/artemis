@@ -104,6 +104,7 @@ class ReconcilerLike(Protocol):
 
 
 MarkBillPaidFn = Callable[[str], Awaitable[object]]
+GetLinkedTaskRefFn = Callable[[str], Awaitable[str | None]]
 CompleteTaskFn = Callable[[str], Awaitable[object]]
 FraudNotifyFn = Callable[[FraudSignal], Awaitable[object]]
 EmitFn = Callable[[DomainEvent], None]
@@ -113,6 +114,7 @@ async def react_statement_to_settlement(
     event: DomainEvent,
     *,
     mark_bill_paid_fn: MarkBillPaidFn,
+    get_linked_task_ref_fn: GetLinkedTaskRefFn,
     emit: EmitFn,
 ) -> ReactionResult:
     """A1 Tier-A extended: settlement payment marks its statement bill paid.
@@ -132,7 +134,8 @@ async def react_statement_to_settlement(
     mark_result = await mark_bill_paid_fn(bill_id)
     if not _tool_changed(mark_result):
         return ReactionResult(status="settled", ref=bill_id, undoable=True)
-    emit(bill_paid_event(bill_id=bill_id, payee=_payee(event)))
+    linked_task_ref = await get_linked_task_ref_fn(bill_id)
+    emit(bill_paid_event(bill_id=bill_id, payee=_payee(event), linked_task_ref=linked_task_ref))
     return ReactionResult(status="settled", ref=bill_id, undoable=True)
 
 
@@ -168,6 +171,7 @@ async def react_payment_reconcile(
     *,
     reconciler: ReconcilerLike,
     mark_bill_paid_fn: MarkBillPaidFn,
+    get_linked_task_ref_fn: GetLinkedTaskRefFn,
     complete_task_fn: CompleteTaskFn,
     emit: EmitFn,
 ) -> ReactionResult:
@@ -195,7 +199,8 @@ async def react_payment_reconcile(
     task_ref = _payload_str(event, "linked_task_ref")
     if task_ref is not None:
         await complete_task_fn(_task_id_from_ref(task_ref))
-    emit(bill_paid_event(bill_id=bill_id, payee=_payee(event)))
+    linked_task_ref = await get_linked_task_ref_fn(bill_id)
+    emit(bill_paid_event(bill_id=bill_id, payee=_payee(event), linked_task_ref=linked_task_ref))
     return ReactionResult(status="reconciled", ref=bill_id, undoable=True)
 
 
@@ -257,15 +262,23 @@ async def react_bill_paid_lifecycle(
     return ReactionResult(status="task_completed", ref=task_id, undoable=True)
 
 
-def bill_paid_event(*, bill_id: str, payee: str) -> DomainEvent:
+def bill_paid_event(*, bill_id: str, payee: str, linked_task_ref: str | None = None) -> DomainEvent:
     """Build the scalar-only BILL_PAID event consumed by lifecycle reactions."""
+    payload: dict[str, str | int | float | bool] = {"bill_id": bill_id, "payee": payee}
+    if linked_task_ref is not None:
+        payload["linked_task_ref"] = linked_task_ref
     return DomainEvent(
         event_type=EventType.BILL_PAID,
         source_module="finance",
-        payload={"bill_id": bill_id, "payee": payee},
+        payload=payload,
         occurred_at=datetime.now(UTC).isoformat(),
         dedup_key=f"bill-paid:{bill_id}",
     )
+
+
+async def _no_linked_task_ref(bill_id: str) -> str | None:
+    del bill_id
+    return None
 
 
 def register_self_reactions(
@@ -273,6 +286,7 @@ def register_self_reactions(
     *,
     capture_service: CaptureServiceLike,
     mark_bill_paid_fn: MarkBillPaidFn,
+    get_linked_task_ref_fn: GetLinkedTaskRefFn = _no_linked_task_ref,
     complete_task_fn: CompleteTaskFn,
     reconciler: ReconcilerLike,
     fraud_notify_fn: FraudNotifyFn,
@@ -290,7 +304,12 @@ def register_self_reactions(
     """
     settlement_callable = cast(
         Callable[[ReactionArgs], Awaitable[ReactionResult]],
-        partial(_statement_to_settlement_tool, mark_bill_paid_fn=mark_bill_paid_fn, emit=emit),
+        partial(
+            _statement_to_settlement_tool,
+            mark_bill_paid_fn=mark_bill_paid_fn,
+            get_linked_task_ref_fn=get_linked_task_ref_fn,
+            emit=emit,
+        ),
     )
     bill_task_callable = cast(
         Callable[[ReactionArgs], Awaitable[ReactionResult]],
@@ -302,6 +321,7 @@ def register_self_reactions(
             _payment_reconcile_tool,
             reconciler=reconciler,
             mark_bill_paid_fn=mark_bill_paid_fn,
+            get_linked_task_ref_fn=get_linked_task_ref_fn,
             complete_task_fn=complete_task_fn,
             emit=emit,
         ),
@@ -374,11 +394,13 @@ async def _statement_to_settlement_tool(
     args: ReactionArgs,
     *,
     mark_bill_paid_fn: MarkBillPaidFn,
+    get_linked_task_ref_fn: GetLinkedTaskRefFn,
     emit: EmitFn,
 ) -> ReactionResult:
     return await react_statement_to_settlement(
         _event_from_args(args),
         mark_bill_paid_fn=mark_bill_paid_fn,
+        get_linked_task_ref_fn=get_linked_task_ref_fn,
         emit=emit,
     )
 
@@ -396,6 +418,7 @@ async def _payment_reconcile_tool(
     *,
     reconciler: ReconcilerLike,
     mark_bill_paid_fn: MarkBillPaidFn,
+    get_linked_task_ref_fn: GetLinkedTaskRefFn,
     complete_task_fn: CompleteTaskFn,
     emit: EmitFn,
 ) -> ReactionResult:
@@ -403,6 +426,7 @@ async def _payment_reconcile_tool(
         _event_from_args(args),
         reconciler=reconciler,
         mark_bill_paid_fn=mark_bill_paid_fn,
+        get_linked_task_ref_fn=get_linked_task_ref_fn,
         complete_task_fn=complete_task_fn,
         emit=emit,
     )

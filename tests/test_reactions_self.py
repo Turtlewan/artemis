@@ -90,6 +90,16 @@ class FakeMarkBillPaidFn:
         return OkResult(changed=False)
 
 
+class FakeGetLinkedTaskRefFn:
+    def __init__(self, linked_task_ref: str | None = "tasks:task:task-bill-1") -> None:
+        self.linked_task_ref = linked_task_ref
+        self.calls: list[str] = []
+
+    async def __call__(self, bill_id: str) -> str | None:
+        self.calls.append(bill_id)
+        return self.linked_task_ref
+
+
 class FakeCompleteTaskFn:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -151,11 +161,17 @@ class FakeDispatcher:
         rule: ReactionRule,
         event: DomainEvent,
         mark_paid: FakeMarkBillPaidFn,
+        get_linked_task_ref: FakeGetLinkedTaskRefFn,
         emit: EmitSpy,
     ) -> None:
         if self._seen(rule, event):
             return
-        await react_statement_to_settlement(event, mark_bill_paid_fn=mark_paid, emit=emit)
+        await react_statement_to_settlement(
+            event,
+            mark_bill_paid_fn=mark_paid,
+            get_linked_task_ref_fn=get_linked_task_ref,
+            emit=emit,
+        )
 
     async def fire_a6(
         self,
@@ -173,6 +189,7 @@ class FakeDispatcher:
         event: DomainEvent,
         reconciler: FakeReconciler,
         mark_paid: FakeMarkBillPaidFn,
+        get_linked_task_ref: FakeGetLinkedTaskRefFn,
         complete: FakeCompleteTaskFn,
         emit: EmitSpy,
     ) -> None:
@@ -182,6 +199,7 @@ class FakeDispatcher:
             event,
             reconciler=reconciler,
             mark_bill_paid_fn=mark_paid,
+            get_linked_task_ref_fn=get_linked_task_ref,
             complete_task_fn=complete,
             emit=emit,
         )
@@ -207,29 +225,55 @@ class FakeDispatcher:
 
 async def test_a1_settlement_marks_statement_bill_paid_emits_bill_paid_and_dedups() -> None:
     mark_paid = FakeMarkBillPaidFn()
+    get_linked_task_ref = FakeGetLinkedTaskRefFn()
     emit = EmitSpy()
     event = _payment_event(txn_type="settlement")
 
-    result = await react_statement_to_settlement(event, mark_bill_paid_fn=mark_paid, emit=emit)
-    await react_statement_to_settlement(event, mark_bill_paid_fn=mark_paid, emit=emit)
+    result = await react_statement_to_settlement(
+        event,
+        mark_bill_paid_fn=mark_paid,
+        get_linked_task_ref_fn=get_linked_task_ref,
+        emit=emit,
+    )
+    await react_statement_to_settlement(
+        event,
+        mark_bill_paid_fn=mark_paid,
+        get_linked_task_ref_fn=get_linked_task_ref,
+        emit=emit,
+    )
 
     assert result.status == "settled"
     assert result.ref == "bill-1"
     assert mark_paid.calls == ["bill-1"]
+    assert get_linked_task_ref.calls == ["bill-1"]
     assert mark_paid.spend_writes == []
     assert [emitted.event_type for emitted in emit.events] == [EventType.BILL_PAID]
-    assert emit.events[0].payload == {"bill_id": "bill-1", "payee": "Utility Co"}
+    assert emit.events[0].payload == {
+        "bill_id": "bill-1",
+        "payee": "Utility Co",
+        "linked_task_ref": "tasks:task:task-bill-1",
+    }
 
     dispatcher_mark_paid = FakeMarkBillPaidFn()
+    dispatcher_get_linked_task_ref = FakeGetLinkedTaskRefFn()
     dispatcher_emit = EmitSpy()
     dispatcher = FakeDispatcher()
     await dispatcher.fire_a1(
-        _builtin("cc_settlement_marker"), event, dispatcher_mark_paid, dispatcher_emit
+        _builtin("cc_settlement_marker"),
+        event,
+        dispatcher_mark_paid,
+        dispatcher_get_linked_task_ref,
+        dispatcher_emit,
     )
     await dispatcher.fire_a1(
-        _builtin("cc_settlement_marker"), event, dispatcher_mark_paid, dispatcher_emit
+        _builtin("cc_settlement_marker"),
+        event,
+        dispatcher_mark_paid,
+        dispatcher_get_linked_task_ref,
+        dispatcher_emit,
     )
     assert dispatcher_mark_paid.calls == ["bill-1"]
+    assert dispatcher_get_linked_task_ref.calls == ["bill-1"]
     assert len(dispatcher_emit.events) == 1
 
 
@@ -266,6 +310,7 @@ async def test_a6_bill_to_task_creates_dated_pay_task_and_dedups() -> None:
 async def test_a9_exact_match_marks_paid_completes_task_emits_and_uses_canonical_match() -> None:
     reconciler = FakeReconciler(MatchOutcome.EXACT)
     mark_paid = FakeMarkBillPaidFn()
+    get_linked_task_ref = FakeGetLinkedTaskRefFn()
     complete = FakeCompleteTaskFn()
     emit = EmitSpy()
 
@@ -273,6 +318,7 @@ async def test_a9_exact_match_marks_paid_completes_task_emits_and_uses_canonical
         _payment_event(txn_type="payment"),
         reconciler=reconciler,
         mark_bill_paid_fn=mark_paid,
+        get_linked_task_ref_fn=get_linked_task_ref,
         complete_task_fn=complete,
         emit=emit,
     )
@@ -280,8 +326,10 @@ async def test_a9_exact_match_marks_paid_completes_task_emits_and_uses_canonical
     assert result.status == "reconciled"
     assert result.ref == "bill-1"
     assert mark_paid.calls == ["bill-1"]
+    assert get_linked_task_ref.calls == ["bill-1"]
     assert complete.calls == ["task-1"]
     assert [event.event_type for event in emit.events] == [EventType.BILL_PAID]
+    assert emit.events[0].payload["linked_task_ref"] == "tasks:task:task-bill-1"
     target, candidates = reconciler.calls[0]
     assert isinstance(target, ReconcileRecord)
     assert all(isinstance(candidate, ReconcileRecord) for candidate in candidates)
@@ -304,6 +352,7 @@ async def test_a9_ambiguous_and_none_do_not_mark_paid() -> None:
             _payment_event(txn_type="payment"),
             reconciler=reconciler,
             mark_bill_paid_fn=mark_paid,
+            get_linked_task_ref_fn=FakeGetLinkedTaskRefFn(),
             complete_task_fn=complete,
             emit=emit,
         )
@@ -318,19 +367,33 @@ async def test_a9_refire_is_deduped_by_rule_key() -> None:
     event = _payment_event(txn_type="payment")
     reconciler = FakeReconciler(MatchOutcome.EXACT)
     mark_paid = FakeMarkBillPaidFn()
+    get_linked_task_ref = FakeGetLinkedTaskRefFn()
     complete = FakeCompleteTaskFn()
     emit = EmitSpy()
     dispatcher = FakeDispatcher()
 
     await dispatcher.fire_a9(
-        _builtin("payment_bill_link"), event, reconciler, mark_paid, complete, emit
+        _builtin("payment_bill_link"),
+        event,
+        reconciler,
+        mark_paid,
+        get_linked_task_ref,
+        complete,
+        emit,
     )
     await dispatcher.fire_a9(
-        _builtin("payment_bill_link"), event, reconciler, mark_paid, complete, emit
+        _builtin("payment_bill_link"),
+        event,
+        reconciler,
+        mark_paid,
+        get_linked_task_ref,
+        complete,
+        emit,
     )
 
     assert len(reconciler.calls) == 1
     assert mark_paid.calls == ["bill-1"]
+    assert get_linked_task_ref.calls == ["bill-1"]
     assert complete.calls == ["task-1"]
     assert len(emit.events) == 1
 
@@ -440,6 +503,62 @@ async def test_lifecycle_completes_linked_task() -> None:
     assert complete.calls == ["task-1"]
 
 
+async def test_a1_emitted_bill_paid_completes_linked_task_end_to_end() -> None:
+    complete = FakeCompleteTaskFn()
+    emit = EmitSpy()
+
+    result = await react_statement_to_settlement(
+        _payment_event(txn_type="settlement"),
+        mark_bill_paid_fn=FakeMarkBillPaidFn(),
+        get_linked_task_ref_fn=FakeGetLinkedTaskRefFn("tasks:task:task-bill-1"),
+        emit=emit,
+    )
+    lifecycle = await react_bill_paid_lifecycle(emit.events[0], complete_task_fn=complete)
+
+    assert result.status == "settled"
+    assert emit.events[0].payload["linked_task_ref"] == "tasks:task:task-bill-1"
+    assert lifecycle.status == "task_completed"
+    assert complete.calls == ["task-bill-1"]
+
+
+async def test_a9_emitted_bill_paid_completes_linked_task_end_to_end() -> None:
+    complete = FakeCompleteTaskFn()
+    emit = EmitSpy()
+
+    result = await react_payment_reconcile(
+        _payment_event(txn_type="payment"),
+        reconciler=FakeReconciler(MatchOutcome.EXACT),
+        mark_bill_paid_fn=FakeMarkBillPaidFn(),
+        get_linked_task_ref_fn=FakeGetLinkedTaskRefFn("tasks:task:task-bill-1"),
+        complete_task_fn=complete,
+        emit=emit,
+    )
+    lifecycle = await react_bill_paid_lifecycle(emit.events[0], complete_task_fn=complete)
+
+    assert result.status == "reconciled"
+    assert emit.events[0].payload["linked_task_ref"] == "tasks:task:task-bill-1"
+    assert lifecycle.status == "task_completed"
+    assert complete.calls == ["task-1", "task-bill-1"]
+
+
+async def test_no_ref_bill_paid_payload_skips_lifecycle_without_completion() -> None:
+    complete = FakeCompleteTaskFn()
+    emit = EmitSpy()
+
+    result = await react_statement_to_settlement(
+        _payment_event(txn_type="settlement"),
+        mark_bill_paid_fn=FakeMarkBillPaidFn(),
+        get_linked_task_ref_fn=FakeGetLinkedTaskRefFn(None),
+        emit=emit,
+    )
+    lifecycle = await react_bill_paid_lifecycle(emit.events[0], complete_task_fn=complete)
+
+    assert result.status == "settled"
+    assert "linked_task_ref" not in emit.events[0].payload
+    assert lifecycle.status == "skipped"
+    assert complete.calls == []
+
+
 async def test_register_self_reactions_rules_registry_and_tool_wrappers() -> None:
     registry = ToolRegistry(FakeEmbedder())
     capture = FakeCaptureService()
@@ -453,6 +572,7 @@ async def test_register_self_reactions_rules_registry_and_tool_wrappers() -> Non
         registry,
         capture_service=capture,
         mark_bill_paid_fn=mark_paid,
+        get_linked_task_ref_fn=FakeGetLinkedTaskRefFn(),
         complete_task_fn=complete,
         reconciler=reconciler,
         fraud_notify_fn=notify,
@@ -502,11 +622,21 @@ def test_import_reexport() -> None:
 
 def test_bill_paid_event_builder_shape() -> None:
     event = bill_paid_event(bill_id="bill-1", payee="Utility Co")
+    linked = bill_paid_event(
+        bill_id="bill-1",
+        payee="Utility Co",
+        linked_task_ref="tasks:task:task-1",
+    )
 
     assert event.event_type is EventType.BILL_PAID
     assert event.source_module == "finance"
     assert event.payload == {"bill_id": "bill-1", "payee": "Utility Co"}
     assert event.dedup_key == "bill-paid:bill-1"
+    assert linked.payload == {
+        "bill_id": "bill-1",
+        "payee": "Utility Co",
+        "linked_task_ref": "tasks:task:task-1",
+    }
 
 
 def test_no_cloud_import_guard_and_adr_011_tool_injection() -> None:
