@@ -175,10 +175,24 @@ Phases 3 and 4 run in parallel (owner decision). Mac-gating means the feature ca
 
 ---
 
+## Refinement 2026-06-26 — coding subsystem, research-grounded (resolves §D parked items)
+
+Spec-time research (`docs/research/2026-06-26-openhands-windows/README.md`) pins the OpenHands embed for the **Windows 8GB dev box** (Mac = parity host). Decision D ("BORROW OpenHands SDK") is unchanged; these are the concrete bindings:
+
+1. **Bind to the V1 `openhands-sdk` (Software Agent SDK), NOT the legacy `openhands-ai` web app.** Packages `openhands-sdk` / `openhands-tools` / `openhands-agent-server` / `openhands-workspace` (v1.29.x, Python ≥3.12 — Artemis is on 3.12.10 ✓). It is built to embed in-process: `from openhands.sdk import LLM, Agent, Conversation, Tool` → `Conversation(agent, workspace).send_message(...).run()`. The legacy app is Docker/WSL2-first = wrong target.
+2. **Local runtime, NOT Docker, on the dev box.** The Docker runtime wants ~12GB RAM + a WSL2 VM + multi-GB images; with a resident Ollama 7B (~5–6GB) the two are mutually exclusive on 8GB. The **local runtime** (agent-server as a host process, few-hundred-MB) is the only one that coexists with Ollama — but it provides **zero isolation by itself**.
+3. **Sandbox = Artemis' existing Windows restricted-token + Job Object wrap around the local runtime** (the same isolation the Codex coder already uses — `apex-coder` profile). This is the Windows analogue of ADR-031's macOS `sandbox-exec` interim, and carries the **same Windows-only-parity caveat**: full sandbox parity is validated on the Mac.
+4. **Spec against OpenHands' workspace abstraction (the parity escape hatch).** Same agent code runs `LocalWorkspace` (Windows dev, no native isolation → Artemis wraps it) vs `DockerWorkspace`/remote (Mac prod). Windows-dev and Mac-prod differ **only by workspace config** — the coding-subsystem spec binds to the workspace interface, not a concrete runtime.
+5. **HITL mechanism = OpenHands `ConfirmationPolicy` + `SecurityAnalyzer` → Artemis GATE.** The agent enters `WAITING_FOR_CONFIRMATION`; a `SecurityAnalyzer` rates risk (low/med/high) and a custom `ConfirmationPolicy` (deferring to Artemis' single approval surface, decision C) decides when approval is required — risk-assessment is separated from enforcement, so the policy plugs in without touching tool executors. This is how the coding subsystem reuses the shared `AskOwnerTool`/agent-inbox + GATE seam (decision D's "WAITING_FOR_CONFIRMATION defers to Artemis").
+6. **Backend router = LiteLLM** (built into the SDK: `LLM(model=, api_key=, base_url=)`), per-task Codex/DeepSeek/GLM/Ollama swap is trivial — confirms decision D's pluggable backend.
+
+**⚠ Risk (FLAG, not blocker):** native-Windows OpenHands is **experimental** (PowerShell 7 + .NET Core + pythonnet; Python 3.12/3.13 only; browser tool unsupported; CLI runtime bash-based — upstream issues #9210, #86). Mitigation: the workspace-parity seam (4) means the dev box validates the embed + Artemis-owned layers behind the local runtime, and the full sandboxed runtime is validated on the Mac (Docker/remote workspace) — consistent with the existing Mac-gating posture.
+
 ## Parked / next
 
 - Exact `AskOwnerTool` protocol (message schema, timeout behaviour, partial-result surface on timeout) — parked to coding-subsystem spec.
-- Sensitive-screen pre-filter detector list (which apps / which classifier signals trigger a skip) — parked to Rung 3 spec.
-- `cloud_reasoning_enabled` config surface (where the kill-switch lives in user config, default value) — parked to GEPA spec.
+- ~~OpenHands embed bindings + Windows sandbox~~ — **RESOLVED 2026-06-26** (§ Refinement above).
+- Sensitive-screen pre-filter detector list (which apps / which classifier signals trigger a skip) — parked to Rung 3 spec (Mac-gated).
+- `cloud_reasoning_enabled` config surface (where the kill-switch lives in user config, default value) — parked to GEPA spec (end-state).
 - Agentic UI design (4 surfaces above) — downstream, in BACKLOG.
-- Spec series authoring — post-spoke-wave per ADR-024.
+- Spec series authoring — **IN PROGRESS 2026-06-26** (dev-buildable Phases 1–4; owner chose full-engine plan).
