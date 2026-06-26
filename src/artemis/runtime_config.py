@@ -299,6 +299,83 @@ class SensitivityConfig(BaseModel):
     )
 
 
+class CoderBackendConfig(BaseModel):
+    """LiteLLM backend policy for non-sensitive code-generation tasks."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str = Field(
+        description="LiteLLM model string for the coder backend.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Optional OpenAI-compatible endpoint base URL for this backend.",
+    )
+    api_key_env: str = Field(
+        description="Environment variable name that stores this backend's API key.",
+    )
+    tier: Literal["cheap", "standard"] = Field(
+        description="Cost/capability tier hint for this backend.",
+    )
+
+    @field_validator("model", "api_key_env")
+    @classmethod
+    def _validate_non_empty(cls, value: str) -> str:
+        if not value:
+            raise ValueError("value must be non-empty")
+        return value
+
+
+class CoderRoutingConfig(BaseModel):
+    """Policy-driven coder backend routing table.
+
+    Coding tasks are non-sensitive in ADR-031 D, so this table may include cloud
+    coder backends. API keys are referenced by environment variable name only.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    default_task_class: str = Field(
+        default="standard",
+        description="Fallback task class when no explicit backend is configured.",
+    )
+    task_backends: dict[str, CoderBackendConfig] = Field(
+        default_factory=lambda: {
+            "cheap": CoderBackendConfig(
+                model="deepseek/deepseek-chat",
+                base_url="https://api.deepseek.com",
+                api_key_env="DEEPSEEK_API_KEY",
+                tier="cheap",
+            ),
+            "standard": CoderBackendConfig(
+                model="openai/gpt-4.1-mini",
+                api_key_env="OPENAI_API_KEY",
+                tier="standard",
+            ),
+            "large": CoderBackendConfig(
+                model="openrouter/z-ai/glm-4.5",
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env="OPENROUTER_API_KEY",
+                tier="standard",
+            ),
+        },
+        description="Task class to LiteLLM backend mapping.",
+    )
+
+    @field_validator("default_task_class")
+    @classmethod
+    def _validate_default_task_class(cls, value: str) -> str:
+        if not value:
+            raise ValueError("default_task_class must be non-empty")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_default_backend_exists(self) -> CoderRoutingConfig:
+        if self.default_task_class not in self.task_backends:
+            raise ValueError("default_task_class must exist in task_backends")
+        return self
+
+
 class RuntimeConfig(BaseModel):
     """Aggregate owner policy config for all runtime-tunable cluster surfaces."""
 
@@ -327,6 +404,10 @@ class RuntimeConfig(BaseModel):
     sensitivity: SensitivityConfig = Field(
         default_factory=SensitivityConfig,
         description="Ground Rules v1 sensitivity tagging policy tunables.",
+    )
+    coder_routing: CoderRoutingConfig = Field(
+        default_factory=CoderRoutingConfig,
+        description="Coder backend routing policy tunables.",
     )
 
 
