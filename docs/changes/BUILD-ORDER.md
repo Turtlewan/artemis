@@ -16,16 +16,18 @@ Old **Swift** client specs (CLIENT-c-artemiskit/d-app-shell/e-screens/f-mac-app)
 
 ## ▶ Dev-buildable queue (build in this order)
 
-### Group A — Agentic engine (ADR-031 Phases 1–4) — PRIORITY (owner: agentic first)
-| Wave | Spec(s) | Notes |
-|------|---------|-------|
-| A0 | `AGENT-types` | shared types/Protocols barrel |
-| A1 ∥ | `AGENT-checkpoint` · `AGENT-inbox` · `AGENT-authority` | file-disjoint, parallel |
-| A2 | `AGENT-spine` | composes A1; adds `pydantic-ai` (`[agentic]` extra) |
-| A3 | `AGENT-rung01` | read-only introspection + reversible file ops |
-| A4 | `AGENT-coder-router` → `AGENT-coder` | LiteLLM router → embed `openhands-sdk` (`[agentic]` extra) |
-| A5 | `AGENT-rung2` | no-network AppContainer sandbox + command exec |
-_pyproject `[agentic]` extra is touched by spine/coder-router/coder — already dep-serialised across waves._
+### Group A — Agentic engine (ADR-031 Phases 1–4) — ✅ COMPLETE 2026-06-26 (baseline green @ `b09255c`)
+All 9 specs built (Codex/Opus), host-verified (full mypy + pytest), Opus security-reviewed, committed, archived to `done/`.
+Engine lives behind the optional `[dependency-groups] agentic` group (base sync stays lean). rung2 AppContainer network-deny
+host-validated. 2 composition seams (spine approve→graduate · inbox deliver-count) wait on GATE-b — see `docs/handoff/2026-06-26.md`.
+| Wave | Spec(s) | Status |
+|------|---------|--------|
+| A0 | `AGENT-types` | ✅ `4baaa6b` |
+| A1 | `AGENT-checkpoint` · `AGENT-inbox` · `AGENT-authority` | ✅ `dc504ac` · `7806d67` · `d185662` |
+| A2 | `AGENT-spine` (+`pydantic-ai`) | ✅ `6396427` |
+| A3 | `AGENT-rung01` | ✅ `dea5016` |
+| A4 | `AGENT-coder-router` → `AGENT-coder` (+`litellm`/`openhands-sdk`) | ✅ `865b10b` · `a97be1e` |
+| A5 | `AGENT-rung2` (AppContainer sandbox) | ✅ `b09255c` |
 
 ### Group B — Voice (M5 dev twin) — independent of A
 | Order | Spec | Notes |
@@ -38,7 +40,7 @@ _pyproject `[agentic]` extra is touched by spine/coder-router/coder — already 
 ### Group C — Quick wins (independent, any time)
 | Spec | Notes |
 |------|-------|
-| `fix-finance-hooks-date-stability` | trivial test-date fix (the one red test) |
+| `fix-finance-hooks-date-stability` | ✅ DONE `f0be86c` (greened the red baseline that was blocking all builds) |
 | `distill-datagen-pipeline` | offline `tools/distill/` teacher→JSONL pipeline (pre-Mac) |
 
 **Concurrency:** A, B, C are mutually independent (disjoint files, no cross-prereqs) → may run concurrently;

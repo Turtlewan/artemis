@@ -200,11 +200,15 @@ _Prior:_ 2026-06-09 (**WWDC + homelab + self-training research session.** Hardwa
 gated. Self-training reframed to **capability via reasoning-distillation** → ready spec `distill-datagen-pipeline`.
 **Bring-up artifacts DONE** (RUNBOOK + SECRETS-INVENTORY). 2 gaps surfaced (env-injection script · repo-transfer,
 since resolved). Camera module → BACKLOG.)
-_Last updated by coding mode:_ 2026-06-22 (**First Codex build session — ADR-026.** Built + committed via Codex CLI (gpt-5.5,
-owner-supervised, per-spec): `M4-d-1` entity data layer (first Codex test build), `uv-dependency-groups-migration` (PEP 735),
-`tooling-cleanup` (both tasks), `codex-model-adapter`. Also committed prior planning docs: ADR-025 (Tauri client auth/wall
-re-root) + ADR-026 (Codex build coder). Codex built faithfully throughout — spec-conformant, surgical, scrubbed errors. **Clean
-baseline @ 1616894, 139 tests pass.** Remaining brain-Codex trio: `composite-model-routing` → `brain-sensitivity-routing`.)
+_Last updated by coding mode:_ 2026-06-26 (**AGENTIC ENGINE BUILT — Group A complete (ADR-031), 11 commits, baseline green @ `b09255c`.**
+Codex coder / Opus host. Built the Group C finance baseline-fix + all 9 `AGENT-*` specs serially (A0 types → A1 checkpoint∥inbox∥authority
+→ A2 spine → A3 rung01 → A4 coder-router→coder → A5 rung2), each host-verified with FULL `uv run mypy` + `uv run pytest -q` and an
+independent Opus security review per `cross_model_review:true` spec. **Final: mypy clean (294 files), ruff clean, 828 passed / 4 skipped.**
+The whole engine lives behind the optional `[dependency-groups] agentic` group (base sync stays lean). **AGENT-rung2 AppContainer
+network-deny is INDEPENDENTLY HOST-VALIDATED** (in-sandbox 1.1.1.1:80 blocked, host connects — kernel block, no admin). All 9 specs
+archived to `done/`; `BUILD-ORDER.md` Group A marked complete. **Build narrative + the per-spec flags (2 composition seams wait on GATE-b:
+spine approve→graduate · inbox deliver-count; agentic-group supply-chain bump before live cloud-coder; rung2 icacls error-mapping) →
+`docs/handoff/2026-06-26.md` build-session 2.** Earlier brain-Codex work (M4-d-1, migrations, model-adapter) committed 2026-06-22.)
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
