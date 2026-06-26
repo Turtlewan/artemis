@@ -18,7 +18,14 @@ The spec's `[voice-dev]` list did not resolve. Fixes applied to pyproject.toml +
   after the change. **The group now RESOLVES (lock done — AC met).** The full ~5GB `uv sync --group
   voice-dev` heavy install + espeak-ng/cu128 GPU setup remain the GATED on-hardware exercise.
 
-## ⛔ FORK (BIG — planning/owner decision; spec NOT archived, stays in changes/)
+## ✅ FORK RESOLVED 2026-06-26 (planning) → spec `docs/changes/m5-a-win-transport.md`
+Owner chose **bare TCP-loopback** for the Windows-dev twin (no handshake; matches the existing
+local-trust posture; Mac keeps AF_UNIX). Transport becomes a platform seam in `IPCServer.start()`
+(AF_UNIX where available, else TCP on 127.0.0.1 with the port published to `audio.port`); framing
+unchanged; the e2e socket test un-skips. Resolution spec `m5-a-win-transport` (Light, ready) completes
+M5-a-win-sidecar — build it next coding session, then archive BOTH specs to `done/`.
+
+## ⛔ FORK (original capture — RESOLVED above; kept for context)
 **`socket.AF_UNIX` is ABSENT on this Windows Python 3.12.10** (verified: `hasattr(socket,'AF_UNIX')`
 == False). The spec's Stop-impact assumption ("Windows AF_UNIX available on the dev box") is FALSE —
 CPython on Windows does not expose AF_UNIX here. The frozen M5-a wire protocol uses an AF_UNIX socket
