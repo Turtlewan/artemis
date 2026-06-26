@@ -6,13 +6,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from httpx import Response
 
 from artemis.api_app import (
     AskRequest,
@@ -372,19 +371,16 @@ def test_domain_reads_are_unlock_gated_and_typed(tmp_path: Path) -> None:
     assert "week_total" in _json_obj(finance)
 
 
-def _pair(fixture: Fixture, phone: Phone, device_id: str) -> Response:
+def _pair(fixture: Fixture, phone: Phone, device_id: str) -> _JsonResponse:
     code = fixture.pairing_codes.mint()
-    return cast(
-        Response,
-        fixture.client.post(
-            "/app/pair",
-            json={
-                "device_id": device_id,
-                "public_key_b64": phone.public_key_b64,
-                "pairing_code": code,
-                "code_signature_b64": phone.sign_pairing(code, device_id),
-            },
-        ),
+    return fixture.client.post(
+        "/app/pair",
+        json={
+            "device_id": device_id,
+            "public_key_b64": phone.public_key_b64,
+            "pairing_code": code,
+            "code_signature_b64": phone.sign_pairing(code, device_id),
+        },
     )
 
 
@@ -471,7 +467,13 @@ def _b64(value: bytes) -> str:
     return base64.b64encode(value).decode("ascii")
 
 
-def _json_obj(response: Response) -> dict[str, object]:
+class _JsonResponse(Protocol):
+    status_code: int
+
+    def json(self) -> object: ...
+
+
+def _json_obj(response: _JsonResponse) -> dict[str, object]:
     data = response.json()
     return cast(dict[str, object], data)
 

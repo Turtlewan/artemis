@@ -25,6 +25,9 @@ artemis-google-auth = "artemis.integrations.google.cli:main"
 artemis-dev-email-rules = "artemis.dev.email_rules:main"
 
 [dependency-groups]
+agentic = [
+    "pydantic-ai>=2.0.0",
+]
 dev = [
     "mypy>=1.15",
     "pytest>=8",
