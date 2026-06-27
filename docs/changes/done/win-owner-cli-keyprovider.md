@@ -1,9 +1,21 @@
 ---
-status: ready
+status: done
 weight: light
 cross_model_review: true
 coder_effort: medium
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5`, host-verified, Opus cross-model reviewed). Full `uv run mypy`
+> clean (333 files), full `uv run pytest -q` green (905 passed / 6 skipped); scoped suite 8 passed.
+> All 4 tasks; surgical scope (4 files). **Cross-model review (Opus) = FLAG, 2 low, all security
+> invariants clear** (generic clean-fail, no key/exception leak, fail-closed exit 2, factory propagates
+> unlock errors): (1) **folded** — added the missing `UnlockDeniedError` clean-fail tests for both CLIs
+> (review found only `UnlockUnavailableError` was tested); (2) **flag for planning** — `email_rules.py`
+> `_EnvKeyProvider` (lines ~213) is now dead code (its sole caller `build_key_provider` now delegates
+> to the owner factory); left in place (don't delete pre-existing code without an explicit ask) —
+> recommend a follow-up surgical removal. NB the spec's assumption that email_rules' `build_key_provider`
+> "raises on win32" was inaccurate — it returned a dev `_EnvKeyProvider()`; built to spec intent
+> (Hello-gated owner factory, owner-present by design).
 
 # win-owner-cli-keyprovider — wire owner-private CLIs to the Windows key provider (Phase D prereq)
 

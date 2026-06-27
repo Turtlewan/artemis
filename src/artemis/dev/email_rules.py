@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import inspect
 import json
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,7 +24,9 @@ from artemis import paths
 from artemis.adapters.model_adapters import OpenAIModelPort
 from artemis.config import Settings, get_settings
 from artemis.identity.key_provider import KeyProvider, SecretKey
+from artemis.identity.owner_provider import build_owner_key_provider
 from artemis.identity.scope import OWNER_PRIVATE
+from artemis.identity.windows_key_provider import UnlockDeniedError, UnlockUnavailableError
 from artemis.integrations.google.credentials import GoogleCredentialsFactory
 from artemis.integrations.google.oauth import load_oauth_config
 from artemis.integrations.google.tokens import SqlCipherTokenStore
@@ -64,6 +67,7 @@ from artemis.staging.store import PendingActionStore
 from artemis.untrusted.quarantine import QuarantinedReader
 
 _DEFAULT_QUERY = "newer_than:7d in:inbox"
+logger = logging.getLogger(__name__)
 
 
 class BuildKeyProviderError(RuntimeError):
@@ -361,7 +365,13 @@ async def poll_once(runtime: DevRulesRuntime) -> int:
 
 async def run(*, once: bool, interval_s: int = 60) -> None:
     """Run the dev email rules polling loop."""
-    runtime = build_dev_rules_runtime(settings=get_settings(), key_provider=build_key_provider())
+    try:
+        key_provider = build_key_provider()
+    except (UnlockUnavailableError, UnlockDeniedError) as exc:
+        logger.warning("artemis-dev-email-rules unlock failed: %s: %s", type(exc).__name__, exc)
+        print("Unlock failed.")
+        raise SystemExit(2) from None
+    runtime = build_dev_rules_runtime(settings=get_settings(), key_provider=key_provider)
     while True:
         await poll_once(runtime)
         if once:
@@ -380,7 +390,7 @@ def main() -> None:
 
 def build_key_provider() -> KeyProvider:
     """Build the dev key provider used by the standalone CLI."""
-    return _EnvKeyProvider()
+    return build_owner_key_provider(get_settings())
 
 
 def _assert_tolless_model(model: ModelPort) -> None:

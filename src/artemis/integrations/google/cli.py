@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from artemis.config import get_settings
 from artemis.identity.key_provider import KeyProvider, ScopeLockedError
+from artemis.identity.owner_provider import build_owner_key_provider
+from artemis.identity.windows_key_provider import UnlockDeniedError, UnlockUnavailableError
 from artemis.integrations.google.credentials import GoogleCredentialsFactory
 from artemis.integrations.google.oauth import (
     GoogleOAuthConfig,
@@ -18,14 +21,12 @@ from artemis.integrations.google.oauth import (
 from artemis.integrations.google.scopes import required_scopes
 from artemis.integrations.google.tokens import SqlCipherTokenStore, TokenStore
 
+logger = logging.getLogger(__name__)
+
 
 def build_key_provider() -> KeyProvider:
-    """Build the broker-backed key provider.
-
-    The real M2-c broker factory is not present in this checkout yet; tests
-    patch this seam with a fake provider.
-    """
-    raise RuntimeError("Google auth CLI requires the broker-backed KeyProvider factory")
+    """Build the owner-present key provider."""
+    return build_owner_key_provider(get_settings())
 
 
 def build_token_store(key_provider: KeyProvider) -> TokenStore:
@@ -46,7 +47,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    key_provider = build_key_provider()
+    try:
+        key_provider = build_key_provider()
+    except (UnlockUnavailableError, UnlockDeniedError) as exc:
+        logger.warning("artemis-google-auth unlock failed: %s: %s", type(exc).__name__, exc)
+        print("Unlock failed.")
+        return 2
     store = build_token_store(key_provider)
 
     if args.command == "login":
