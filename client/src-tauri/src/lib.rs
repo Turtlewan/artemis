@@ -1,3 +1,4 @@
+mod auth;
 mod error;
 mod gateway;
 mod state;
@@ -12,6 +13,7 @@ fn ask_shortcut() -> Shortcut {
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
+        .plugin(tauri_plugin_keystore::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut(ask_shortcut())
@@ -40,7 +42,12 @@ pub fn run() {
             gateway::app_lock,
             gateway::app_logout,
             gateway::app_layout_get,
-            gateway::app_layout_put
+            gateway::app_layout_put,
+            auth::auth_pair,
+            auth::auth_connect,
+            auth::auth_unlock,
+            auth::auth_logout,
+            auth::auth_recover
         ])
         .build(tauri::generate_context!())
         .expect("error while building Artemis client")

@@ -1,11 +1,45 @@
 ---
 spec: client-auth
-status: ready
+status: done
 token_profile: balanced
 autonomy_level: L2
 cross_model_review: true
 coder_effort: high
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5` @ high effort; host-completed verification + Opus cross-model
+> review). Tasks 1–6 done; Task 7 (real-hardware Hello/SE spikes) remains GATED. **apex-tauri recipe
+> all green:** `cargo fmt --check`/`clippy -D warnings`/`check --tests`/`test` (12 passed), `tsc --noEmit`,
+> `vitest` (60 passed), `cargo audit` (0 vulns in the new crates; 17 pre-existing unmaintained GTK/Linux-
+> stack transitive warnings, unrelated). Codex authored everything but its sandbox could not fetch
+> crates (`Schannel SEC_E_NO_CREDENTIALS`) or run vitest (esbuild `../..` sandbox denial), so the **host
+> fetched deps + ran the full Rust+TS verify** (documented host-owns-verify rule). Cross-model (Opus)
+> review = **FLAG, no BLOCK**; all 7 security invariants PASS/PARTIAL.
+>
+> **Reconciliations / fixes applied (review-needed ⚠️):**
+> - **gateway.rs (out-of-spec CLIENT-core touch):** exposed the transport DTO fields (`PairRequest`,
+>   `Session*`/`Unlock*` request+response, `OkResponse.ok`) as `pub(crate)` so the sibling `auth`
+>   module can compose the transport. Within-crate visibility only — no public API / behaviour /
+>   security change (Opus-confirmed benign). The spec assumed auth could compose these but CLIENT-core
+>   built the DTO fields module-private; `gateway.rs` should be added to the spec's scope retroactively.
+> - **capabilities/default.json:** the spec's "grant the five `auth_*` app-command permissions" is
+>   invalid in this Tauri 2 — app-defined commands need NO capability grant (only plugin/`core:` do);
+>   the build script rejects `allow-auth-*`. Removed them; the security-critical restriction holds
+>   (keystore `create-key`/`destroy-key` NOT granted to the webview; `auth_*` reachable as app commands).
+> - **auth_recover signature:** `Zeroizing<String>` is not a Tauri `CommandArg`; takes `String` and
+>   wraps in `Zeroizing` immediately (zeroize-on-drop preserved; transient IPC String is an unavoidable
+>   boundary artifact). Broker escrow relay is **Mac-gated** (annotated dev-wall stub; `argon2` reserved).
+> - **Opus Finding #1 (medium) FIXED:** `auth_connect` returned `SessionCompleteResponse`, serializing
+>   the `session_token` onto the IPC wire to the webview — violates ADR-030. Changed to `Result<(),_>`;
+>   the token now stays in `AppState` only.
+>
+> **Flags for planning / gated Task 7:** (a) Opus #4 — `windows.rs` does a two-call `NCryptSignHash`
+> (length-query then sign); on the `NCRYPT_UI_FORCE_HIGH_PROTECTION` path this may fire two Hello
+> prompts — validate/collapse to a single 64-byte call at the Task-7 hardware spike. (b) Opus #5 —
+> confirm the real `NTE_NOT_FOUND` HRESULT for `MS_PLATFORM_CRYPTO_PROVIDER` at Task 7 (fail-closed
+> today, no security regression). (c) `auth_recover` broker relay + `argon2` wiring are Mac-gated.
+> (d) the real TPM create→sign→verify is Task 7 (this box reports Hello `DEVICE_NOT_PRESENT`; tests use
+> a fake keystore + pure-math sig vectors, 0 ignored — no live-gesture test was written).
 
 # Spec: CLIENT-auth — device-key signer plugin + pairing/connect/unlock orchestration (ADR-025)
 

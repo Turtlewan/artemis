@@ -9,28 +9,28 @@ use crate::state::AppState;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct PairRequest {
-    device_id: String,
-    public_key_b64: String,
-    pairing_code: String,
-    code_signature_b64: String,
+    pub(crate) device_id: String,
+    pub(crate) public_key_b64: String,
+    pub(crate) pairing_code: String,
+    pub(crate) code_signature_b64: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SessionBeginRequest {
-    device_id: String,
+    pub(crate) device_id: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SessionBeginResponse {
-    nonce_b64: String,
+    pub(crate) nonce_b64: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SessionCompleteRequest {
-    device_id: String,
-    nonce_b64: String,
-    counter: u64,
-    signature_b64: String,
+    pub(crate) device_id: String,
+    pub(crate) nonce_b64: String,
+    pub(crate) counter: u64,
+    pub(crate) signature_b64: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -44,14 +44,14 @@ pub(crate) struct UnlockBeginRequest {}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct UnlockBeginResponse {
-    nonce_b64: String,
+    pub(crate) nonce_b64: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct UnlockCompleteRequest {
-    nonce_b64: String,
-    counter: u64,
-    signature_b64: String,
+    pub(crate) nonce_b64: String,
+    pub(crate) counter: u64,
+    pub(crate) signature_b64: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -104,7 +104,7 @@ pub(crate) struct LayoutDto {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct OkResponse {
-    ok: bool,
+    pub(crate) ok: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

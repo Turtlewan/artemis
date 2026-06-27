@@ -7,6 +7,9 @@
     "core:default",
     "core:event:allow-listen",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "global-shortcut:allow-unregister",
+    "keystore:allow-sign",
+    "keystore:allow-get-public-key",
+    "keystore:allow-has-key"
   ]
 }

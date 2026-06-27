@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default Artemis keystore permissions: webviews may sign and read public key state only."
+permissions = ["allow-sign", "allow-get-public-key", "allow-has-key"]
