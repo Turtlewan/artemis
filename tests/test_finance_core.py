@@ -236,6 +236,20 @@ def test_finance_store_scope_lock_and_round_trip(tmp_path: Path) -> None:
     store.close()
 
 
+def test_finance_store_fails_closed_without_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from artemis.data.sqlcipher import SqlCipherError
+
+    def _no_binding(*_args: object, **_kwargs: object) -> object:
+        raise SqlCipherError("sqlcipher3 binding not installed")
+
+    monkeypatch.setattr("artemis.modules.finance.store.sqlcipher_open", _no_binding)
+    store = FinanceStore(Settings(data_root=tmp_path), FakeKeyProvider(owner_unlocked=True))
+    with pytest.raises(SqlCipherError):
+        store.list_accounts()
+
+
 def test_finance_manifest_and_tools_shape(tmp_path: Path) -> None:
     manifest = finance_manifest(
         FinanceStore(Settings(data_root=tmp_path), FakeKeyProvider(owner_unlocked=True))

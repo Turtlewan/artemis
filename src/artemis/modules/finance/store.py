@@ -10,6 +10,7 @@ from typing import Literal
 
 from artemis import paths
 from artemis.config import Settings
+from artemis.data.sqlcipher import sqlcipher_open
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.modules.finance.csv_import import (
@@ -40,12 +41,7 @@ class FinanceStore:
         key_hex = key.as_hex()
         db_path = self._db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            from artemis.data.sqlcipher import sqlcipher_open
-
-            conn = sqlcipher_open(db_path, key_hex)
-        except ImportError:
-            conn = sqlite3.connect(db_path)  # FALLBACK: no encryption -- CI/dev only
+        conn = sqlcipher_open(db_path, key_hex)
         conn.execute("PRAGMA foreign_keys = ON")
         create_schema(conn)
         return conn
