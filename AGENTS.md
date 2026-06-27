@@ -33,7 +33,7 @@ On **"build specs"** (or "build the queue" / "build docs/changes"): work through
 
 ## Verify commands (run after each spec)
 ```
-uv sync
+uv sync --group agentic
 uv run --frozen ruff format --check .
 uv run --frozen ruff check .
 uv run --frozen mypy
@@ -41,12 +41,19 @@ uv run --frozen pytest -q
 ```
 Green on all + correct `git diff --stat` = spec done.
 
+**Always `uv sync --group agentic`, never bare `uv sync`.** The agentic subsystem
+(`src/artemis/agentic/coder/`) imports `openhands.sdk`, which lives in the `agentic` dependency
+group. Plain `uv sync` *uninstalls* that group, so `uv run --frozen mypy` reports a **false red**
+(`Cannot find implementation or library stub for module named "openhands.sdk"`). The full
+`pytest -q` suite can exceed the Codex command timeout (~5 min); if the host has already reported
+the baseline green, scope baseline tests to the spec's files and let the host run the full suite.
+
 ## Hard rules
 - **Never `git commit` and never `git push`.** Commits are owner-controlled. Pushing to `main` is
   a permanent hard block. Build + verify only; leave the working tree dirty for owner review.
 - **Sandbox:** building needs `--sandbox workspace-write`. (Artemis's *runtime* use of Codex is
   read-only — that is a different mode, not for building.)
-- **Baseline before building:** run the **full** verify recipe once first — **including `uv sync`** (it installs the `artemis` project + dev group); never run the `--frozen` check-only commands against an un-synced venv, since a missing project install reads as a **false red** (`ModuleNotFoundError: artemis`). If the baseline is genuinely **red**, stop and report — never build on a broken base. **Do NOT stop merely because the working tree has uncommitted changes** — that is the owner's normal state by design (this file forbids committing, so the tree is *expected* to be dirty). Note what is already modified, then proceed.
+- **Baseline before building:** run the **full** verify recipe once first — **including `uv sync --group agentic`** (it installs the `artemis` project + dev group + the agentic group; bare `uv sync` drops `openhands.sdk` and reads as a false red — see Verify commands above); never run the `--frozen` check-only commands against an un-synced venv, since a missing project install reads as a **false red** (`ModuleNotFoundError: artemis`). If the baseline is genuinely **red**, stop and report — never build on a broken base. **Do NOT stop merely because the working tree has uncommitted changes** — that is the owner's normal state by design (this file forbids committing, so the tree is *expected* to be dirty). Note what is already modified, then proceed.
 
 ## Build gotchas (Artemis-specific)
 Hard-won from the 2026-06-24 cluster build — apex-code carries the generic Codex mechanics; these
@@ -62,7 +69,8 @@ are the Artemis-specific ones:
   `uv add <pkg>` host-side before/after the build, so the verify reads an unlocked tree.
 
 ## Setup
-`uv sync` installs the `artemis` project **and** the `dev` dependency-group (mypy/pytest/ruff) — it is
+`uv sync --group agentic` installs the `artemis` project, the `dev` dependency-group
+(mypy/pytest/ruff), **and** the `agentic` group (`openhands.sdk`, required for a clean mypy) — it is
 the first line of the verify recipe, so a normal verify run prepares the env. Dev tools live in
 `[dependency-groups]`, **not** extras — do **not** use `--all-extras`.
 
