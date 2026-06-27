@@ -6,11 +6,13 @@ Uses a ``FakeBrain`` so all tests are deterministic — no network needed.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from artemis.brain import BrainResponse
+from artemis.config import Settings
 from artemis.gateway import OWNER_SCOPE, Gateway
 from artemis.main import app
 
@@ -77,12 +79,22 @@ async def test_gateway_stream() -> None:
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """TestClient with a FakeBrain injected as the gateway.
 
     Lifespan runs first (creates real gateway), then we override
     so the tests use the deterministic FakeBrain.
+
+    m2-win-b: on a win32 host the lifespan now Hello-unlocks a WindowsKeyProvider,
+    so point it at a throwaway key store under the user profile and stub the
+    gesture (the surface tests only exercise the gateway). On non-win32 hosts the
+    broker branch runs and these patches are inert.
     """
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr("artemis.identity.windows_hello.hello_available", lambda: True)
+    monkeypatch.setattr("artemis.identity.windows_hello.verify", lambda _message: True)
+    monkeypatch.setattr("artemis.main.get_settings", lambda: Settings(data_root=tmp_path))
     with TestClient(app) as c:
         # Override after lifespan initialises the real gateway
         app.state.gateway = Gateway(FakeBrain())  # type: ignore[arg-type]

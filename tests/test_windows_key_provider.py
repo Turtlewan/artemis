@@ -34,6 +34,15 @@ def _owner_profile_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
 
 
+@pytest.fixture(autouse=True)
+def _verified_hello(monkeypatch: pytest.MonkeyPatch) -> None:
+    """m2-win-b gates unlock() behind a Windows Hello gesture. These m2-win-a tests
+    exercise the DPAPI unseal/persist/lock behaviour, so stub the gesture to
+    verified (the gate itself is covered in test_windows_hello_unlock.py)."""
+    monkeypatch.setattr("artemis.identity.windows_hello.hello_available", lambda: True)
+    monkeypatch.setattr("artemis.identity.windows_hello.verify", lambda _message: True)
+
+
 def test_dpapi_round_trip_and_returns_bytearray() -> None:
     plaintext = bytes(range(32))
     entropy = b"artemis-test-entropy"

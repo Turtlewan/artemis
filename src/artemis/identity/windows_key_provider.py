@@ -7,6 +7,7 @@ import secrets
 from pathlib import Path
 
 from artemis.config import Settings
+from artemis.identity import windows_hello
 from artemis.identity.dpapi import dpapi_seal, dpapi_unseal
 from artemis.identity.key_provider import ScopeLockedError, SecretKey
 from artemis.identity.scope import OWNER_PRIVATE
@@ -15,6 +16,18 @@ from artemis.ports.types import Scope
 
 class InsecureKeyStoreError(Exception):
     """Raised when the configured key store is outside the owner-private profile."""
+
+
+class UnlockUnavailableError(Exception):
+    """Raised when Windows Hello cannot be invoked (not enrolled / no hardware / no console).
+
+    This is a hard fail-closed condition: there is **no** silent auto-unseal
+    fallback, which would be a downgrade-attack path.
+    """
+
+
+class UnlockDeniedError(Exception):
+    """Raised when the Windows Hello gesture was presented but not verified."""
 
 
 def _scope_entropy(scope: Scope) -> bytes:
@@ -77,7 +90,33 @@ class WindowsKeyProvider:
             os.replace(tmp_path, path)
 
     def unlock(self) -> None:
-        """Unseal configured scope keys into memory."""
+        """Unseal scope keys, gated behind a Windows Hello gesture (m2-win-b).
+
+        Always Hello-enforced — there is no bypass parameter. Raises
+        ``UnlockUnavailableError`` when Hello cannot run (and unseals nothing — no
+        silent auto-unseal fallback), and ``UnlockDeniedError`` when the gesture is
+        not verified (and unseals nothing). Only a verified gesture reaches
+        ``_unseal_all()``.
+        """
+        if not windows_hello.hello_available():
+            raise UnlockUnavailableError("Windows Hello is not available")
+        try:
+            verified = windows_hello.verify("Unlock Artemis owner-private data")
+        except windows_hello.NoConsoleWindowError as exc:
+            # No console window to anchor the prompt is an unavailability, not a
+            # denial (Assumption #2): surface it as UnlockUnavailableError so the
+            # caller's fail-closed branch handles it. Never unseal.
+            raise UnlockUnavailableError("no console window for the Hello prompt") from exc
+        if not verified:
+            raise UnlockDeniedError("Hello gesture was not verified")
+        self._unseal_all()
+
+    def _unseal_all(self) -> None:
+        """Unseal configured scope keys into memory (internal — not Hello-gated).
+
+        Production callers use ``unlock()``; this is the post-gesture unseal and is
+        exercised directly only by tests.
+        """
         for scope in self._scopes:
             path = self._keys_dir / f"{scope}.dek"
             if not path.exists():
@@ -101,6 +140,11 @@ class WindowsKeyProvider:
     def is_owner_unlocked(self) -> bool:
         """Return true only while scope keys are held in memory."""
         return self._unlocked
+
+    @property
+    def unlocked_scope_count(self) -> int:
+        """Number of scope keys currently held in memory (0 when locked)."""
+        return len(self._keys)
 
     def lock(self) -> None:
         """Wipe held keys and mark the provider locked."""

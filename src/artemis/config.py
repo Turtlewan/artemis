@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     # Privacy kill-switch: False = force ALL reasoning local (no cloud routing)
     cloud_reasoning_enabled: bool = True
 
+    # Windows Hello unlock gate (m2-win-b, ADR-033). Hello is ALWAYS invoked on the
+    # win32 unlock path; this flag only governs whether startup ABORTS when Hello is
+    # unavailable. True (default) = fail-closed abort; False = continue with
+    # owner-private scopes LOCKED (logged WARNING). It is NOT a Hello bypass, and is
+    # hard-blocked in the prod slot.
+    require_hello_unlock: bool = True
+
     # Codex CLI reasoning engine (ChatGPT subscription auth managed by codex login).
     codex_binary: str = "codex"
     codex_model: str = "gpt-5.5"

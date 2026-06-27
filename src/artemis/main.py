@@ -7,6 +7,8 @@ M1-c: mounts the HTTP API router (``/ask``, ``/ask/stream``)
 
 from __future__ import annotations
 
+import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,10 +21,14 @@ from artemis.config import get_settings
 from artemis.gateway import Gateway, compose_brain
 from artemis.identity.app_auth import AppAuth, ChallengeStore, DeviceRegistry, SessionStore
 from artemis.identity.broker_client import BrokerClient, BrokerKeyProvider
+from artemis.identity.key_provider import KeyProvider
+from artemis.identity.windows_key_provider import UnlockUnavailableError, WindowsKeyProvider
 from artemis.paths import devices_file, identity_dir
 from artemis.recipes.promotion import Promoter, RecurrenceStore
 from artemis.recipes.review import ReviewSurface
 from artemis.recipes.store import RecipeStore, recipes_dir
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -32,15 +38,45 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from artemis.adapters.model_adapters import OpenAIEmbeddingModel
 
     embedder = OpenAIEmbeddingModel(settings)
-    brain = compose_brain(settings, embedder=embedder)
+
+    # Production-unlock path (m2-win-b, ADR-033). The Hello bypass must be visible
+    # in structured logs and is hard-blocked in the prod slot.
+    if not settings.require_hello_unlock:
+        logger.warning(
+            "require_hello_unlock=False — owner-private unlock gate relaxed (slot=%s)",
+            settings.slot,
+        )
+    if settings.slot == "prod" and not settings.require_hello_unlock:
+        raise RuntimeError("prod requires Hello unlock; require_hello_unlock=False is blocked")
+
+    broker_client: BrokerClient | None = None
+    key_provider: KeyProvider
+    if sys.platform == "win32":
+        win_kp = WindowsKeyProvider(settings)
+        win_kp.provision()
+        try:
+            win_kp.unlock()  # always Hello-enforced; never a silent unseal
+        except UnlockUnavailableError:
+            if settings.require_hello_unlock:
+                raise  # fail-closed: abort startup
+            logger.warning(
+                "Windows Hello unavailable — continuing with owner-private scopes LOCKED"
+            )
+        brain = compose_brain(settings, embedder=embedder, key_provider=win_kp)
+        if settings.slot == "prod" and not isinstance(win_kp, WindowsKeyProvider):
+            raise RuntimeError("production app requires the WindowsKeyProvider on win32")
+        key_provider = win_kp
+    else:
+        brain = compose_brain(settings, embedder=embedder)
+        broker_client = BrokerClient(identity_dir(settings) / "broker.sock")
+        key_provider = BrokerKeyProvider(broker_client, _relay_prover)
+        if settings.slot == "prod" and not isinstance(key_provider, BrokerKeyProvider):
+            raise RuntimeError("production app requires the real BrokerKeyProvider")
+
     registry = DeviceRegistry(devices_file(settings))
     recurrence = RecurrenceStore(recipes_dir(settings) / "recurrence.json")
     store = RecipeStore(embedder, recipes_dir(settings))
     promoter = Promoter(store, recurrence)
-    broker_client = BrokerClient(identity_dir(settings) / "broker.sock")
-    key_provider = BrokerKeyProvider(broker_client, _relay_prover)
-    if settings.slot == "prod" and not isinstance(key_provider, BrokerKeyProvider):
-        raise RuntimeError("production app requires the real BrokerKeyProvider")
 
     app.state.gateway = Gateway(brain)
     app.state.app_auth = AppAuth(registry, ChallengeStore(), SessionStore())

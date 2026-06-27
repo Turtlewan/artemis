@@ -19,11 +19,13 @@ dependencies = [
     "cryptography>=49.0.0",
     "trafilatura>=2.1.0",
     "sqlcipher3-wheels>=0.5.7",
+    "winsdk>=1.0.0b10,<2",
 ]
 
 [project.scripts]
 artemis-google-auth = "artemis.integrations.google.cli:main"
 artemis-dev-email-rules = "artemis.dev.email_rules:main"
+artemis-unlock = "artemis.cli.unlock:main"
 
 [dependency-groups]
 agentic = [
@@ -95,6 +97,10 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = "lancedb"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["winsdk", "winsdk.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
