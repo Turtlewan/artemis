@@ -41,3 +41,23 @@ host (v1)** and treat Mac as a later migration.
   phone-attested two-tier end-state, **accepted as interim** while this box is the trusted solo host.
 - Unblocks a genuinely-running (and reasonably-private) Artemis on Windows without waiting on the
   Mac purchase. The Mac decision remains open (ADR-001) but is no longer on the critical path to v1.
+
+## Refinement 2026-06-27 — Windows brain runtime (launch mechanism)
+
+How the brain process runs on Windows (no `launchd`). **Decision: dev-process now → background
+service end-state; Tauri sidecar rejected.**
+
+- **Now (⑤a `win-brain-runtime`):** a `uvicorn` dev launcher (`artemis-brain`, 127.0.0.1:brain_port).
+  ADR-033's "lighter interim" — gets the stack live without packaging work; pure Python, runs on Mac
+  verbatim. The proactive **heartbeat is started in the FastAPI lifespan** as a cancellable
+  background task (it was never wired before — proactivity was dark).
+- **Rejected: Tauri sidecar** (bundling the brain into the app). The proactive heartbeat must keep
+  running when the app window is closed (it delivers via ntfy); a sidecar ties the brain's life to
+  the window and would **silence proactivity**. The sidecar is only correct for an app that does
+  nothing while closed — Artemis is the opposite.
+- **End-state: a background service** — a Windows service/Task-Scheduler entry now-ish, whose Mac
+  twin is **`launchd` (M0-b, already specced)**. Same always-on posture; the daemon backend is the
+  one piece that differs per OS (already noted in this ADR's Mac-migration seam list).
+- **Reversibility:** the dev-process choice is throwaway-free for the transport — the client's
+  `brain_base_url` wiring and the whole `/app/*` contract are identical regardless of launcher; only
+  "who starts uvicorn" changes.

@@ -6,9 +6,16 @@ autonomy_level: L2
 ---
 <!-- amended 2026-06-11 per contracts.md (Seam 3) + cal-gate.md BLOCKs B2, B3 -->
 
-# Spec: GATE-b — Pending-actions review surface (brain endpoints + ArtemisKit DTOs + Review screen tab)
+# Spec: GATE-b — Pending-actions review surface (brain endpoints)
 
-**Identity:** Adds the owner-approval surface for one-off pending actions: three `require_unlocked` brain endpoints (`GET /app/actions/pending`, `POST /app/actions/approve`, `POST /app/actions/reject`), matching `ActionStagingService` wiring in `main.py`, Codable DTOs + `ApiClient` methods in ArtemisKit, and a "Pending actions" section/tab on the existing Review screen — parallel to the existing recipe Review surface.
+> **⚠️ RE-SCOPED 2026-06-27 (Tauri client rewrite, ADR-028):** this spec now ships **only the brain
+> endpoints (Tasks 1–3)** — Windows-buildable now, framework-agnostic. The **Swift/ArtemisKit client
+> half (Tasks 4–8: `WireModels`/`ApiClient`/`ReviewScreen.swift`) is SUPERSEDED** by
+> **`docs/changes/GATE-b-client.md`** (the Tauri "Pending actions" surface). Do NOT build Tasks 4–8;
+> they are retained below only as the contract source for the Tauri rewrite. (Housekeeping: the dead
+> Swift tasks + their Files/Permissions rows can be pruned in a later pass.)
+
+**Identity:** Adds the owner-approval surface for one-off pending actions — three `require_unlocked` brain endpoints (`GET /app/actions/pending`, `POST /app/actions/approve`, `POST /app/actions/reject`) + matching `ActionStagingService` wiring in `main.py`. The client surface lives in `GATE-b-client` (Tauri). Parallel to the existing recipe Review surface.
 → why: see docs/technical/adr/ADR-012-gated-action-staging.md (pending-action model + two-tier guard + client surface §4).
 
 <!-- Split rule: 3 logical layers (brain HTTP / Swift DTO+client / SwiftUI screen); each is cohesive and the brain layer is the only one that touches main.py (no fork risk). Split into separate specs would leave a non-callable client DTO before the endpoint exists; the three layers are a delivery unit. Touches 5 files: api_app.py (additive), main.py (additive), WireModels.swift (additive), ApiClient.swift (additive), ReviewScreen.swift (additive). -->
@@ -38,15 +45,15 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
 | File | Operation | Notes |
 |------|-----------|-------|
-| `/Users/artemis-build/artemis/src/artemis/api_app.py` | modify | additive: `PendingActionResponse` model, 3 new routes on `app_router`, `FakeActionStagingService` for tests |
-| `/Users/artemis-build/artemis/src/artemis/main.py` | modify | additive: construct `ActionStagingService` at startup, attach to `app.state.action_staging` |
-| `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` | modify | additive: `PendingActionResponse` DTO |
-| `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` | modify | additive: `pendingActions(token:)`, `approveAction(id:token:)`, `rejectAction(id:token:)` |
-| `/Users/artemis-build/artemis/swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` | modify | additive: "Pending actions" section in `ReviewScreen`, `PendingActionRow` sub-view, `ReviewModel` additions |
+| `src/artemis/api_app.py` | modify | additive: `PendingActionResponse` model, 3 new routes on `app_router`, `FakeActionStagingService` for tests |
+| `src/artemis/main.py` | modify | additive: construct `ActionStagingService` at startup, attach to `app.state.action_staging` |
+| `swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` | modify | additive: `PendingActionResponse` DTO |
+| `swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` | modify | additive: `pendingActions(token:)`, `approveAction(id:token:)`, `rejectAction(id:token:)` |
+| `swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` | modify | additive: "Pending actions" section in `ReviewScreen`, `PendingActionRow` sub-view, `ReviewModel` additions |
 
 ## Tasks
 
-- [ ] Task 1: Add `PendingActionResponse` pydantic model + three `/app/actions/*` routes — files: `/Users/artemis-build/artemis/src/artemis/api_app.py` (modify, additive only — do not touch any existing route or model) —
+- [ ] Task 1: Add `PendingActionResponse` pydantic model + three `/app/actions/*` routes — files: `src/artemis/api_app.py` (modify, additive only — do not touch any existing route or model) —
 
   **Response model** (add after the existing `ReviewItem` model):
   ```python
@@ -124,7 +131,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `uv run mypy --strict src` passes; the three new symbols are importable.
 
-- [ ] Task 2: Wire `ActionStagingService` into `main.py` — files: `/Users/artemis-build/artemis/src/artemis/main.py` (modify, additive only — do not touch any existing wiring) —
+- [ ] Task 2: Wire `ActionStagingService` into `main.py` — files: `src/artemis/main.py` (modify, additive only — do not touch any existing wiring) —
 
   In the startup/lifespan block, after the existing `ReviewSurface` construction, add:
   ```python
@@ -138,7 +145,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `uv run mypy --strict src` passes; `python -c "from artemis.main import app; assert hasattr(app.state, 'action_staging')"` (after startup) exits 0.
 
-- [ ] Task 3: TestClient tests for the three action routes — files: `/Users/artemis-build/artemis/tests/test_api_app.py` (modify, additive — add a new test class/section after the existing tests) —
+- [ ] Task 3: TestClient tests for the three action routes — files: `tests/test_api_app.py` (modify, additive — add a new test class/section after the existing tests) —
 
   Add a `FakeActionStagingService` (in-test, not a module-level singleton — injected via `app.state` override matching the CLIENT-b fake pattern):
   ```python
@@ -167,7 +174,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `uv run pytest -q tests/test_api_app.py` passes AND `uv run mypy --strict src tests/test_api_app.py` passes.
 
-- [ ] Task 4: `PendingActionResponse` Swift DTO — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` (modify, additive — add after the existing `ReviewItem` struct) —
+- [ ] Task 4: `PendingActionResponse` Swift DTO — files: `swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` (modify, additive — add after the existing `ReviewItem` struct) —
 
   ```swift
   /// Wire DTO for a pending one-off action (ADR-012). Mirrors PendingActionResponse in api_app.py.
@@ -200,7 +207,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `swift build --package-path swift/ArtemisKit` passes; a `JSONEncoder`/`JSONDecoder` round-trip of `PendingActionResponse` is identity (covered by Task 6 test extension).
 
-- [ ] Task 5: `ApiClient` action methods — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` (modify, additive — add after the existing `reject(name:token:)` method) —
+- [ ] Task 5: `ApiClient` action methods — files: `swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` (modify, additive — add after the existing `reject(name:token:)` method) —
 
   ```swift
   /// Returns all PENDING actions awaiting owner approval.
@@ -225,7 +232,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `swift build --package-path swift/ArtemisKit` passes; mock URLProtocol tests (Task 6 extension) verify correct paths/bearer/JSON body.
 
-- [ ] Task 6: Swift DTO round-trip + ApiClient mock tests (extension) — files: `/Users/artemis-build/artemis/swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift` (modify, additive — add to the existing test file) —
+- [ ] Task 6: Swift DTO round-trip + ApiClient mock tests (extension) — files: `swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift` (modify, additive — add to the existing test file) —
 
   Add:
   - `PendingActionResponse` Codable round-trip (snake_case keys verified; `Date` decoding; `result: nil` case).
@@ -233,7 +240,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: `swift test --package-path swift/ArtemisKit` passes.
 
-- [ ] Task 7: Add "Pending actions" section to `ReviewScreen` — files: `/Users/artemis-build/artemis/swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` (modify, additive) —
+- [ ] Task 7: Add "Pending actions" section to `ReviewScreen` — files: `swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` (modify, additive) —
 
   **BrainApi protocol extension** (in `BrainApi.swift` — additive, single line): add `pendingActions(token:)`, `approveAction(id:token:)`, `rejectAction(id:token:)` to the `BrainApi` protocol declaration and the `extension ApiClient: BrainApi` conformance.
 
@@ -350,7 +357,7 @@ Simplicity check: considered a combined `/app/review/unified` endpoint returning
 
   — done when: the ArtemisApp target compiles; `ReviewModel` in `ScreenModelsTests` covers `approveAction`/`rejectAction` (Task 8).
 
-- [ ] Task 8: View-model tests for pending-action methods — files: `/Users/artemis-build/artemis/swift/ArtemisApp/Tests/ArtemisAppTests/ScreenModelsTests.swift` (modify, additive) —
+- [ ] Task 8: View-model tests for pending-action methods — files: `swift/ArtemisApp/Tests/ArtemisAppTests/ScreenModelsTests.swift` (modify, additive) —
 
   Add to the existing `ReviewModel` test section:
   - `load()` populates `pendingActions` from a fake `BrainApi`.
@@ -369,15 +376,15 @@ Approving this spec approves all of them.
 ### File Operations
 | Action | Paths |
 |--------|-------|
-| Modify | `/Users/artemis-build/artemis/src/artemis/api_app.py` |
-| Modify | `/Users/artemis-build/artemis/src/artemis/main.py` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisApp/Sources/Screens/BrainApi.swift` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` |
-| Modify | `/Users/artemis-build/artemis/tests/test_api_app.py` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift` |
-| Modify | `/Users/artemis-build/artemis/swift/ArtemisApp/Tests/ArtemisAppTests/ScreenModelsTests.swift` |
+| Modify | `src/artemis/api_app.py` |
+| Modify | `src/artemis/main.py` |
+| Modify | `swift/ArtemisKit/Sources/ArtemisKit/WireModels.swift` |
+| Modify | `swift/ArtemisKit/Sources/ArtemisKit/ApiClient.swift` |
+| Modify | `swift/ArtemisApp/Sources/Screens/BrainApi.swift` |
+| Modify | `swift/ArtemisApp/Sources/Screens/ReviewScreen.swift` |
+| Modify | `tests/test_api_app.py` |
+| Modify | `swift/ArtemisKit/Tests/ArtemisKitTests/ArtemisKitTests.swift` |
+| Modify | `swift/ArtemisApp/Tests/ArtemisAppTests/ScreenModelsTests.swift` |
 | Delete | (none) |
 | Create | (none) |
 
