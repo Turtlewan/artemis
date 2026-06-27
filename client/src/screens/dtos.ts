@@ -1,5 +1,17 @@
 export type EngineTag = "local" | "codex" | "review";
 
+export interface PendingAction {
+  id: string;
+  module: string;
+  tool: string;
+  summary: string;
+  action_class: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  result: unknown | null;
+}
+
 /** Calendar screen DTO: richer than the current live wire shape; live mapping is deferred. */
 export interface CalendarRead {
   events: {

@@ -85,6 +85,19 @@ pub(crate) struct ReviewItem {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct PendingAction {
+    id: String,
+    module: String,
+    tool: String,
+    summary: String,
+    action_class: String,
+    status: String,
+    created_at: String,
+    expires_at: String,
+    result: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct CardPlacement {
     id: String,
     domain: String,
@@ -281,6 +294,49 @@ pub(crate) async fn review_reject(
     .await
 }
 
+pub(crate) async fn actions_pending(state: &AppState) -> Result<Vec<PendingAction>, GatewayError> {
+    request_json::<Vec<PendingAction>, ()>(state, Method::GET, "/app/actions/pending", None, true)
+        .await
+}
+
+pub(crate) async fn actions_approve(
+    state: &AppState,
+    id: String,
+) -> Result<OkResponse, GatewayError> {
+    #[derive(Serialize)]
+    struct ActionDecision {
+        id: String,
+    }
+
+    request_json(
+        state,
+        Method::POST,
+        "/app/actions/approve",
+        Some(&ActionDecision { id }),
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn actions_reject(
+    state: &AppState,
+    id: String,
+) -> Result<OkResponse, GatewayError> {
+    #[derive(Serialize)]
+    struct ActionDecision {
+        id: String,
+    }
+
+    request_json(
+        state,
+        Method::POST,
+        "/app/actions/reject",
+        Some(&ActionDecision { id }),
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn ask(
     state: &AppState,
     request: AskRequest,
@@ -399,6 +455,29 @@ pub(crate) async fn app_review_reject(
     name: String,
 ) -> Result<OkResponse, GatewayError> {
     review_reject(&state, name).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_actions_pending(
+    state: State<'_, AppState>,
+) -> Result<Vec<PendingAction>, GatewayError> {
+    actions_pending(&state).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_actions_approve(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<OkResponse, GatewayError> {
+    actions_approve(&state, id).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_actions_reject(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<OkResponse, GatewayError> {
+    actions_reject(&state, id).await
 }
 
 #[tauri::command]
@@ -617,5 +696,75 @@ mod tests {
 
         assert!(response.ok);
         assert!(state.token().is_none());
+    }
+
+    #[tokio::test]
+    async fn actions_pending_gets_authed_response_without_args() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("GET"))
+            .and(path("/app/actions/pending"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {
+                    "id": "act-1",
+                    "module": "calendar",
+                    "tool": "create_event",
+                    "summary": "Create lunch",
+                    "action_class": "takes-action",
+                    "status": "pending",
+                    "created_at": "2026-06-27T00:00:00Z",
+                    "expires_at": "2026-06-27T01:00:00Z",
+                    "result": null
+                }
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = actions_pending(&state).await.unwrap();
+        let encoded = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(response[0].id, "act-1");
+        assert!(encoded[0].get("args").is_none());
+    }
+
+    #[tokio::test]
+    async fn actions_approve_posts_id_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/actions/approve"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({ "id": "act-1" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = actions_approve(&state, "act-1".to_string()).await.unwrap();
+
+        assert!(response.ok);
+    }
+
+    #[tokio::test]
+    async fn actions_reject_posts_id_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/actions/reject"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({ "id": "act-1" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = actions_reject(&state, "act-1".to_string()).await.unwrap();
+
+        assert!(response.ok);
     }
 }

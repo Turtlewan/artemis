@@ -1,9 +1,16 @@
 ---
-status: ready
+status: done
 weight: light
 cross_model_review: false
 coder_effort: medium
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5`, host-verified). 6 files, surgical scope. Mirrors the
+> recipe-review surface for `/app/actions/*`. apex-tauri recipe green: `cargo fmt`/`clippy -D warnings`/
+> `check --tests`/`test` (15 passed), `tsc --noEmit`, `vitest` (65 passed). Host ran vitest (Codex
+> sandbox blocks esbuild's `../..` probe — same as CLIENT-auth). `args` never sent to the client;
+> optimistic approve/reject with restore on 404/409 and 423→re-lock. No new capability grant (app
+> commands). No out-of-spec touches.
 
 # GATE-b-client — pending-actions review surface (Tauri)
 

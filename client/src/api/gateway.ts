@@ -10,6 +10,7 @@ import type {
   StreamEvent,
 } from "./dto";
 import { toApiError } from "./errors";
+import type { PendingAction } from "../screens/dtos";
 
 const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
   try {
@@ -30,6 +31,14 @@ export const reviewApprove = (name: string): Promise<OkResponse> =>
 
 export const reviewReject = (name: string): Promise<OkResponse> =>
   call("app_review_reject", { name });
+
+export const actionsPending = (): Promise<PendingAction[]> => call("app_actions_pending");
+
+export const actionApprove = (id: string): Promise<OkResponse> =>
+  call("app_actions_approve", { id });
+
+export const actionReject = (id: string): Promise<OkResponse> =>
+  call("app_actions_reject", { id });
 
 export const ask = (request: AskRequest): Promise<AskResponse> => call("app_ask", { request });
 
