@@ -94,7 +94,10 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setattr("artemis.identity.windows_hello.hello_available", lambda: True)
     monkeypatch.setattr("artemis.identity.windows_hello.verify", lambda _message: True)
-    monkeypatch.setattr("artemis.main.get_settings", lambda: Settings(data_root=tmp_path))
+    monkeypatch.setattr(
+        "artemis.main.get_settings",
+        lambda: Settings(data_root=tmp_path, heartbeat_enabled=False),
+    )
     with TestClient(app) as c:
         # Override after lifespan initialises the real gateway
         app.state.gateway = Gateway(FakeBrain())  # type: ignore[arg-type]

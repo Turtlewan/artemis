@@ -1,9 +1,18 @@
 ---
-status: ready
+status: done
 weight: light
 cross_model_review: false
 coder_effort: medium
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5`, host-verified). Full `uv run mypy` clean (331 files),
+> full `uv run pytest -q` green (893 passed / 6 skipped). All 4 tasks implemented; surgical scope
+> (exactly the 6 listed files). Minor notes for review: (a) the lifespan reaches `brain._registry`
+> / `brain._model` (private attrs — no public accessor exists; faithful to "don't invent params");
+> (b) one full-suite run emitted a benign, non-reproducing faulthandler all-threads dump at teardown
+> (heartbeat-task teardown race — cosmetic, suite green both runs); (c) Task 1's live
+> `uv run artemis-brain` → `/healthz` 200 check is owner on-box (real win32 lifespan Hello-unlocks);
+> import resolves and the launcher binds 127.0.0.1:brain_port as specified.
 
 # win-brain-runtime — runnable brain on Windows + proactive heartbeat in startup (⑤a)
 

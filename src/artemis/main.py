@@ -7,10 +7,11 @@ M1-c: mounts the HTTP API router (``/ask``, ``/ask/stream``)
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
@@ -24,6 +25,7 @@ from artemis.identity.broker_client import BrokerClient, BrokerKeyProvider
 from artemis.identity.key_provider import KeyProvider
 from artemis.identity.windows_key_provider import UnlockUnavailableError, WindowsKeyProvider
 from artemis.paths import devices_file, identity_dir
+from artemis.proactive import compose_proactive
 from artemis.recipes.promotion import Promoter, RecurrenceStore
 from artemis.recipes.review import ReviewSurface
 from artemis.recipes.store import RecipeStore, recipes_dir
@@ -35,6 +37,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialise the shared Gateway on startup."""
     settings = get_settings()
+    heartbeat_task: asyncio.Task[None] | None = None
     from artemis.adapters.model_adapters import OpenAIEmbeddingModel
 
     embedder = OpenAIEmbeddingModel(settings)
@@ -87,7 +90,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(identity_dir(settings) / "layout.json")
     app.state.domain_read_source = DefaultDomainReadSource()
-    yield
+    if settings.heartbeat_enabled:
+        try:
+            heartbeat = compose_proactive(
+                settings,
+                brain._registry,
+                key_provider,
+                brain._model,
+            )
+            heartbeat_task = asyncio.create_task(heartbeat.run_forever())
+            app.state.heartbeat_task = heartbeat_task
+            logger.info("proactive heartbeat started")
+        except Exception:
+            logger.warning("proactive heartbeat unavailable; startup continuing", exc_info=True)
+    try:
+        yield
+    finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
 
 
 def _relay_prover(*_args: object) -> dict[str, object]:
