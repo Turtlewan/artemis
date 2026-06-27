@@ -60,3 +60,20 @@ Codex F4 / Opus "AC #6" (cross-Windows-account isolation) is NOT unit-testable �
 (impl uses dwFlags=0 user-scope; entropy-mismatch is the automated proxy).
 
 Final baseline: full `uv run mypy` clean (327 files) · `uv run pytest -q` 876 passed / 5 skipped · ruff clean.
+
+## Planning ratification — 2026-06-27
+
+The three "for planning to ratify" items above are resolved:
+
+1. **Dependency substitution → ACCEPTED + PINNED.** `sqlcipher3-wheels==0.5.7` is accepted as the
+   Windows-host v1 SQLCipher binding (identical `import sqlcipher3` surface, bundles SQLCipher 4.12.0,
+   cp312-win wheel, pip-audit clean). Keep the exact `==0.5.7` pin. Single-maintainer-repackaging caveat
+   accepted as proportionate: this is the *interim* wall (ADR-033); the Mac path uses the SE broker, not
+   this wheel. Re-pin/re-audit if the maintainer status or CVE posture changes.
+2. **Row-factory scope expansion → ACCEPTED.** The connection-aware `set_row_factory(conn)` seam + the
+   7-store application are accepted as a folded amendment to m2-win-a (already built, green, reviewed).
+   No further action.
+3. **Finance unencrypted fallback → FAIL-CLOSED (owner, 2026-06-27).** Removing the plaintext
+   `except ImportError` path so finance matches every sibling store. Specced as `finance-fail-closed`
+   (`docs/changes/finance-fail-closed.md`, Light, `status: ready`) — buildable next coding session.
+
