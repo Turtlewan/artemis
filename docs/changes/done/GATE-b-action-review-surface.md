@@ -1,9 +1,25 @@
 ---
 spec: gate-b-action-review-surface
-status: ready
+status: done
 token_profile: balanced
 autonomy_level: L2
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5`, host-verified). Live scope = Tasks 1–3 (brain endpoints);
+> Tasks 4–8 (Swift) remain SUPERSEDED by `GATE-b-client` and were not built. Full `uv run mypy`
+> clean (331 files), full `uv run pytest -q` green (899 passed / 6 skipped). Notes for review:
+> (a) **spec-text correction applied** — Task 2 said `tool_registry=app.state.gateway.tool_registry`
+> and `PendingActionStore(settings, app.state.key_provider)`; `Gateway` has no `tool_registry`
+> attr, so wired `brain._registry` + the in-scope `key_provider`/`brain` locals instead (confirmed
+> sigs: `ActionStagingService(store, tool_registry)`, `PendingActionStore(settings, key_provider)`).
+> (b) **out-of-spec test touch ⚠️** — `tests/test_windows_hello_unlock.py` (m2-win-b, newer than this
+> spec) stubs `compose_brain → object()`; its `_patch_lifespan_noise` fixture was extended to give
+> the brain stub `_registry`/`_model` and to stub `ActionStagingService`/`PendingActionStore`, else
+> the (correct, unguarded) staging wiring raised `AttributeError` on the stub.
+> (c) **flaky suite-teardown crash (pre-existing, FLAG for planning)** — the full suite intermittently
+> hits a `winsdk` lazy-import × leaked `TestClient` portal-thread (`test_health.py` module-level
+> bare `client`) heap-corruption (`0xc0000374`) near 99%, with zero test failures; clean re-run is
+> green. Independent of GATE-b. Recommend hardening `test_health.py`'s client lifecycle.
 <!-- amended 2026-06-11 per contracts.md (Seam 3) + cal-gate.md BLOCKs B2, B3 -->
 
 # Spec: GATE-b — Pending-actions review surface (brain endpoints)

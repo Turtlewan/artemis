@@ -187,14 +187,17 @@ def test_cli_unlock_failure_is_generic(
 
 class _Dummy:
     def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
+        # Expose the private seams the lifespan reads off the composed brain
+        # (heartbeat: brain._registry/_model; GATE-b action staging: brain._registry).
+        self._registry = object()
+        self._model = object()
 
 
 @pytest.fixture
 def _patch_lifespan_noise(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub everything in lifespan *after* the key-provider branch so the tests
     isolate the branch under test."""
-    monkeypatch.setattr("artemis.main.compose_brain", lambda *a, **k: object())
+    monkeypatch.setattr("artemis.main.compose_brain", lambda *a, **k: _Dummy())
     monkeypatch.setattr("artemis.adapters.model_adapters.OpenAIEmbeddingModel", _Dummy)
     for name in (
         "RecipeStore",
@@ -206,6 +209,8 @@ def _patch_lifespan_noise(monkeypatch: pytest.MonkeyPatch) -> None:
         "ChallengeStore",
         "SessionStore",
         "ReviewSurface",
+        "ActionStagingService",
+        "PendingActionStore",
         "PairingCodeStore",
         "RateLimiter",
         "LayoutStore",

@@ -10,7 +10,8 @@ import secrets
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Protocol, cast
+from datetime import datetime
+from typing import TYPE_CHECKING, Protocol, cast
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -30,10 +31,14 @@ from artemis.identity.app_auth import (
     resolve_scope,
 )
 from artemis.identity.broker_client import BrokerError
+from artemis.identity.key_provider import ScopeLockedError
 from artemis.ports.types import Scope
 from artemis.recipes.promotion import RecipeAlreadyRetiredError
 from artemis.recipes.review import RecipeReview
 from artemis.recipes.signing import RecipeSignatureError
+
+if TYPE_CHECKING:
+    from artemis.staging import PendingAction
 
 PAIRING_CODE_TTL_SECONDS = 600
 RATE_LIMIT_ATTEMPTS = 5
@@ -267,10 +272,45 @@ class ReviewItem(BaseModel):
         )
 
 
+class PendingActionResponse(BaseModel):
+    """Pending one-off action returned to the client without bound args."""
+
+    id: str
+    module: str
+    tool: str
+    summary: str
+    action_class: str
+    status: str
+    created_at: datetime
+    expires_at: datetime
+    result: dict[str, object] | None = None
+
+    @classmethod
+    def from_pending_action(cls, pa: PendingAction) -> PendingActionResponse:
+        """Convert a PendingAction to the wire DTO."""
+        return cls(
+            id=pa.id,
+            module=pa.module,
+            tool=pa.tool,
+            summary=pa.summary,
+            action_class=pa.action_class,
+            status=pa.status,
+            created_at=pa.created_at,
+            expires_at=pa.expires_at,
+            result=pa.result,
+        )
+
+
 class ReviewNameRequest(BaseModel):
     """Recipe name command body."""
 
     name: str
+
+
+class ActionIdRequest(BaseModel):
+    """Pending-action command body."""
+
+    id: str
 
 
 class CalendarEvent(BaseModel):
@@ -733,6 +773,50 @@ async def review_reject(
         return ReviewItem.from_recipe_review(await surface.reject(body.name))
     except (KeyError, RecipeAlreadyRetiredError, RecipeSignatureError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app_router.get("/actions/pending", response_model=list[PendingActionResponse])
+async def get_pending_actions(
+    request: Request,
+    principal: Principal = Depends(require_unlocked),
+) -> list[PendingActionResponse]:
+    """Return one-off actions awaiting owner approval."""
+    actions = request.app.state.action_staging.list_pending()
+    return [PendingActionResponse.from_pending_action(a) for a in actions]
+
+
+@app_router.post("/actions/approve", response_model=PendingActionResponse)
+async def approve_action(
+    request: Request,
+    body: ActionIdRequest,
+    principal: Principal = Depends(require_unlocked),
+) -> PendingActionResponse:
+    """Execute an approved pending action once."""
+    try:
+        pa = await request.app.state.action_staging.approve(body.id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="action not found")
+    except ValueError:
+        raise HTTPException(status_code=409, detail="action already settled")
+    except ScopeLockedError:
+        raise HTTPException(status_code=423, detail="vault locked")
+    return PendingActionResponse.from_pending_action(pa)
+
+
+@app_router.post("/actions/reject", response_model=PendingActionResponse)
+async def reject_action(
+    request: Request,
+    body: ActionIdRequest,
+    principal: Principal = Depends(require_unlocked),
+) -> PendingActionResponse:
+    """Reject a pending action without executing it."""
+    try:
+        pa = request.app.state.action_staging.reject(body.id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="action not found")
+    except ValueError:
+        raise HTTPException(status_code=409, detail="action already settled")
+    return PendingActionResponse.from_pending_action(pa)
 
 
 @app_router.post("/ask", response_model=AskResponse)

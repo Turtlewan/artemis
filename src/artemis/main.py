@@ -29,6 +29,7 @@ from artemis.proactive import compose_proactive
 from artemis.recipes.promotion import Promoter, RecurrenceStore
 from artemis.recipes.review import ReviewSurface
 from artemis.recipes.store import RecipeStore, recipes_dir
+from artemis.staging import ActionStagingService, PendingActionStore
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker_client = broker_client
     app.state.key_provider = key_provider
     app.state.review_surface = ReviewSurface(store, promoter)
+    app.state.action_staging = ActionStagingService(
+        store=PendingActionStore(settings, key_provider),
+        tool_registry=brain._registry,
+    )
     app.state.pairing_codes = PairingCodeStore()
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(identity_dir(settings) / "layout.json")

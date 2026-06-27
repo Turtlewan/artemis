@@ -124,6 +124,49 @@ class FakeReviewSurface:
         )
 
 
+@dataclass
+class FakePendingAction:
+    id: str
+    summary: str
+    status: str = "pending"
+    module: str = "calendar"
+    tool: str = "send_invite"
+    args: dict[str, object] | None = None
+    action_class: str = "takes-action"
+    created_at: datetime = datetime(2026, 6, 27, 1, 0, tzinfo=UTC)
+    expires_at: datetime = datetime(2026, 6, 27, 2, 0, tzinfo=UTC)
+    result: dict[str, object] | None = None
+
+
+class FakeActionStagingService:
+    def __init__(self) -> None:
+        self._pending: dict[str, FakePendingAction] = {
+            "act-1": FakePendingAction(
+                id="act-1",
+                summary="Send invite to bob@example.com for 3pm Thu",
+                args={"email": "bob@example.com"},
+            ),
+        }
+
+    def list_pending(self) -> list[FakePendingAction]:
+        return [action for action in self._pending.values() if action.status == "pending"]
+
+    async def approve(self, id: str) -> FakePendingAction:
+        action = self._pending[id]
+        if action.status != "pending":
+            raise ValueError("already settled")
+        action.status = "approved"
+        action.result = {"ok": True}
+        return action
+
+    def reject(self, id: str) -> FakePendingAction:
+        action = self._pending[id]
+        if action.status != "pending":
+            raise ValueError("already settled")
+        action.status = "rejected"
+        return action
+
+
 class FakeGateway:
     async def handle_text_scoped(self, request_text: str, scope: Scope) -> BrainResponse:
         return BrainResponse(text=f"{scope}:{request_text}", path="local", tool_used=None)
@@ -371,6 +414,88 @@ def test_domain_reads_are_unlock_gated_and_typed(tmp_path: Path) -> None:
     assert "week_total" in _json_obj(finance)
 
 
+def test_action_routes_require_bearer(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+
+    pending = fixture.client.get("/app/actions/pending")
+    approve = fixture.client.post("/app/actions/approve", json={"id": "act-1"})
+    reject = fixture.client.post("/app/actions/reject", json={"id": "act-1"})
+
+    assert pending.status_code == 401
+    assert approve.status_code == 401
+    assert reject.status_code == 401
+
+
+def test_pending_actions_require_unlocked_vault(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+    headers = _paired_session_headers(fixture, Phone())
+
+    response = fixture.client.get("/app/actions/pending", headers=headers)
+
+    assert response.status_code == 423
+
+
+def test_pending_actions_return_display_fields_without_args(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+    headers = _unlocked_session_headers(fixture, Phone())
+
+    response = fixture.client.get("/app/actions/pending", headers=headers)
+
+    assert response.status_code == 200
+    actions = cast(list[dict[str, object]], response.json())
+    assert actions[0]["id"] == "act-1"
+    assert actions[0]["summary"] == "Send invite to bob@example.com for 3pm Thu"
+    assert "args" not in actions[0]
+
+
+def test_approve_action_existing_nonexistent_and_already_settled(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+    headers = _unlocked_session_headers(fixture, Phone())
+
+    approved = fixture.client.post("/app/actions/approve", json={"id": "act-1"}, headers=headers)
+    missing = fixture.client.post(
+        "/app/actions/approve",
+        json={"id": "nonexistent"},
+        headers=headers,
+    )
+    settled = fixture.client.post("/app/actions/approve", json={"id": "act-1"}, headers=headers)
+
+    assert approved.status_code == 200
+    assert _json_obj(approved)["status"] == "approved"
+    assert missing.status_code == 404
+    assert settled.status_code == 409
+
+
+def test_reject_action_existing_and_nonexistent(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+    headers = _unlocked_session_headers(fixture, Phone())
+
+    rejected = fixture.client.post("/app/actions/reject", json={"id": "act-1"}, headers=headers)
+    missing = fixture.client.post(
+        "/app/actions/reject",
+        json={"id": "nonexistent"},
+        headers=headers,
+    )
+
+    assert rejected.status_code == 200
+    assert _json_obj(rejected)["status"] == "rejected"
+    assert missing.status_code == 404
+
+
+def test_existing_review_pending_and_healthz_still_pass(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.app.state.action_staging = FakeActionStagingService()
+    headers = _unlocked_session_headers(fixture, Phone())
+
+    assert fixture.client.get("/app/review/pending", headers=headers).status_code == 200
+    assert fixture.client.get("/healthz").status_code == 200
+
+
 def _pair(fixture: Fixture, phone: Phone, device_id: str) -> _JsonResponse:
     code = fixture.pairing_codes.mint()
     return cast(
@@ -404,6 +529,17 @@ def _session_token(fixture: Fixture, phone: Phone, device_id: str, counter: int)
     return cast(str, _json_obj(complete)["session_token"])
 
 
+def _paired_session_headers(fixture: Fixture, phone: Phone) -> dict[str, str]:
+    assert _pair(fixture, phone, "phone").status_code == 200
+    return _headers(_session_token(fixture, phone, "phone", 1))
+
+
+def _unlocked_session_headers(fixture: Fixture, phone: Phone) -> dict[str, str]:
+    headers = _paired_session_headers(fixture, phone)
+    fixture.key_provider.unlocked = True
+    return headers
+
+
 def _layout(updated_at: datetime, x: int) -> LayoutDTO:
     return LayoutDTO(
         version=1,
@@ -416,6 +552,7 @@ def _layout(updated_at: datetime, x: int) -> LayoutDTO:
 
 @dataclass
 class Fixture:
+    app: FastAPI
     client: TestClient
     registry: DeviceRegistry
     broker: FakeBroker
@@ -458,7 +595,9 @@ def _app(tmp_path: Path, *, broker: FakeBroker | None = None) -> FastAPI:
     app.state.layout_store = LayoutStore(tmp_path / "identity" / "layout.json")
     app.state.domain_read_source = DefaultDomainReadSource()
     client = TestClient(app, client=("127.0.0.1", 5000))
-    app.state.fixture = Fixture(client, registry, fake_broker, key_provider, pairing_codes, review)
+    app.state.fixture = Fixture(
+        app, client, registry, fake_broker, key_provider, pairing_codes, review
+    )
     return app
 
 
