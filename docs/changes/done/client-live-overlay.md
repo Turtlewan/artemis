@@ -1,9 +1,38 @@
 ---
-status: ready
+status: done
 weight: light
 cross_model_review: false
 coder_effort: medium
 ---
+
+> **BUILT 2026-06-27** (Codex `gpt-5.5`, host-verified). Tasks 1–4 done; Task 5 (game-overlay demo)
+> is the owner-manual tail. apex-tauri recipe green: cargo fmt/clippy -D warnings/check/test (19),
+> tsc, vitest (66). Host ran vitest (Codex sandbox block).
+>
+> **Task 2 — OWNER-CHOSEN Option A (separate floating Ask window).** The spec assumed an existing Ask
+> window to configure; reality had only `"main"` (⌥Space summoned main). Owner chose a distinct
+> floating window (ADR-028 alignment). Implemented via a second `"ask"` window in `tauri.conf.json`
+> (alwaysOnTop/skipTaskbar/decorations:false/hidden), a window-label branch in `main.tsx`
+> (`label==="ask"` → new `AskWindow.tsx` reusing `AskPopup`), and the ⌥Space handler now shows/focuses
+> the `ask` window. **Amended file set** (Option A consequence): added `main.tsx`, `ask/AskWindow.tsx`,
+> and `capabilities/default.json` `windows: ["main","ask"]`.
+>
+> **Task 4 caught a real latent contract bug ⚠️ (high-value):** the brain serves SLASH-form paths
+> (`/app/session/begin`, `/app/session/complete`, `/app/unlock/begin`, `/app/unlock/complete`) and
+> returns `{"paired":true}` / `{"unlocked":true}`, but the client (CLIENT-core, carried into
+> CLIENT-auth) used UNDERSCORE paths + `{"ok"}`. CLIENT-auth's wiremock tests passed only because they
+> mocked the client's own wrong paths — so the handshake would have failed against the real brain.
+> Fixed `gateway.rs` (paths + response structs) and updated the `auth.rs` test mocks to the real
+> contract (touches the committed CLIENT-auth test file — necessary consequence of the fix).
+>
+> **Flags for review:** (a) `/app/ask` is `require_unlocked` (NOT `require_session` — corrects the
+> spec's gotcha note); the Ask gate was relaxed to attempt-when-connected → brain 423 → unlock prompt.
+> (b) **Ask switched from streaming (`/app/ask/stream`) to non-streaming (`/app/ask`)** per Task 3's
+> done-when (AskResponse) — token-streaming UX is dropped in the shared askStore; confirm or restore
+> streaming as a follow-up. (c) **Pre-existing drift NOT fixed (out of scope):** client
+> `/app/review/auto_enabled` (underscore, returns `bool`) vs brain `/review/auto-enabled` (hyphen,
+> returns `list[ReviewItem]`) — flag for a CLIENT-core/GATE-b-client follow-up. (d) Ask floating-window
+> **visual polish** (size/position/glass) is owner hand-tuning. (e) Task 5 game-overlay demo = owner-run.
 
 # client-live-overlay — live client↔brain connection + game-overlay Ask demo (⑤b)
 

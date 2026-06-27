@@ -120,6 +120,21 @@ pub(crate) struct OkResponse {
     pub(crate) ok: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct PairResponse {
+    paired: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct LockResponse {
+    locked: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct UnlockResponse {
+    unlocked: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub(crate) enum StreamEvent {
@@ -183,7 +198,11 @@ pub(crate) async fn pair(
     state: &AppState,
     request: PairRequest,
 ) -> Result<OkResponse, GatewayError> {
-    request_json(state, Method::POST, "/app/pair", Some(&request), false).await
+    let response: PairResponse =
+        request_json(state, Method::POST, "/app/pair", Some(&request), false).await?;
+    Ok(OkResponse {
+        ok: response.paired,
+    })
 }
 
 pub(crate) async fn session_begin(
@@ -193,7 +212,7 @@ pub(crate) async fn session_begin(
     request_json(
         state,
         Method::POST,
-        "/app/session_begin",
+        "/app/session/begin",
         Some(&request),
         false,
     )
@@ -207,7 +226,7 @@ pub(crate) async fn session_complete(
     let response: SessionCompleteResponse = request_json(
         state,
         Method::POST,
-        "/app/session_complete",
+        "/app/session/complete",
         Some(&request),
         false,
     )
@@ -223,7 +242,7 @@ pub(crate) async fn unlock_begin(
     request_json(
         state,
         Method::POST,
-        "/app/unlock_begin",
+        "/app/unlock/begin",
         Some(&request),
         true,
     )
@@ -234,14 +253,17 @@ pub(crate) async fn unlock_complete(
     state: &AppState,
     request: UnlockCompleteRequest,
 ) -> Result<OkResponse, GatewayError> {
-    request_json(
+    let response: UnlockResponse = request_json(
         state,
         Method::POST,
-        "/app/unlock_complete",
+        "/app/unlock/complete",
         Some(&request),
         true,
     )
-    .await
+    .await?;
+    Ok(OkResponse {
+        ok: response.unlocked,
+    })
 }
 
 pub(crate) async fn status(state: &AppState) -> Result<StatusResponse, GatewayError> {
@@ -346,9 +368,9 @@ pub(crate) async fn ask(
 
 pub(crate) async fn lock(state: &AppState) -> Result<OkResponse, GatewayError> {
     let response =
-        request_json::<OkResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
+        request_json::<LockResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
     state.clear_token();
-    response
+    response.map(|body| OkResponse { ok: body.locked })
 }
 
 pub(crate) async fn logout(state: &AppState) -> Result<OkResponse, GatewayError> {
@@ -529,10 +551,7 @@ mod tests {
 
     fn state_with_server(server: &MockServer) -> AppState {
         let state = AppState::default();
-        *state
-            .brain_base_url
-            .lock()
-            .expect("brain base URL mutex poisoned") = Some(server.uri());
+        state.set_base_url(server.uri());
         state
     }
 
@@ -606,7 +625,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/app/pair"))
             .and(body_json(&body))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "paired": true })))
             .expect(1)
             .mount(&server)
             .await;
@@ -649,6 +668,119 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn status_gets_live_status_response_without_network_gate() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        Mock::given(method("GET"))
+            .and(path("/app/status"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "connected": true,
+                "vault_unlocked": false,
+                "device_id": "device-1"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = status(&state).await.unwrap();
+
+        let encoded = serde_json::to_value(&response).unwrap();
+        assert_eq!(
+            encoded,
+            json!({
+                "connected": true,
+                "vault_unlocked": false,
+                "device_id": "device-1"
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_and_ask_use_brain_app_contract() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        Mock::given(method("POST"))
+            .and(path("/app/session/begin"))
+            .and(body_json(json!({ "device_id": "device-1" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "nonce_b64": "nonce"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let begin = session_begin(
+            &state,
+            SessionBeginRequest {
+                device_id: "device-1".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(begin.nonce_b64, "nonce");
+
+        Mock::given(method("POST"))
+            .and(path("/app/session/complete"))
+            .and(body_json(json!({
+                "device_id": "device-1",
+                "nonce_b64": "nonce",
+                "counter": 7,
+                "signature_b64": "sig"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "session_token": "session-token",
+                "expires_at": 123
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        session_complete(
+            &state,
+            SessionCompleteRequest {
+                device_id: "device-1".to_string(),
+                nonce_b64: begin.nonce_b64,
+                counter: 7,
+                signature_b64: "sig".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/app/ask"))
+            .and(header("authorization", "Bearer session-token"))
+            .and(body_json(json!({ "text": "hello" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "text": "answer",
+                "path": "direct",
+                "tool_used": null,
+                "escalated": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = ask(
+            &state,
+            AskRequest {
+                text: "hello".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let encoded = serde_json::to_value(&response).unwrap();
+        assert_eq!(
+            encoded,
+            json!({
+                "text": "answer",
+                "path": "direct",
+                "tool_used": null,
+                "escalated": false
+            })
+        );
+    }
+
+    #[tokio::test]
     async fn http_401_and_423_map_to_gateway_errors() {
         let server = MockServer::start().await;
         let state = state_with_server(&server);
@@ -687,7 +819,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/app/lock"))
             .and(header("authorization", "Bearer secret-token"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "locked": true })))
             .expect(1)
             .mount(&server)
             .await;

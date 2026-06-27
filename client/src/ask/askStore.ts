@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { askStream } from "../api/gateway";
+import { ask } from "../api/gateway";
 import { connectionStore } from "../state/connection";
 import type { AskEngine } from "./EngineTag";
 
@@ -96,6 +96,15 @@ const markEngine = (engine: AskEngine): void => {
   update({ engineStatus: { ...snapshot.engineStatus, [engine]: true } });
 };
 
+const isVaultLockedError = (error: unknown): boolean => {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "kind" in error &&
+    (error as { kind?: unknown }).kind === "vaultLocked"
+  );
+};
+
 export const askStore = {
   getSnapshot: (): AskSnapshot => snapshot,
   subscribe: (listener: Listener): (() => void) => {
@@ -117,9 +126,10 @@ export const askStore = {
     const trimmed = text.trim();
     if (trimmed === "") return;
 
-    if (connectionStore.getSnapshot().state !== "unlocked") {
+    const connectionState = connectionStore.getSnapshot().state;
+    if (connectionState !== "connectedLocked" && connectionState !== "unlocked") {
       unlockPrompt();
-      update({ assertiveAnnouncement: "Vault locked - re-authentication required" });
+      update({ assertiveAnnouncement: "Not connected - re-authentication required" });
       return;
     }
 
@@ -128,46 +138,38 @@ export const askStore = {
     appendMessage({ id: assistantId, role: "assistant", text: "", engine: "local" });
     update({ streaming: "", sending: true, assertiveAnnouncement: "" });
 
-    let streamed = "";
     try {
-      for await (const event of askStream({ text: trimmed })) {
-        if (event.type === "text") {
-          streamed += event.text;
-          update({ streaming: streamed });
-          publishPolite(streamed);
-          continue;
-        }
-
-        if (event.type === "vault_locked") {
-          unlockPrompt();
-          replaceMessage(assistantId, {
-            id: assistantId,
-            role: "assistant",
-            text: streamed,
-            engine: "local",
-            failedLocked: true,
-          });
-          update({
-            streaming: "",
-            sending: false,
-            assertiveAnnouncement: "Vault locked - re-authentication required",
-          });
-          return;
-        }
-
-        const engine = deriveEngine(event.path, event.escalated);
-        markEngine(engine);
+      const response = await ask({ text: trimmed });
+      const engine = deriveEngine(response.path, response.escalated);
+      markEngine(engine);
+      replaceMessage(assistantId, {
+        id: assistantId,
+        role: "assistant",
+        text: response.text,
+        engine,
+        path: response.path,
+        tool: response.tool_used ?? undefined,
+      });
+      update({ streaming: "", sending: false });
+      publishPolite(response.text, true);
+    } catch (error: unknown) {
+      if (isVaultLockedError(error)) {
+        unlockPrompt();
         replaceMessage(assistantId, {
           id: assistantId,
           role: "assistant",
-          text: streamed,
-          engine,
-          path: event.path,
-          tool: event.tool_used ?? undefined,
+          text: "",
+          engine: "local",
+          failedLocked: true,
         });
-        update({ streaming: "", sending: false });
-        publishPolite(streamed, true);
+        update({
+          streaming: "",
+          sending: false,
+          assertiveAnnouncement: "Vault locked - re-authentication required",
+        });
+        return;
       }
+      throw error;
     } finally {
       if (snapshot.sending) update({ sending: false });
     }

@@ -1,7 +1,9 @@
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
+import { AskWindow } from "./ask/AskWindow";
 
 /**
  * Top-level boundary: a crash in any component (incl. a Tauri-API startup
@@ -48,10 +50,20 @@ if (root === null) {
   throw new Error("Root element #root was not found");
 }
 
+const currentWindowLabel = (): string => {
+  try {
+    return getCurrentWebviewWindow().label;
+  } catch {
+    return "main";
+  }
+};
+
+const RootView = currentWindowLabel() === "ask" ? AskWindow : App;
+
 createRoot(root).render(
   <StrictMode>
     <RootErrorBoundary>
-      <App />
+      <RootView />
     </RootErrorBoundary>
   </StrictMode>,
 );

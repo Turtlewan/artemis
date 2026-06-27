@@ -378,7 +378,7 @@ mod tests {
                 "pairing_code": "123456",
                 "code_signature_b64": pair_signature_b64
             })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "paired": true })))
             .expect(1)
             .mount(&server)
             .await;
@@ -395,7 +395,7 @@ mod tests {
         .unwrap();
 
         Mock::given(method("POST"))
-            .and(path("/app/session_begin"))
+            .and(path("/app/session/begin"))
             .and(body_json(json!({ "device_id": device_id })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "nonce_b64": STANDARD.encode(b"connect-nonce")
@@ -416,7 +416,7 @@ mod tests {
         assert_eq!(connect_counter, 1);
 
         Mock::given(method("POST"))
-            .and(path("/app/session_complete"))
+            .and(path("/app/session/complete"))
             .and(body_json(json!({
                 "device_id": device_id,
                 "nonce_b64": begin.nonce_b64,
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(state.token().as_deref(), Some("session-token"));
 
         Mock::given(method("POST"))
-            .and(path("/app/unlock_begin"))
+            .and(path("/app/unlock/begin"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "nonce_b64": STANDARD.encode(b"unlock-nonce")
             })))
@@ -460,13 +460,13 @@ mod tests {
         assert_eq!(unlock_counter, 2);
 
         Mock::given(method("POST"))
-            .and(path("/app/unlock_complete"))
+            .and(path("/app/unlock/complete"))
             .and(body_json(json!({
                 "nonce_b64": unlock_begin.nonce_b64,
                 "counter": unlock_counter,
                 "signature_b64": unlock_signature_b64
             })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "unlocked": true })))
             .expect(1)
             .mount(&server)
             .await;

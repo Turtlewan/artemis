@@ -6,13 +6,26 @@ mod state;
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+const DEFAULT_BRAIN_BASE_URL: &str = "http://127.0.0.1:8030";
+
 fn ask_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::ALT), Code::Space)
+}
+
+fn set_default_base_url(state: &state::AppState) {
+    if state.base_url().is_none() {
+        state.set_base_url(DEFAULT_BRAIN_BASE_URL.to_string());
+    }
 }
 
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
+        .setup(|app| {
+            let state = app.state::<state::AppState>();
+            set_default_base_url(&state);
+            Ok(())
+        })
         .plugin(tauri_plugin_keystore::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -23,8 +36,8 @@ pub fn run() {
                         return;
                     }
 
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.unminimize();
+                    if let Some(window) = app.get_webview_window("ask") {
+                        let _ = window.show();
                         let _ = window.set_focus();
                         let _ = window.emit("ask:summon", ());
                     }
@@ -59,4 +72,28 @@ pub fn run() {
                 let _ = app.global_shortcut().unregister(ask_shortcut());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_base_url_targets_local_brain_when_unset() {
+        let state = state::AppState::default();
+
+        set_default_base_url(&state);
+
+        assert_eq!(state.base_url().as_deref(), Some(DEFAULT_BRAIN_BASE_URL));
+    }
+
+    #[test]
+    fn default_base_url_does_not_override_existing_url() {
+        let state = state::AppState::default();
+        state.set_base_url("http://127.0.0.1:9000".to_string());
+
+        set_default_base_url(&state);
+
+        assert_eq!(state.base_url().as_deref(), Some("http://127.0.0.1:9000"));
+    }
 }

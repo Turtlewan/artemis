@@ -32,6 +32,13 @@ impl AppState {
             .expect("session token mutex poisoned") = None;
     }
 
+    pub(crate) fn set_base_url(&self, url: String) {
+        *self
+            .brain_base_url
+            .lock()
+            .expect("brain base URL mutex poisoned") = Some(url);
+    }
+
     pub(crate) fn base_url(&self) -> Option<String> {
         self.brain_base_url
             .lock()

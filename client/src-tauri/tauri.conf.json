@@ -16,6 +16,18 @@
         "label": "main",
         "width": 1200,
         "height": 800
+      },
+      {
+        "label": "ask",
+        "title": "Ask Artemis",
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "decorations": false,
+        "visible": false,
+        "width": 640,
+        "height": 420,
+        "resizable": false,
+        "center": true
       }
     ],
     "security": {
