@@ -137,6 +137,26 @@ class WindowsKeyProvider:
         except KeyError as exc:
             raise ScopeLockedError(f"Scope is locked: {scope}") from exc
 
+    def begin_unlock(self, scope: Scope) -> bytes:
+        """Short-circuit Windows unlock begin with a 32-byte nonce.
+
+        Startup Windows Hello owns vault state; fail-closed enforcement remains
+        at ``require_unlocked`` / ``is_owner_unlocked``. Nonce bytes and any
+        proof bytes for the matching completion must never be logged at any
+        level.
+        """
+        _ = scope
+        return secrets.token_bytes(32)
+
+    def complete_unlock(self, scope: Scope, nonce: bytes, proof: dict[str, object]) -> None:
+        """Short-circuit Windows unlock complete without changing vault state.
+
+        Startup Windows Hello owns vault state; fail-closed enforcement remains
+        at ``require_unlocked`` / ``is_owner_unlocked``. The nonce and proof bytes
+        must never be logged at any level.
+        """
+        _ = scope, nonce, proof
+
     def is_owner_unlocked(self) -> bool:
         """Return true only while scope keys are held in memory."""
         return self._unlocked
@@ -152,3 +172,12 @@ class WindowsKeyProvider:
             key.wipe()
         self._keys.clear()
         self._unlocked = False
+
+    def lock_all(self) -> None:
+        """Short-circuit app-route lock by delegating to ``lock()``.
+
+        Startup Windows Hello owns vault state; fail-closed enforcement remains
+        at ``require_unlocked`` / ``is_owner_unlocked``. No nonce or proof bytes
+        are accepted here, and such bytes must never be logged at any level.
+        """
+        self.lock()

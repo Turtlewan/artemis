@@ -1,9 +1,10 @@
 """Brain-side app authentication for Artemis client sessions.
 
 The device registry stores public P-256 keys as base64 X9.63 uncompressed
-points. A client proves possession by signing
-``nonce || b"artemis-api-session" || counter(8-byte big-endian)`` with
-ECDSA-P256-SHA256 and sending the DER signature. Nonces are single-use,
+points. A client proves possession by signing the canonical length-prefixed
+session frame
+``len(nonce)u16be || nonce || len(b"session")u16be || b"session" || counter_u64be``
+with ECDSA-P256-SHA256 and sending the DER signature. Nonces are single-use,
 counters must strictly increase per device, and sessions are opaque server-side
 tokens so vault lock can revoke them immediately.
 """
@@ -30,7 +31,7 @@ from fastapi import HTTPException, Request
 from artemis.gateway import OWNER_PERSON_ID, OWNER_SCOPE
 from artemis.ports.types import PersonId, Scope
 
-API_SESSION_CONTEXT: Final[bytes] = b"artemis-api-session"
+API_SESSION_CONTEXT: Final[bytes] = b"session"
 
 
 class AuthError(Exception):
@@ -282,7 +283,14 @@ class AppAuth:
         except OverflowError as exc:
             raise AuthError from exc
         public_key = _load_public_key(device.public_key_b64)
-        message = nonce + API_SESSION_CONTEXT + counter_bytes
+        ctx = API_SESSION_CONTEXT
+        message = (
+            len(nonce).to_bytes(2, "big")
+            + nonce
+            + len(ctx).to_bytes(2, "big")
+            + ctx
+            + counter_bytes
+        )
         try:
             public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
         except InvalidSignature as exc:

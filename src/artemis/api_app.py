@@ -12,7 +12,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -58,6 +58,7 @@ class PairRelay(Protocol):
         ...
 
 
+@runtime_checkable
 class UnlockProvider(Protocol):
     """Vault unlock surface required by the app routes."""
 
@@ -667,7 +668,7 @@ async def unlock_begin(
     return UnlockBeginResponse(nonce_b64=_b64encode(nonce))
 
 
-@app_router.post("/unlock/complete")
+@app_router.post("/unlock/complete", dependencies=[Depends(rate_limited)])
 async def unlock_complete(
     request: Request,
     body: UnlockCompleteRequest,

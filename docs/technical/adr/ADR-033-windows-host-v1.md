@@ -61,3 +61,15 @@ service end-state; Tauri sidecar rejected.**
 - **Reversibility:** the dev-process choice is throwaway-free for the transport — the client's
   `brain_base_url` wiring and the whole `/app/*` contract are identical regardless of launcher; only
   "who starts uvicorn" changes.
+
+## Refinement 2026-06-28 — Windows unlock short-circuit
+
+Windows has no `begin_unlock` / `complete_unlock` broker relay in v1. The owner vault is unsealed at
+startup through Windows Hello via `WindowsKeyProvider.unlock()`; after that, the `/app/unlock/*`
+routes exist only to satisfy the client pair -> connect -> unlock flow shared with the Mac broker
+design.
+
+On Windows, `/app/unlock/begin` returns an ephemeral nonce and `/app/unlock/complete` short-circuits
+to success without changing vault state. Fail-closed enforcement remains at `require_unlocked` /
+`is_owner_unlocked()`: a vault that was not unsealed at startup still returns 423 on owner-domain
+routes after a nominal unlock-complete response.

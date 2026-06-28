@@ -223,6 +223,42 @@ class GmailApiPort(Protocol):
 - `scope_dir(scope)/vault/` = a per-scope **APFS encrypted volume** mounted on owner-unlock (M2-a), holding **only LanceDB** (the knowledge vectors SQLCipher can't reach). Gives the vectors an owner-gated key + "vanishing when locked". M3's `store_for(scope)` points here.
 - M2-a `VolumeMount` is scoped to the `vault/` (LanceDB) volume only; lock must unmount it (close LanceDB handles first). M2-b opens SQLCipher at `scope_dir` directly (the B3 path-mismatch is resolved by this split).
 
+## Seam 11 — Client↔brain device-auth & session-proof contract
+
+**Producer:** brain `app_auth` / `api_app` and client `auth.rs`. **Consumers:** the Tauri
+client, the Python brain auth routes, and any future key broker that verifies unlock proofs.
+
+All device-auth signatures use SHA256 and DER-encoded ECDSA-P256 signatures over one of these
+exact byte layouts:
+
+- Pairing proof: `len(pairing_code_utf8)u16be || pairing_code_utf8 || device_id_utf8`.
+- Connect/session proof: `len(nonce)u16be || nonce || len(b"session")u16be || b"session" || counter_u64be`.
+- Unlock proof: `len(nonce)u16be || nonce || len(b"unlock")u16be || b"unlock" || counter_u64be`.
+
+Session nonces are single-use. Device counters are per-device and must strictly increase; an
+equal-or-lower counter is rejected even when the signature is otherwise well formed. Pairing and
+session verification live in the brain (`api_app` pairing verifier and `app_auth.complete_session`);
+the client-side producer is `auth.rs`. The `b"unlock"` layout is reserved for the Mac key-broker
+authority; Windows does not reconstruct or verify an unlock-proof message in Python.
+
+Documented notes:
+
+- Context domain-separation: the device P-256 key signs exactly three distinct, length-prefixed
+  structures (pairing = `len|code + device_id`, connect = `len|nonce + len|"session" + counter`,
+  unlock = `len|nonce + len|"unlock" + counter`). `b"session"` is the sole user of that context
+  string (codebase-grep confirmed), so the shortening from `b"artemis-api-session"` carries no
+  cross-protocol signature-reuse risk.
+- Constant-time posture: ECDSA verify is constant-time in the cryptography library. The counter
+  integer compare and nonce dictionary lookup are over non-secret values and do not need to be
+  constant-time.
+- Rate-limit posture: all five device-auth routes (`/pair`, `/session/begin`,
+  `/session/complete`, `/unlock/begin`, `/unlock/complete`) carry `Depends(rate_limited)` after
+  the Windows bring-up fix. The budget is 5 attempts / 15 minutes per peer IP; the host binds
+  loopback for a single owner, so this is defense-in-depth.
+- Windows `/app/unlock/complete` semantics: on win32 it returns 200 as a no-op regardless of vault
+  state. The client discovers a still-locked vault via 423 on the next domain call, not via the
+  unlock endpoint.
+
 ## Conformance amendment index (Wave 0B — one per area, AFK-parallel)
 
 Each area's amendment applies the Δ rows above for the specs it owns; work-lists are the BLOCK

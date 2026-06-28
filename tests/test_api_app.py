@@ -198,7 +198,14 @@ class Phone:
         return _b64(self.private_key.sign(message, ec.ECDSA(hashes.SHA256())))
 
     def sign_session(self, nonce: bytes, counter: int) -> str:
-        message = nonce + API_SESSION_CONTEXT + counter.to_bytes(8, "big")
+        ctx = API_SESSION_CONTEXT
+        message = (
+            len(nonce).to_bytes(2, "big")
+            + nonce
+            + len(ctx).to_bytes(2, "big")
+            + ctx
+            + counter.to_bytes(8, "big")
+        )
         return _b64(self.private_key.sign(message, ec.ECDSA(hashes.SHA256())))
 
 
@@ -293,6 +300,7 @@ def test_session_rate_limit_replay_guards_and_lock_logout_flow(tmp_path: Path) -
     assert layout.status_code == 200
     assert len(cast(list[object], _json_obj(layout)["cards"])) == 11
 
+    fixture.app.state.rate_limiter = RateLimiter()
     unlock_begin = fixture.client.post("/app/unlock/begin", json={}, headers=headers)
     assert unlock_begin.status_code == 200
     unlock_nonce = cast(str, _json_obj(unlock_begin)["nonce_b64"])

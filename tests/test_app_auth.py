@@ -37,8 +37,13 @@ def _public_key_b64(private_key: ec.EllipticCurvePrivateKey) -> str:
 
 
 def _sign(private_key: ec.EllipticCurvePrivateKey, nonce: bytes, counter: int) -> bytes:
+    ctx = API_SESSION_CONTEXT
     return private_key.sign(
-        nonce + API_SESSION_CONTEXT + counter.to_bytes(8, "big"),
+        len(nonce).to_bytes(2, "big")
+        + nonce
+        + len(ctx).to_bytes(2, "big")
+        + ctx
+        + counter.to_bytes(8, "big"),
         ec.ECDSA(hashes.SHA256()),
     )
 
