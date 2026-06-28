@@ -56,6 +56,25 @@ describe("gateway facade", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("app_layout_put", { layout });
   });
 
+  it("routes task suggestion accept and reject through owner commands", async () => {
+    mocks.invoke.mockResolvedValueOnce({ task: { id: "task-1", due_at: "2026-07-02" } });
+
+    await expect(gateway.acceptSuggestion("sug-1", "2026-07-02")).resolves.toEqual({
+      task: { id: "task-1", due_at: "2026-07-02" },
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith("task_suggestion_accept", {
+      suggestionId: "sug-1",
+      dueAt: "2026-07-02",
+    });
+
+    mocks.invoke.mockResolvedValueOnce({ ok: true });
+
+    await expect(gateway.rejectSuggestion("sug-1")).resolves.toEqual({ ok: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("task_suggestion_reject", {
+      suggestionId: "sug-1",
+    });
+  });
+
   it("layout store discards stale PUT responses by updated_at", async () => {
     const newer = {
       version: 1,

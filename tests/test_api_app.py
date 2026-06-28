@@ -24,6 +24,7 @@ from artemis.api_app import (
 )
 from artemis.app_layout_store import CardPlacement, LayoutDTO, LayoutStore
 from artemis.brain import BrainResponse
+from artemis.config import Settings
 from artemis.identity.app_auth import (
     API_SESSION_CONTEXT,
     AppAuth,
@@ -33,7 +34,9 @@ from artemis.identity.app_auth import (
     SessionStore,
 )
 from artemis.identity.broker_client import BrokerError
-from artemis.identity.scope import Identity
+from artemis.identity.key_provider import FakeKeyProvider as StoreKeyProvider
+from artemis.identity.scope import OWNER_PRIVATE, Identity
+from artemis.modules.productivity.store import ProductivityStore
 from artemis.ports.types import Scope
 from artemis.recipes.review import RecipeReview
 from artemis.speakable import DisplaySeg, SpeakSeg
@@ -465,6 +468,49 @@ def test_domain_reads_are_unlock_gated_and_typed(tmp_path: Path) -> None:
     assert "week_total" in _json_obj(finance)
 
 
+def test_task_suggestion_accept_sets_due_at_and_routes_are_unlock_gated(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    phone = Phone()
+    headers = _paired_session_headers(fixture, phone)
+    store = _productivity_store(tmp_path)
+    suggestion_id = store.create_suggestion("Call dentist", source="test")
+    rejected_id = store.create_suggestion("Skip filing", source="test")
+    store.close()
+    fixture.app.state.productivity_store = store
+    fixture.app.state.rate_limiter = RateLimiter()
+
+    locked = fixture.client.post(
+        "/app/tasks/suggestion/accept",
+        json={"suggestion_id": suggestion_id, "due_at": "2026-07-02"},
+        headers=headers,
+    )
+    assert locked.status_code == 423
+
+    fixture.key_provider.unlocked = True
+    accepted = fixture.client.post(
+        "/app/tasks/suggestion/accept",
+        json={"suggestion_id": suggestion_id, "due_at": "2026-07-02"},
+        headers=headers,
+    )
+
+    assert accepted.status_code == 200
+    task = cast(dict[str, object], _json_obj(accepted)["task"])
+    assert task["title"] == "Call dentist"
+    assert task["due_at"] == "2026-07-02"
+    assert "scheduled_block" in task
+    assert task["scheduled_block"] is None
+
+    rejected = fixture.client.post(
+        "/app/tasks/suggestion/reject",
+        json={"suggestion_id": rejected_id},
+        headers=headers,
+    )
+    assert rejected.status_code == 200
+    assert _json_obj(rejected) == {"ok": True}
+    verification_store = _productivity_store(tmp_path)
+    assert verification_store.list_suggestions(status="rejected")[0]["id"] == rejected_id
+
+
 def test_action_routes_require_bearer(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     fixture.app.state.action_staging = FakeActionStagingService()
@@ -650,6 +696,13 @@ def _app(tmp_path: Path, *, broker: FakeBroker | None = None) -> FastAPI:
         app, client, registry, fake_broker, key_provider, pairing_codes, review
     )
     return app
+
+
+def _productivity_store(tmp_path: Path) -> ProductivityStore:
+    return ProductivityStore(
+        Settings(data_root=tmp_path / "productivity", slot="dev"),
+        StoreKeyProvider({OWNER_PRIVATE: b"0" * 32}, owner_unlocked=True),
+    )
 
 
 def _headers(token: str) -> dict[str, str]:

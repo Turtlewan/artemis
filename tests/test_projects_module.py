@@ -55,6 +55,7 @@ def test_projects_and_tasks_manifests_split_tool_surfaces(tmp_path: Path) -> Non
     store = _store(tmp_path)
     projects = projects_manifest(store)
     tasks = tasks_manifest(store)
+    full_tasks = tasks_manifest(store, include_write_surface=True)
 
     project_fq_ids = _fq_ids(projects.name, [tool.name for tool in projects.tools])
     task_fq_ids = _fq_ids(tasks.name, [tool.name for tool in tasks.tools])
@@ -75,25 +76,27 @@ def test_projects_and_tasks_manifests_split_tool_surfaces(tmp_path: Path) -> Non
     assert tasks.data_scope == DataScope.OWNER_PRIVATE
     assert tasks.ui.kind == "card"
     assert task_fq_ids == {
-        "tasks.create",
         "tasks.get",
         "tasks.list",
         "tasks.search",
         "tasks.today",
         "tasks.upcoming",
         "tasks.overdue",
+        "tasks.suggestion.create",
+        "tasks.suggestion.list",
+    }
+    assert len(projects.tools) == 6
+    assert len(tasks.tools) == 8
+    assert {
+        "tasks.create",
         "tasks.update",
         "tasks.complete",
         "tasks.cancel",
         "tasks.set_recurrence",
         "tasks.assign_to_project",
-        "tasks.suggestion.create",
-        "tasks.suggestion.list",
         "tasks.suggestion.accept",
         "tasks.suggestion.reject",
-    }
-    assert len(projects.tools) == 6
-    assert len(tasks.tools) == 16
+    } <= _fq_ids(full_tasks.name, [tool.name for tool in full_tasks.tools])
     assert project_fq_ids.isdisjoint(task_fq_ids)
 
 
@@ -101,7 +104,7 @@ def test_projects_and_tasks_register_together_without_collisions(tmp_path: Path)
     registry = ToolRegistry(FakeEmbedder())
 
     registry.register(projects_manifest(_store(tmp_path)))
-    registry.register(tasks_manifest(_store(tmp_path)))
+    registry.register(tasks_manifest(_store(tmp_path), include_write_surface=True))
 
     assert set(registry.manifests()) == {"projects", "tasks"}
     assert registry.get_tool("projects.create").name == "create"

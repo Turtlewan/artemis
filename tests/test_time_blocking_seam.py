@@ -281,24 +281,30 @@ async def test_task_schedule_uninitialised_schedule_fn_raises(tmp_path: Path) ->
 def test_tasks_manifest_adds_schedule_tool_only_when_wired(tmp_path: Path) -> None:
     store = _store(tmp_path)
     unwired = tasks_manifest(store)
+    full_unwired = tasks_manifest(store, include_write_surface=True)
     wired = tasks_manifest(
         store,
         schedule_fn=_fake_schedule_fn(),
         write_tools=cast(CalendarWriteTools, FakeCalendarWriteTools()),
+        include_write_surface=True,
     )
     unwired_names = [tool.name for tool in unwired.tools]
+    full_unwired_names = [tool.name for tool in full_unwired.tools]
     wired_names = [tool.name for tool in wired.tools]
     unwired_fq_ids = {f"{unwired.name}.{name}" for name in unwired_names}
+    full_unwired_fq_ids = {f"{full_unwired.name}.{name}" for name in full_unwired_names}
     wired_fq_ids = {f"{wired.name}.{name}" for name in wired_names}
 
     assert "schedule" not in unwired_names
+    assert "schedule" not in full_unwired_names
     assert "schedule" in wired_names
     assert "complete" in wired_names
     assert "tasks.schedule" not in unwired_fq_ids
+    assert "tasks.schedule" not in full_unwired_fq_ids
     assert "tasks.schedule" in wired_fq_ids
     assert "tasks.complete" in wired_fq_ids
     assert all("area" not in name for name in wired_names)
-    assert len(wired.tools) == len(unwired.tools) + 1
+    assert len(wired.tools) == len(full_unwired.tools) + 1
     assert len(wired_names) == len(set(wired_names))
 
 

@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from artemis.app_layout_store import LayoutDTO, LayoutStore, default_layout
 from artemis.brain import BrainResponse
+from artemis.config import get_settings
 from artemis.gateway import Gateway
 from artemis.identity.app_auth import (
     AppAuth,
@@ -34,7 +35,7 @@ from artemis.identity.app_auth import (
     resolve_scope,
 )
 from artemis.identity.broker_client import BrokerError
-from artemis.identity.key_provider import ScopeLockedError
+from artemis.identity.key_provider import ScopeLockedError, SecretKey
 from artemis.identity.scope import Identity
 from artemis.ports.types import Scope
 from artemis.recipes.promotion import RecipeAlreadyRetiredError
@@ -44,6 +45,7 @@ from artemis.speakable import DisplaySeg, SpeakSeg
 from artemis.voice.push_to_talk import PushToTalkCapture, overlay_voice_turn
 
 if TYPE_CHECKING:
+    from artemis.modules.productivity.store import ProductivityStore
     from artemis.staging import PendingAction
 
 LOGGER = logging.getLogger(__name__)
@@ -65,6 +67,10 @@ class PairRelay(Protocol):
 @runtime_checkable
 class UnlockProvider(Protocol):
     """Vault unlock surface required by the app routes."""
+
+    def dek_for_scope(self, scope: Scope) -> SecretKey:
+        """Return an unlocked data key for ``scope``."""
+        ...
 
     def begin_unlock(self, scope: Scope) -> bytes:
         """Return a broker nonce for ``scope``."""
@@ -336,6 +342,26 @@ class ActionIdRequest(BaseModel):
     """Pending-action command body."""
 
     id: str
+
+
+class TaskSuggestionAcceptRequest(BaseModel):
+    """Owner command body for accepting a task suggestion."""
+
+    suggestion_id: str
+    due_at: str | None = None
+    project_id: str | None = None
+
+
+class TaskSuggestionAcceptResponse(BaseModel):
+    """Created task returned after accepting a suggestion."""
+
+    task: dict[str, object]
+
+
+class TaskSuggestionRejectRequest(BaseModel):
+    """Owner command body for rejecting a task suggestion."""
+
+    suggestion_id: str
 
 
 class CalendarEvent(BaseModel):
@@ -847,6 +873,58 @@ async def reject_action(
     return PendingActionResponse.from_pending_action(pa)
 
 
+@app_router.post(
+    "/tasks/suggestion/accept",
+    response_model=TaskSuggestionAcceptResponse,
+    dependencies=[Depends(rate_limited)],
+)
+async def task_suggestion_accept(
+    request: Request,
+    body: TaskSuggestionAcceptRequest,
+    _principal: Principal = Depends(require_unlocked),
+) -> TaskSuggestionAcceptResponse:
+    """Accept an owner task suggestion directly through the productivity store."""
+    store = _productivity_store(request)
+    try:
+        task_id = store.accept_suggestion(
+            body.suggestion_id,
+            project_id=body.project_id,
+            due_at=body.due_at,
+        )
+        task = store.get_task(task_id)
+    except ScopeLockedError as exc:
+        raise HTTPException(status_code=423, detail="vault locked") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="suggestion not found") from exc
+    finally:
+        store.close()
+    if task is None:
+        raise HTTPException(status_code=404, detail="created task not found")
+    return TaskSuggestionAcceptResponse(task=task)
+
+
+@app_router.post(
+    "/tasks/suggestion/reject",
+    dependencies=[Depends(rate_limited)],
+)
+async def task_suggestion_reject(
+    request: Request,
+    body: TaskSuggestionRejectRequest,
+    _principal: Principal = Depends(require_unlocked),
+) -> dict[str, bool]:
+    """Reject an owner task suggestion directly through the productivity store."""
+    store = _productivity_store(request)
+    try:
+        # reject is idempotent: an unknown id updates 0 rows and returns ok
+        # (distinct from accept, which 404s because it must read the suggestion).
+        store.reject_suggestion(body.suggestion_id)
+    except ScopeLockedError as exc:
+        raise HTTPException(status_code=423, detail="vault locked") from exc
+    finally:
+        store.close()
+    return {"ok": True}
+
+
 @app_router.post("/ask", response_model=AskResponse)
 async def ask(
     request: Request,
@@ -1030,6 +1108,17 @@ def _domain_source(request: Request) -> DomainReadSource:
     if value is None:
         return DefaultDomainReadSource()
     return cast(DomainReadSource, value)
+
+
+def _productivity_store(request: Request) -> ProductivityStore:
+    value = getattr(request.app.state, "productivity_store", None)
+    if value is None:
+        from artemis.modules.productivity.store import ProductivityStore
+
+        key_provider = cast(UnlockProvider, request.app.state.key_provider)
+        value = ProductivityStore(get_settings(), key_provider)
+        request.app.state.productivity_store = value
+    return cast("ProductivityStore", value)
 
 
 def _verify_pairing_signature(body: PairRequest) -> None:

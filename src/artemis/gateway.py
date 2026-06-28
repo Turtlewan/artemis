@@ -351,7 +351,7 @@ def compose_brain(
             cloud_reasoning_enabled=settings.cloud_reasoning_enabled,
         )
 
-    registry = _register_modules(embedder)
+    registry = _register_modules(embedder, settings=settings, key_provider=key_provider)
     from artemis.router import SemanticRouter
 
     memory = None
@@ -497,7 +497,12 @@ def compose_brain(
     )
 
 
-def _register_modules(embedder: object) -> ToolRegistry:
+def _register_modules(
+    embedder: object,
+    *,
+    settings: Settings | None = None,
+    key_provider: KeyProvider | None = None,
+) -> ToolRegistry:
     """Register all available module manifests.
 
     Silently skips modules not yet built (try/except ImportError), so
@@ -516,5 +521,16 @@ def _register_modules(embedder: object) -> ToolRegistry:
         logger.debug("Gateway: registered time module manifest")
     except ImportError:
         logger.debug("Gateway: time module not available -- skipping")
+
+    if key_provider is not None:
+        try:
+            from artemis.modules.productivity import ProductivityStore, tasks_manifest
+
+            productivity_settings = settings if settings is not None else get_settings()
+            store = ProductivityStore(productivity_settings, key_provider)
+            registry.register(tasks_manifest(store, include_write_surface=False))
+            logger.debug("Gateway: registered tasks module manifest")
+        except ImportError:
+            logger.debug("Gateway: tasks module not available -- skipping")
 
     return registry

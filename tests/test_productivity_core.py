@@ -249,8 +249,8 @@ def test_manifest_shape(tmp_path: Path) -> None:
         len(tasks.proactive_hooks) == 3
     )  # M8-d-c1: wake-digest productivity hooks ride tasks_manifest
     all_tools = projects.tools + tasks.tools
-    assert sum(tool.action_risk == "read" for tool in all_tools) == 9
-    assert sum(tool.action_risk == "write" for tool in all_tools) == 13
+    assert sum(tool.action_risk == "read" for tool in all_tools) == 10
+    assert sum(tool.action_risk == "write" for tool in all_tools) == 12
 
 
 def _repo() -> ProductivityRepository:

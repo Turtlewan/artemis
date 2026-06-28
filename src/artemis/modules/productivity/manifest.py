@@ -10,6 +10,7 @@ manifest to avoid colliding with task ``create``/``list``.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -17,8 +18,6 @@ from artemis.config import get_settings
 from artemis.ingest.pipeline import IngestPipeline
 from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
 from artemis.memory import MemoryWriteQueue
-from artemis.modules.calendar.schedule_task import ScheduleTaskArgs, ScheduleTaskResult
-from artemis.modules.calendar.write_tools import CalendarWriteTools
 from artemis.modules.productivity import tools
 from artemis.modules.productivity.capture import CaptureService
 from artemis.modules.productivity.hooks import build_productivity_hooks
@@ -43,16 +42,17 @@ def projects_manifest(store: ProductivityStore) -> ModuleManifest:
 def tasks_manifest(
     store: ProductivityStore,
     *,
-    schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
-    write_tools: CalendarWriteTools | None = None,
+    schedule_fn: Callable[..., Awaitable[object]] | None = None,
+    write_tools: object | None = None,
     include_project_complete: bool = False,
+    include_write_surface: bool = False,
 ) -> ModuleManifest:
     """Return the tasks surface manifest and initialise the shared store."""
     tools.init_tools(store)
     if schedule_fn is not None:
-        tools.init_schedule_fn(schedule_fn)
+        tools.init_schedule_fn(cast(Any, schedule_fn))
         if write_tools is not None:
-            tools.init_write_tools(write_tools)
+            tools.init_write_tools(cast(Any, write_tools))
     hooks = build_productivity_hooks(store)
     return ModuleManifest(
         name="tasks",
@@ -61,6 +61,7 @@ def tasks_manifest(
         tools=_task_tool_specs(
             include_schedule=schedule_fn is not None,
             include_project_complete=include_project_complete,
+            include_write_surface=include_write_surface,
         ),
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
@@ -71,8 +72,8 @@ def tasks_manifest(
 
 def productivity_manifest(
     store: ProductivityStore,
-    schedule_fn: Callable[[ScheduleTaskArgs], Awaitable[ScheduleTaskResult]] | None = None,
-    write_tools: CalendarWriteTools | None = None,
+    schedule_fn: Callable[..., Awaitable[object]] | None = None,
+    write_tools: object | None = None,
     registry: object | None = None,
     capture_service: CaptureService | None = None,
     ingest_pipeline: IngestPipeline | None = None,
@@ -88,6 +89,7 @@ def productivity_manifest(
         schedule_fn=schedule_fn,
         write_tools=write_tools,
         include_project_complete=capture_wired,
+        include_write_surface=True,
     )
     if capture_wired:
         assert capture_service is not None
@@ -151,6 +153,7 @@ def _task_tool_specs(
     *,
     include_schedule: bool = False,
     include_project_complete: bool = False,
+    include_write_surface: bool = False,
 ) -> list[ToolSpec]:
     read_tools = [
         _spec("list", "List tasks.", tools.TaskListArgs, tools.TaskListResult, tools.task_list),
@@ -180,6 +183,27 @@ def _task_tool_specs(
             tools.task_overdue,
         ),
     ]
+    suggestion_tools = [
+        _spec(
+            "suggestion.create",
+            "Create a suggestion.",
+            tools.SuggestionCreateArgs,
+            tools.SuggestionCreatedResult,
+            tools.suggestion_create,
+            ActionRisk.WRITE,
+        ),
+        _spec(
+            "suggestion.list",
+            "List suggestions.",
+            tools.SuggestionListArgs,
+            tools.SuggestionListResult,
+            tools.suggestion_list,
+            ActionRisk.READ,
+        ),
+    ]
+    if not include_write_surface:
+        return read_tools + suggestion_tools
+
     write_tools = [
         _spec(
             "create",
@@ -249,22 +273,7 @@ def _task_tool_specs(
             tools.task_assign_to_project,
             ActionRisk.WRITE,
         ),
-        _spec(
-            "suggestion.create",
-            "Create a suggestion.",
-            tools.SuggestionCreateArgs,
-            tools.SuggestionCreatedResult,
-            tools.suggestion_create,
-            ActionRisk.WRITE,
-        ),
-        _spec(
-            "suggestion.list",
-            "List suggestions.",
-            tools.SuggestionListArgs,
-            tools.SuggestionListResult,
-            tools.suggestion_list,
-            ActionRisk.WRITE,
-        ),
+        *suggestion_tools,
         _spec(
             "suggestion.accept",
             "Accept a suggestion.",

@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 
+import {
+  acceptSuggestion as acceptSuggestionCommand,
+  rejectSuggestion as rejectSuggestionCommand,
+} from "../api/gateway";
 import type { DomainDetailProps } from "../card/types";
 import { DomainDetailShell, EngineTagText } from "./DomainDetailShell";
 import type { TasksRead } from "./dtos";
@@ -39,7 +43,7 @@ const TaskList = ({
             <button className="screen-btn" type="button" aria-label={`Reschedule: ${task.title}`} onClick={() => onAction("reschedule", task)}>
               Reschedule
             </button>
-            <button className="screen-btn" type="button" aria-label={`Time-block: ${task.title}`} onClick={() => onAction("time-block", task)}>
+            <button className="screen-btn" type="button" aria-label={`Time-block: ${task.title}`} onClick={() => onAction("time-block", task)} disabled>
               Time-block
             </button>
           </div>
@@ -57,14 +61,24 @@ export function TasksDetail({
 }: TasksDetailProps) {
   const { data, loading, error } = useDomainRead<TasksRead>(domainId, reader);
   const [message, setMessage] = useState("");
+  const [suggestionDueAt, setSuggestionDueAt] = useState<Record<string, string>>({});
 
   const onTaskAction = (kind: string, task: TaskItem): void => {
-    const command = kind === "time-block" ? "calendar.schedule_task" : `tasks.${kind}`;
+    if (kind === "time-block") {
+      setMessage("Time-blocking is unavailable.");
+      return;
+    }
+    const command = `tasks.${kind}`;
     void action(command, { task_id: task.task_id }).then(() => setMessage(`${kind} applied.`));
   };
 
   const acceptSuggestion = (suggestionId: string): void => {
-    void action("tasks.accept_suggestion", { suggestion_id: suggestionId }).then(() => setMessage("Suggestion accepted."));
+    const dueAt = suggestionDueAt[suggestionId]?.trim() || undefined;
+    void acceptSuggestionCommand(suggestionId, dueAt).then(() => setMessage("Suggestion accepted."));
+  };
+
+  const rejectSuggestion = (suggestionId: string): void => {
+    void rejectSuggestionCommand(suggestionId).then(() => setMessage("Suggestion rejected."));
   };
 
   return (
@@ -90,8 +104,23 @@ export function TasksDetail({
               {data.suggestions.map((suggestion) => (
                 <li className="screen-row" key={suggestion.suggestion_id}>
                   <p>{suggestion.title}</p>
+                  <input
+                    className="screen-input"
+                    type="date"
+                    aria-label={`Due date for ${suggestion.title}`}
+                    value={suggestionDueAt[suggestion.suggestion_id] ?? ""}
+                    onChange={(event) =>
+                      setSuggestionDueAt((current) => ({
+                        ...current,
+                        [suggestion.suggestion_id]: event.target.value,
+                      }))
+                    }
+                  />
                   <button className="screen-btn" type="button" onClick={() => acceptSuggestion(suggestion.suggestion_id)}>
                     Accept
+                  </button>
+                  <button className="screen-btn" type="button" onClick={() => rejectSuggestion(suggestion.suggestion_id)}>
+                    Reject
                   </button>
                 </li>
               ))}

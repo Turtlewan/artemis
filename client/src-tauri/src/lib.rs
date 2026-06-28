@@ -53,6 +53,8 @@ pub fn run() {
             gateway::app_actions_pending,
             gateway::app_actions_approve,
             gateway::app_actions_reject,
+            gateway::task_suggestion_accept,
+            gateway::task_suggestion_reject,
             gateway::app_ask,
             gateway::app_ask_stream,
             gateway::app_ask_voice,

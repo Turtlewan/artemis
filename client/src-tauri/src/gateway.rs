@@ -105,6 +105,23 @@ pub(crate) struct PendingAction {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct TaskSuggestionAcceptRequest {
+    suggestion_id: String,
+    due_at: Option<String>,
+    project_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct TaskSuggestionAcceptResponse {
+    task: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct TaskSuggestionRejectRequest {
+    suggestion_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct CardPlacement {
     id: String,
     domain: String,
@@ -367,6 +384,39 @@ pub(crate) async fn actions_reject(
     .await
 }
 
+pub(crate) async fn accept_task_suggestion(
+    state: &AppState,
+    suggestion_id: String,
+    due_at: Option<String>,
+) -> Result<TaskSuggestionAcceptResponse, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/tasks/suggestion/accept",
+        Some(&TaskSuggestionAcceptRequest {
+            suggestion_id,
+            due_at,
+            project_id: None,
+        }),
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn reject_task_suggestion(
+    state: &AppState,
+    suggestion_id: String,
+) -> Result<OkResponse, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/tasks/suggestion/reject",
+        Some(&TaskSuggestionRejectRequest { suggestion_id }),
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn ask(
     state: &AppState,
     request: AskRequest,
@@ -536,6 +586,23 @@ pub(crate) async fn app_actions_reject(
     id: String,
 ) -> Result<OkResponse, GatewayError> {
     actions_reject(&state, id).await
+}
+
+#[tauri::command]
+pub(crate) async fn task_suggestion_accept(
+    state: State<'_, AppState>,
+    suggestion_id: String,
+    due_at: Option<String>,
+) -> Result<TaskSuggestionAcceptResponse, GatewayError> {
+    accept_task_suggestion(&state, suggestion_id, due_at).await
+}
+
+#[tauri::command]
+pub(crate) async fn task_suggestion_reject(
+    state: State<'_, AppState>,
+    suggestion_id: String,
+) -> Result<OkResponse, GatewayError> {
+    reject_task_suggestion(&state, suggestion_id).await
 }
 
 #[tauri::command]
@@ -943,6 +1010,62 @@ mod tests {
             .await;
 
         let response = actions_reject(&state, "act-1".to_string()).await.unwrap();
+
+        assert!(response.ok);
+    }
+
+    #[tokio::test]
+    async fn task_suggestion_accept_posts_due_date_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/tasks/suggestion/accept"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({
+                "suggestion_id": "sug-1",
+                "due_at": "2026-07-02",
+                "project_id": null
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "task": {
+                    "id": "task-1",
+                    "due_at": "2026-07-02"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = accept_task_suggestion(
+            &state,
+            "sug-1".to_string(),
+            Some("2026-07-02".to_string()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.task["id"], "task-1");
+        assert_eq!(response.task["due_at"], "2026-07-02");
+    }
+
+    #[tokio::test]
+    async fn task_suggestion_reject_posts_id_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/tasks/suggestion/reject"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({ "suggestion_id": "sug-1" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = reject_task_suggestion(&state, "sug-1".to_string())
+            .await
+            .unwrap();
 
         assert!(response.ok);
     }

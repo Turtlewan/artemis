@@ -12,6 +12,10 @@ import type {
 import { toApiError } from "./errors";
 import type { PendingAction } from "../screens/dtos";
 
+export interface TaskSuggestionAcceptResponse {
+  task: Record<string, unknown>;
+}
+
 const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
   try {
     return await invoke<T>(command, args);
@@ -47,6 +51,17 @@ export const actionApprove = (id: string): Promise<OkResponse> =>
 /** Reject a pending action by id without executing it. */
 export const actionReject = (id: string): Promise<OkResponse> =>
   call("app_actions_reject", { id });
+
+/** Accept a task suggestion with an optional due date. */
+export const acceptSuggestion = (
+  id: string,
+  dueAt?: string,
+): Promise<TaskSuggestionAcceptResponse> =>
+  call("task_suggestion_accept", { suggestionId: id, dueAt });
+
+/** Reject a task suggestion without creating a task. */
+export const rejectSuggestion = (id: string): Promise<OkResponse> =>
+  call("task_suggestion_reject", { suggestionId: id });
 
 /** Send a text Ask request and return the completed answer. */
 export const ask = (request: AskRequest): Promise<AskResponse> => call("app_ask", { request });
