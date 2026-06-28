@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, cast
 
 from artemis.brain import Brain, BrainResponse
 from artemis.config import Settings, get_settings
@@ -23,6 +24,7 @@ from artemis.identity.tier import tier_for
 from artemis.manifest import DataScope
 from artemis.ports.types import PersonId, Scope
 from artemis.ports.voice import SpeakerID
+from artemis.speakable import DisplaySeg, SpeakSeg, classify_shape, subject_phrase, to_speakable
 
 if TYPE_CHECKING:
     from artemis.identity.key_provider import KeyProvider
@@ -33,6 +35,8 @@ if TYPE_CHECKING:
     from artemis.sensitivity import ReleaseAuditEntry, SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
+_STREAM_END: Final = object()
+type _QueueItem = str | BaseException | object
 
 OWNER_PERSON_ID: PersonId = _OWNER_PERSON_ID
 """Backward-compatible owner person id alias for auth and gateway callers."""
@@ -49,6 +53,85 @@ NEEDS_UNLOCK_PROMPT: str = "That needs your phone unlock first."
 
 class NeedsPhoneUnlock(RuntimeError):  # noqa: N818 - spec requires this import name.
     """Raised when a voice turn needs owner key unlock before serving Tier-1 data."""
+
+
+class _StreamTee:
+    """Tee one Brain stream into display chunks and one optional speakable result."""
+
+    def __init__(
+        self,
+        source: AsyncIterator[str],
+        *,
+        speak: bool,
+        subject: str | None,
+    ) -> None:
+        self._source = source
+        self._speak = speak
+        self._subject = subject
+        self._display_queue: asyncio.Queue[_QueueItem] = asyncio.Queue()
+        self._speak_queue: asyncio.Queue[_QueueItem] = asyncio.Queue()
+        self._task: asyncio.Task[None] | None = None
+
+    def display(self) -> AsyncIterator[DisplaySeg]:
+        return self._display_iter()
+
+    def speak(self) -> AsyncIterator[SpeakSeg]:
+        if not self._speak:
+            return self._empty_speak_iter()
+        return self._speak_iter()
+
+    def _ensure_started(self) -> None:
+        if self._task is None:
+            self._task = asyncio.create_task(self._produce())
+
+    async def _produce(self) -> None:
+        answer_parts: list[str] = []
+        pointer_sent = False
+        try:
+            async for chunk in self._source:
+                await self._display_queue.put(chunk)
+                if self._speak:
+                    answer_parts.append(chunk)
+                    answer = "".join(answer_parts)
+                    if not pointer_sent and classify_shape(answer) == "pointer":
+                        await self._speak_queue.put(to_speakable(answer, subject=self._subject))
+                        pointer_sent = True
+            if self._speak and not pointer_sent:
+                await self._speak_queue.put(
+                    to_speakable("".join(answer_parts), subject=self._subject)
+                )
+        except Exception as exc:
+            await self._display_queue.put(exc)
+            if self._speak:
+                await self._speak_queue.put(exc)
+        finally:
+            await self._display_queue.put(_STREAM_END)
+            if self._speak:
+                await self._speak_queue.put(_STREAM_END)
+
+    async def _display_iter(self) -> AsyncIterator[DisplaySeg]:
+        self._ensure_started()
+        while True:
+            item = await self._display_queue.get()
+            if item is _STREAM_END:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield cast(str, item)
+
+    async def _speak_iter(self) -> AsyncIterator[SpeakSeg]:
+        self._ensure_started()
+        while True:
+            item = await self._speak_queue.get()
+            if item is _STREAM_END:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield cast(str, item)
+
+    async def _empty_speak_iter(self) -> AsyncIterator[SpeakSeg]:
+        if False:
+            yield ""
 
 
 class Gateway:
@@ -138,6 +221,32 @@ class Gateway:
         """Stream a text response through the Brain with an authenticated scope."""
         async for chunk in self._brain.respond_stream(request_text, scope):
             yield chunk
+
+    async def handle_ask_unified(
+        self,
+        query: str,
+        *,
+        scope_or_identity: Scope | Identity,
+        speak: bool,
+    ) -> tuple[AsyncIterator[DisplaySeg], AsyncIterator[SpeakSeg]]:
+        """Run one Brain stream and return display plus optional speak iterators."""
+        if isinstance(scope_or_identity, Identity):
+            identity = scope_or_identity
+            scope = primary_scope(identity)
+            module_fq = await self._brain.pre_route(query, scope)
+            data_scope = self._data_scope_for_module(module_fq)
+            tier = tier_for(data_scope)
+            if identity.role == "owner" and tier == "tier1":
+                if self._key_provider is None or not self._key_provider.is_owner_unlocked():
+                    raise NeedsPhoneUnlock
+        else:
+            scope = scope_or_identity
+        tee = _StreamTee(
+            self._brain.respond_stream(query, scope),
+            speak=speak,
+            subject=subject_phrase(query),
+        )
+        return tee.display(), tee.speak()
 
     async def handle_voice(self, audio: bytes, transcript: str) -> BrainResponse:
         """Process a voice turn after speaker-ID scope attach.

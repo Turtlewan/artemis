@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hmac
@@ -32,10 +33,12 @@ from artemis.identity.app_auth import (
 )
 from artemis.identity.broker_client import BrokerError
 from artemis.identity.key_provider import ScopeLockedError
+from artemis.identity.scope import Identity
 from artemis.ports.types import Scope
 from artemis.recipes.promotion import RecipeAlreadyRetiredError
 from artemis.recipes.review import RecipeReview
 from artemis.recipes.signing import RecipeSignatureError
+from artemis.speakable import DisplaySeg, SpeakSeg
 
 if TYPE_CHECKING:
     from artemis.staging import PendingAction
@@ -104,6 +107,16 @@ class GatewayProtocol(Protocol):
 
     def handle_text_stream_scoped(self, request_text: str, scope: Scope) -> AsyncIterator[str]:
         """Stream answer chunks for a scoped request."""
+        ...
+
+    async def handle_ask_unified(
+        self,
+        query: str,
+        *,
+        scope_or_identity: Scope | Identity,
+        speak: bool,
+    ) -> tuple[AsyncIterator[DisplaySeg], AsyncIterator[SpeakSeg]]:
+        """Return display and speak branches for one scoped request."""
         ...
 
 
@@ -238,6 +251,7 @@ class AskRequest(BaseModel):
     """Scoped app chat request."""
 
     text: str
+    speak: bool = False
 
 
 class AskResponse(BaseModel):
@@ -846,6 +860,22 @@ async def ask_stream(
     gateway = cast(GatewayProtocol, request.app.state.gateway)
     key_provider = cast(UnlockProvider, request.app.state.key_provider)
     scope = resolve_scope(principal)
+    if hasattr(gateway, "handle_ask_unified"):
+        display_iter, speak_iter = await gateway.handle_ask_unified(
+            body.text,
+            scope_or_identity=scope,
+            speak=body.speak,
+        )
+    else:
+        display_iter = gateway.handle_text_stream_scoped(body.text, scope)
+        speak_iter = _drainable_empty_speak()
+    if body.speak:
+        # S1 default sink drains (no emission). S3 NOTE: a real TTS speak_sink MUST
+        # re-check key_provider.is_owner_unlocked() before speaking each segment (the
+        # display branch below already does per-chunk) and should retain this task
+        # reference + log failures (fire-and-forget here is safe only for the drain).
+        speak_sink = getattr(request.app.state, "speak_sink", _drain_speak)
+        asyncio.create_task(speak_sink(speak_iter))
 
     async def event_stream() -> AsyncIterator[str]:
         # Fail closed: re-check the vault BEFORE emitting any owner content,
@@ -855,7 +885,7 @@ async def ask_stream(
             yield f"data: {json.dumps({'error': 'vault_locked'})}\n\n"
             return
         try:
-            async for chunk in gateway.handle_text_stream_scoped(body.text, scope):
+            async for chunk in display_iter:
                 if not key_provider.is_owner_unlocked():
                     yield f"data: {json.dumps({'error': 'vault_locked'})}\n\n"
                     return
@@ -866,6 +896,16 @@ async def ask_stream(
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+async def _drain_speak(it: AsyncIterator[SpeakSeg]) -> None:
+    async for _ in it:
+        pass
+
+
+async def _drainable_empty_speak() -> AsyncIterator[SpeakSeg]:
+    if False:
+        yield ""
 
 
 @app_router.get("/calendar", response_model=CalendarRead)
