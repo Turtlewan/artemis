@@ -596,10 +596,13 @@ async def pair(request: Request, body: PairRequest) -> dict[str, bool]:
 
     auth = cast(AppAuth, request.app.state.app_auth)
     registry: DeviceRegistry = auth.registry
-    broker = cast(PairRelay, request.app.state.broker_client)
+    broker = cast("PairRelay | None", request.app.state.broker_client)
     try:
         registry.register(body.device_id, body.public_key_b64)
-        broker.pair(body.device_id, body.public_key_b64)
+        # The broker relays the device key to the Mac Secure Enclave key-broker. The Windows host
+        # has no broker (ADR-033): key custody is the WindowsKeyProvider + DeviceRegistry, so skip.
+        if broker is not None:
+            broker.pair(body.device_id, body.public_key_b64)
     except BrokerError as exc:
         registry.remove(body.device_id)
         raise HTTPException(status_code=503, detail="pairing unavailable") from exc

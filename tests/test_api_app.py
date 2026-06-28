@@ -244,6 +244,18 @@ def test_pairing_verifies_before_consuming_and_rolls_back(tmp_path: Path) -> Non
     assert failing.registry.get("phone") is None
 
 
+def test_pairing_succeeds_without_broker_on_windows_host(tmp_path: Path) -> None:
+    # ADR-033 Windows host has no Secure Enclave broker (app.state.broker_client is None);
+    # pairing must still verify, consume the code, and register the device — not 500 on a
+    # missing broker. Regression for the live CLIENT-auth Task 7 bring-up (2026-06-28).
+    fixture = _fixture(tmp_path)
+    fixture.app.state.broker_client = None
+    phone = Phone()
+    paired = _pair(fixture, phone, "phone")
+    assert paired.status_code == 200
+    assert fixture.registry.get("phone") is not None
+
+
 def test_admin_pair_code_is_loopback_only(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     response = fixture.client.post("/app/admin/pair-code")
