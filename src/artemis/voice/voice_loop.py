@@ -6,13 +6,14 @@ import asyncio
 import contextlib
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Protocol, cast
 
 from artemis.config import Settings, get_settings
 from artemis.gateway import NEEDS_UNLOCK_PROMPT, Gateway, NeedsPhoneUnlock, compose_brain
 from artemis.ports.voice import AudioFrontend, Stt, Tts
 from artemis.sidecar.audio.protocol import JsonObject
+from artemis.speakable import SpeakSeg
 from artemis.voice.latency import LatencyBudget, StageTimer
 from artemis.voice.sidecar_client import SidecarAudioFrontend
 from artemis.voice.stt import ParakeetWhisperSTT
@@ -229,6 +230,72 @@ def _pop_sentences(text: str, *, max_chars: int = 220) -> tuple[list[str], str]:
         sentences.append(remainder.strip())
         remainder = ""
     return sentences, remainder
+
+
+async def speak_overlay_answer(
+    speak_iter: AsyncIterator[SpeakSeg],
+    *,
+    frontend: AudioFrontend,
+    tts: Tts,
+    cancel: asyncio.Event,
+) -> None:
+    """Drive the overlay speak branch through the existing voice-loop back half."""
+    back_half = VoiceLoop(
+        cast(VoiceFrontend, frontend),
+        cast(Stt, object()),
+        tts,
+        cast(Gateway, object()),
+        cast(Settings, object()),
+        b"\x00\x00\x00\x00",
+        LatencyBudget(),
+    )
+    timer = StageTimer()
+    watcher: asyncio.Task[None] | None = asyncio.create_task(back_half._watch_bargein(cancel))
+    buffer = ""
+    try:
+        await back_half._play_pcm([back_half.ack_pcm], cancel)
+        if cancel.is_set():
+            return
+        async for segment in speak_iter:
+            if cancel.is_set():
+                return
+            buffer += segment
+            sentences, buffer = _pop_sentences(buffer)
+            for sentence in sentences:
+                try:
+                    await back_half._play_sentence(sentence, timer, cancel)
+                except Exception:
+                    LOGGER.warning("overlay voice tts failed", exc_info=True)
+                    return
+                if cancel.is_set():
+                    return
+        tail = buffer.strip()
+        if tail and not cancel.is_set():
+            try:
+                await back_half._play_sentence(tail, timer, cancel)
+            except Exception:
+                LOGGER.warning("overlay voice tts failed", exc_info=True)
+    finally:
+        if watcher is not None:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+
+
+def compose_speak_sink(
+    frontend: AudioFrontend, tts: Tts
+) -> Callable[[AsyncIterator[SpeakSeg]], Awaitable[None]]:
+    """Return the callable installed as app.state.speak_sink."""
+
+    async def speak_sink(speak_iter: AsyncIterator[SpeakSeg]) -> None:
+        await speak_overlay_answer(
+            speak_iter,
+            frontend=frontend,
+            tts=tts,
+            cancel=asyncio.Event(),
+        )
+
+    return speak_sink
 
 
 def compose_voice_loop(settings: Settings | None = None) -> VoiceLoop:
