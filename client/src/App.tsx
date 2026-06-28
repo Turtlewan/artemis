@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CardPlacement } from "./api/dto";
 import { AskPopup } from "./ask/AskPopup";
 import { useAskHotkey } from "./ask/useAskHotkey";
+import { PairingScreen } from "./auth/PairingScreen";
 import { DetailOverlay } from "./card/DetailOverlay";
 import { useCardOverlay } from "./card/useCardOverlay";
 import type { DomainId } from "./domains";
@@ -128,7 +129,7 @@ function WorldShell() {
     }
   }, [overlayOpen, setBackgroundInert]);
 
-  if (!connected) return null;
+  if (!connected) return <PairingScreen state={connection.state} />;
 
   return (
     <main className="artemis-shell">
