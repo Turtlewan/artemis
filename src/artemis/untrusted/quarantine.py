@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import httpx
+
 from artemis.obs.sink import NullSink, ObservabilitySink
 from artemis.ports.model import ModelPort
 from artemis.ports.types import Message
@@ -129,15 +131,30 @@ class QuarantinedReader:
             SPOTLIGHT_INSTRUCTION.format(nonce=nonce)
             + f"\nExtract only facts relevant to: {safe_query}"
         )
-        resp = await self._model.complete(
-            role=self._role,
-            messages=[
-                Message(role="system", content=system),
-                Message(role="user", content=marked),
-            ],
-            response_schema=EXTRACTION_SCHEMA,
-            max_tokens=max_tokens,
-        )
+        try:
+            resp = await self._model.complete(
+                role=self._role,
+                messages=[
+                    Message(role="system", content=system),
+                    Message(role="user", content=marked),
+                ],
+                response_schema=EXTRACTION_SCHEMA,
+                max_tokens=max_tokens,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Quarantined extract transport failed (%s); degrading to blank extract",
+                type(exc).__name__,
+            )
+            return Extract(
+                source_url=source_url,
+                source_domain=source_domain,
+                summary="",
+                claims=(),
+                flagged_injection=False,
+                parse_failed=True,
+                tokens_used=0,
+            )
         tokens_used = getattr(resp.usage, "total_tokens", 0) if resp.usage else 0
 
         try:

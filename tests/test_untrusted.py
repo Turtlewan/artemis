@@ -5,6 +5,7 @@ import re
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 
+import httpx
 import pytest
 
 from artemis.ports.model import ModelResponse
@@ -214,6 +215,47 @@ async def test_non_json_degrades_without_raising(caplog: pytest.LogCaptureFixtur
     warnings = [record for record in caplog.records if record.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].name == "untrusted"
+
+
+@pytest.mark.asyncio
+async def test_read_degrades_on_model_transport_error() -> None:
+    class RaisingModelPort:
+        async def complete(
+            self,
+            *,
+            role: str,
+            messages: Sequence[Message],
+            response_schema: dict[str, object] | None = None,
+            temperature: float = 0.7,
+            max_tokens: int | None = None,
+        ) -> ModelResponse:
+            raise httpx.ConnectError("ollama down")
+
+        async def complete_stream(
+            self,
+            *,
+            role: str,
+            messages: Sequence[Message],
+            temperature: float = 0.7,
+        ) -> AsyncIterator[str]:
+            if False:
+                yield role + messages[0].content + str(temperature)
+
+        async def embed(self, role: str, texts: Sequence[str]) -> list[Vector]:
+            return [[float(len(role)), float(len(texts))]]
+
+    reader = QuarantinedReader(RaisingModelPort(), role="quarantine")
+    extract = await reader.read(
+        raw_content="hello",
+        source_url="https://x.test/p",
+        source_domain="x.test",
+        query="q",
+    )
+
+    assert extract.parse_failed is True
+    assert extract.usable is False
+    assert extract.summary == ""
+    assert extract.tokens_used == 0
 
 
 def test_extract_usable_clean() -> None:
