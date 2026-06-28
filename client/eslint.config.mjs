@@ -16,5 +16,17 @@ export default [
         setTimeout: "readonly",
       },
     },
+    rules: {
+      // Honour the `_`-prefix convention for intentionally-unused bindings
+      // (e.g. `for await (const _event of ...)`, mock generator params).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
   },
 ];

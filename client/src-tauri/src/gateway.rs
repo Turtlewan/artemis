@@ -36,7 +36,9 @@ pub(crate) struct SessionCompleteRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SessionCompleteResponse {
     session_token: String,
-    expires_at: u64,
+    // Brain serializes this as a float Unix timestamp (api_app SessionCompleteResponse.expires_at: float);
+    // u64 would fail serde deserialization on any fractional value. Deserialize-only — never used in arithmetic.
+    expires_at: f64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
