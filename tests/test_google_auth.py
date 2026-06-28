@@ -55,6 +55,16 @@ def test_scope_registry_union_validation_and_clear() -> None:
     assert required_scopes() == frozenset()
 
 
+def test_cli_registers_connector_scopes_for_login() -> None:
+    from artemis.integrations.google.cli import _register_connector_scopes
+    from artemis.modules.gmail.client import GMAIL_READONLY_SCOPE
+
+    _register_connector_scopes()
+    scopes = required_scopes()
+    assert GMAIL_READONLY_SCOPE in scopes
+    assert "https://www.googleapis.com/auth/calendar.readonly" in scopes
+
+
 def test_in_memory_store_round_trips_and_repr_redacts_refresh_token() -> None:
     token = _stored_token(refresh_token="topsecret")
     store = InMemoryTokenStore()
@@ -232,6 +242,7 @@ def test_cli_login_no_scopes_returns_nonzero(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(cli, "_register_connector_scopes", lambda: None)
     monkeypatch.setattr(cli, "build_key_provider", lambda: FakeKeyProvider(owner_unlocked=True))
     monkeypatch.setattr(cli, "build_token_store", lambda _key_provider: InMemoryTokenStore())
 

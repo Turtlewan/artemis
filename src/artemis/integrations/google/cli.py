@@ -34,6 +34,15 @@ def build_token_store(key_provider: KeyProvider) -> TokenStore:
     return SqlCipherTokenStore(get_settings(), key_provider)
 
 
+def _register_connector_scopes() -> None:
+    """Register every connector's Google scopes into the process-local registry."""
+    from artemis.modules.calendar import register_calendar_scopes
+    from artemis.modules.gmail.module import register_gmail_scope
+
+    register_gmail_scope()
+    register_calendar_scopes()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``artemis-google-auth`` CLI."""
     parser = argparse.ArgumentParser(prog="artemis-google-auth")
@@ -56,6 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     store = build_token_store(key_provider)
 
     if args.command == "login":
+        _register_connector_scopes()
         scopes = tuple(args.scope or sorted(required_scopes()))
         if not scopes:
             print("no scopes: pass --scope or ensure a connector registered scopes")

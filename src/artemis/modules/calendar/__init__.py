@@ -34,12 +34,18 @@ from artemis.modules.calendar.untrusted import (
     quarantine_event_text,
 )
 
-register_google_scopes(
-    "calendar",
-    {
-        "https://www.googleapis.com/auth/calendar.readonly",
-    },
-)
+
+def register_calendar_scopes() -> None:
+    """Register the Calendar OAuth scope (idempotent)."""
+    register_google_scopes(
+        "calendar",
+        {
+            "https://www.googleapis.com/auth/calendar.readonly",
+        },
+    )
+
+
+register_calendar_scopes()
 
 __all__ = [
     "CalPrefs",
@@ -67,4 +73,5 @@ __all__ = [
     "list_held_events",
     "make_calendar_manifest",
     "quarantine_event_text",
+    "register_calendar_scopes",
 ]
