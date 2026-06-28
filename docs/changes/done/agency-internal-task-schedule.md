@@ -1,126 +1,120 @@
 ---
 spec: agency-internal-task-schedule
-status: draft
+status: ready
 risk: high
 coder: codex
 coder_effort: high
 cross_model_review: true
 autonomy_level: L5
-origin: design discussion 2026-06-28 (decision A) — coding-mode-authored, NEEDS the security review folded + a planning confirm before build
+origin: design discussion 2026-06-28 (decision A, Option 2 due-date) — security-reviewed; build scoped to CORE (Tasks 1-5), digest-suggestion deferred to spec B.
 ---
 
-# Spec (DRAFT): Agency v0 — internal task scheduling (no GATE, no calendar)
+# Spec: Agency v0 — internal task scheduling via due-date (no GATE, no calendar)
 
 **Identity:** Switch on Artemis's first action-taking capability, scoped to ONE internal-reversible
-action: schedule a task into a time slot in its **own owned productivity store** (`scheduled_block`),
-never touching Google Calendar. Suggest/ask-driven, never silent-auto. This is the minimal "agency"
-slice; the GATE, the agentic executor, and all external-effect actions stay deferred levers.
-→ why: `docs/findings/cluster-decisions/DECISIONS-LOG.md` § "Agency & Proactivity scope" (LOCKED 2026-06-28).
+action: **set a task's due date by accepting a suggestion**. Artemis may *propose* task suggestions;
+the owner *accepts* one (providing a `due_at`) → a task is created/scheduled with that due date. No
+Google Calendar, no `scheduled_block` time-blocking (that needs a schema change — deferred lever), no
+GATE. "Never auto" is enforced structurally: the accept action is owner-only, never model-reachable.
+→ why: `docs/findings/cluster-decisions/DECISIONS-LOG.md` § "Agency & Proactivity scope" (LOCKED 2026-06-28, Option B1 + Option 2 due-date).
 
-## The grounding facts (verified in code 2026-06-28)
-- Task schema (`modules/productivity/schema.py`) has **separate** fields: `scheduled_block TEXT`
-  (the internal time block) and `calendar_event_id TEXT` (the external Google link). Internal-only
-  scheduling sets `scheduled_block` and leaves `calendar_event_id` **null**.
-- The built `tasks.schedule` tool (`modules/productivity/manifest.py:211`, `tools.task_schedule`)
-  is **calendar-coupled**: it only exists when a `schedule_fn` (from `calendar/schedule_task.py`,
-  returns an `event_id`) is injected, and it creates a real calendar block. **This tool stays OFF.**
-- The `suggestion.{create,list,accept,reject}` tools (`manifest.py:253-281`) are already **internal**
-  (owned store only).
-- `_register_modules` (`gateway.py:500-520`) currently registers ONLY the read-only `time` module —
-  so NO task tool is live today.
+## Grounding facts (verified in code 2026-06-28)
+- `suggestion.accept(suggestion_id, project_id?, due_at?)` (`tools.py:152` `SuggestionAcceptArgs`) already
+  creates a task from a suggestion with an optional `due_at`. **This is the "schedule" action** — reused
+  as-is, NO new tool, NO schema change. It is productivity-store-only — it does NOT import or call the
+  calendar client.
+- `_task_tool_specs()` (`manifest.py:150-299`) unconditionally registers the full write surface
+  (`tasks.cancel/complete/update/set_recurrence/assign_to_project`, `suggestion.accept/reject`) — all
+  `ActionRisk.WRITE`. `tasks.cancel` is NOT reversible. (Security BLOCK-1.)
+- The calendar-coupled `tasks.schedule` only exists when a `schedule_fn` is injected (`manifest.py:52`);
+  absent without it. Stays OFF.
+- `_register_modules` (`gateway.py:500-520`) registers ONLY the read-only `time` module today — no task
+  tool is live. The reactive Brain dispatches any registered front-door tool directly (`brain.py:266`,
+  no approval step) — so a WRITE tool in the registry = model can call it un-gated.
 
-## Why no GATE (the safety argument — security review must confirm)
-Setting `scheduled_block` on an owned-store task is **internal-reversible** (no external system is
-mutated; the owner can re-schedule/clear freely). By the owner autonomy boundary (internal auto /
-external gated, per the owner-rules capture + ADR-022), internal-reversible actions do not require the
-action-staging GATE. The GATE remains uncomposed and is NOT needed here **provided** the registered
-tools cannot transitively cause an external effect — see Invariant 1.
+## Invariants (hard rules)
+1. **No external effect reachable.** Nothing registered or wired here imports/calls the calendar client
+   or any `schedule_fn`; `tasks_manifest` is registered WITHOUT `schedule_fn`. `due_at`/task writes stay
+   in the owned productivity store.
+2. **"Never auto" is structural.** The consequential writes — `suggestion.accept` (creates the task /
+   sets `due_at`) and `suggestion.reject` — are **NOT in the reactive tool registry** the model selects
+   from (`brain.py:266`). They are reachable ONLY via dedicated owner-authenticated brain routes invoked
+   by the client. The model MAY call `suggestion.create` / `suggestion.list` / read tools (proposing &
+   listing are inert). No model turn can accept/schedule.
+3. **Owner-private scope.** Task store is owner-private (SQLCipher); tools gated on Hello-unlock — a
+   locked vault degrades to 423/no-op, not a crash.
 
-## Invariants (the spec's hard rules)
-1. **No external effect reachable.** The task tools registered into the live path must NOT create a
-   calendar event or call any `schedule_fn`. Concretely: `tasks_manifest` is registered **without**
-   `schedule_fn` (so the calendar-coupled `tasks.schedule` is absent), and the new internal schedule
-   tool writes `scheduled_block` only, never `calendar_event_id`, never the calendar client.
-2. **Never silent-auto.** Artemis schedules only (a) on an explicit owner ask, or (b) when the owner
-   accepts a proposed suggestion. No code path schedules a task without one of those two triggers.
-3. **Owner-private scope.** The task store is owner-private (SQLCipher); the tools are gated on
-   Hello-unlock like memory/retriever — a locked vault degrades to no-op, not a crash.
-
-## Files to change (provisional — confirm in planning + after security review)
+## Files to Change
 | File | Operation | Notes |
 |------|-----------|-------|
-| `src/artemis/modules/productivity/tools.py` | modify | Add an internal-only `schedule_block` tool fn: set `scheduled_block` on a task, `calendar_event_id` untouched. No calendar import. |
-| `src/artemis/modules/productivity/manifest.py` | modify | Expose the internal schedule tool in `tasks_manifest` independent of `schedule_fn`; keep the calendar-coupled `tasks.schedule` behind `schedule_fn` (absent here). |
-| `src/artemis/gateway.py` | modify | Register `tasks_manifest` (NO `schedule_fn`) into `_register_modules` so the internal task + suggestion tools are live. |
-| `src/artemis/...heartbeat/digest` | modify | Morning-digest may emit a schedule **suggestion** for an unscheduled task (ties to the proactive-heartbeat-module-wiring spec B). Suggestion only — no scheduling. |
-| `client/src/world/TasksDetail.tsx` (+ Tauri command + brain route) | modify | Wire the internal reschedule/accept-suggestion buttons (finding C internal half); the external `calendar.schedule_task` button stays guarded. |
-| tests | create/modify | Internal-schedule sets `scheduled_block` only; calendar_event_id stays null; no calendar client touched; suggest→accept flow; locked-vault no-op. |
+| `src/artemis/modules/productivity/manifest.py` | modify | Add `include_write_surface: bool = False` to `tasks_manifest`/`_task_tool_specs`. When False: register ONLY `suggestion.create`, `suggestion.list`, and the read tools into the manifest's reactive tool list — EXCLUDE all `tasks.*` writes AND `suggestion.accept`/`suggestion.reject`. |
+| `src/artemis/gateway.py` | modify | In `_register_modules`, register `tasks_manifest(store, include_write_surface=False)` so the owner task store is live; reachable only when owner-unlocked. |
+| `src/artemis/api_app.py` | modify | Add two owner-authenticated routes behind `require_unlocked`: `POST /app/tasks/suggestion/accept` (body: suggestion_id, due_at?, project_id?) and `POST /app/tasks/suggestion/reject` (body: suggestion_id) — each calls the productivity store's accept/reject directly (NOT via the model/reactive dispatch). Carry `Depends(rate_limited)`. |
+| `client/src-tauri/src/gateway.rs` | modify | Add `task_suggestion_accept` / `task_suggestion_reject` commands posting those routes. |
+| `client/src-tauri/src/lib.rs` | modify | Register the two new commands in `generate_handler!`. |
+| `client/src/api/gateway.ts` | modify | Add `acceptSuggestion(id, dueAt?)` / `rejectSuggestion(id)` transports. |
+| `client/src/screens/TasksDetail.tsx` | modify | Wire the accept-suggestion (with a due-date input) + reject buttons to the new transports. **Guard/disable the external `calendar.schedule_task` button** (its command stays unregistered — finding C external half). |
+| `tests/test_*` (Python) + client vitest | create/modify | Per Acceptance Criteria. |
 
-## Tasks (B1 — provisional, pending planning confirm)
-- [ ] Task 1: Add `include_write_surface: bool = False` to `tasks_manifest`/`_task_tool_specs`; when False, expose ONLY `suggestion.*` + read tools (no schedule, cancel, complete, update). (BLOCK-1)
-- [ ] Task 2: `suggestion.accept` handler performs the internal `scheduled_block` write in-process — assert `_schedule_fn is None`, no calendar import, `calendar_event_id` stays null. (FLAG-3, Invariant 1)
-- [ ] Task 3: Register `tasks_manifest(include_write_surface=False)` into `_register_modules`; Hello-unlock gating verified (locked vault → 423/no-op).
-- [ ] Task 4: Suggest-during-digest emits a `suggestion.create` (proposal only); truncate/strip externally-sourced suggestion fields. (FLAG-4; coordinate with spec B)
-- [ ] Task 5: Client — wire the accept-suggestion button (→ `suggestion.accept`); guard the external `calendar.schedule_task` button (finding C).
-- [ ] Task 6: Tests — schedule-write reachable ONLY via `suggestion.accept` (absent from reactive tool index); invariants 1–3; locked-vault no-op.
+## Tasks
+- [ ] Task 1: `include_write_surface=False` gate — files: `src/artemis/modules/productivity/manifest.py` — done when: with the default (False), `tasks_manifest(store).tools` contains `suggestion.create`, `suggestion.list`, and read tools, and contains NONE of `tasks.cancel/complete/update/set_recurrence/assign_to_project`, `suggestion.accept`, `suggestion.reject`, `tasks.schedule`; with `include_write_surface=True` the prior full set is unchanged (back-compat). `uv run mypy` clean.
+- [ ] Task 2: Register the task store live — files: `src/artemis/gateway.py` — done when: `_register_modules` registers `tasks_manifest(store, include_write_surface=False)` (no `schedule_fn`); a locked-vault path leaves the task tools degrading to 423/no-op (mirror the memory/retriever unlock gating); `uv run mypy` clean.
+- [ ] Task 3: Owner-only accept/reject routes — files: `src/artemis/api_app.py` — done when: `POST /app/tasks/suggestion/accept` and `/reject` exist behind `require_unlocked` + `Depends(rate_limited)`, call the productivity store's accept/reject directly, return the created task / status, and import no calendar code; a test asserts accept with a `due_at` creates a task carrying that `due_at`, and that a locked vault returns 423.
+- [ ] Task 4: Client wiring — files: `client/src-tauri/src/gateway.rs`, `client/src-tauri/src/lib.rs`, `client/src/api/gateway.ts`, `client/src/screens/TasksDetail.tsx` — done when: the accept (with due-date input) and reject buttons call the new commands; the external `calendar.schedule_task` button is disabled/guarded (no unregistered `invoke`); `cargo check` + `cargo test` + `tsc` + `vitest` + `npm run lint` green in `client`.
+- [ ] Task 5: Tests / invariants — files: `tests/test_productivity_*.py` (+ a gateway registry test) — done when: a test asserts the live reactive registry from `_register_modules` exposes `suggestion.create`/`list` + read tools but NOT `suggestion.accept`/`reject` nor any `tasks.*` write (Invariant 2); accept sets `due_at` and touches no calendar (grep + behavioural); locked-vault no-op (Invariant 3). Full `uv run pytest -q` green.
 
-## Acceptance criteria (provisional)
-- [ ] Internal schedule sets `scheduled_block`, leaves `calendar_event_id` null, and never imports/calls the calendar client (grep + test).
-- [ ] The live registry exposes the internal task + suggestion tools but NOT a calendar-coupled `tasks.schedule` (assert on registered tool names).
-- [ ] Suggest→accept flow schedules; no path schedules without ask-or-accept.
-- [ ] Locked vault → task tools no-op (423/degrade), not crash.
-- [ ] Host re-verify: full `uv run mypy` + `uv run pytest -q` green.
+## Wave plan
+Wave 1: [Task 1] | Wave 2: [Task 2, Task 3] | Wave 3: [Task 4, Task 5]
+(Task 2/3 both depend on Task 1's flag; Task 4 client + Task 5 tests depend on the routes.)
 
-## Open questions for the planning confirm
-1. Should the internal schedule tool be a NEW tool name (e.g. `tasks.set_block`) or the `tasks.schedule`
-   name reused in an internal-only mode? (Naming + avoiding confusion with the calendar-coupled one.)
-2. Does registering write-capable task tools into the *reactive* path need any per-tool confirm even
-   though it's internal? (Owner-rules says internal auto — likely no — but security review to confirm.)
-3. Exact digest suggestion trigger (which unscheduled tasks, how many) — coordinate with spec B.
+## Acceptance Criteria
+- [ ] Live reactive registry (from `_register_modules`) exposes `suggestion.create`, `suggestion.list`, read tools — and NONE of `tasks.cancel/complete/update`, `tasks.schedule`, `suggestion.accept`, `suggestion.reject`. (Invariant 2 — assert on registered tool names.)
+- [ ] `POST /app/tasks/suggestion/accept` with a `due_at` creates a task carrying that `due_at`; no calendar import on the path (grep + test).
+- [ ] Locked vault → task tools + the accept/reject routes return 423/no-op, no crash. (Invariant 3.)
+- [ ] External `calendar.schedule_task` button invokes no unregistered command (guarded). (Finding C external half.)
+- [ ] Host re-verify: full `uv run mypy` + `uv run pytest -q` green; client `cargo check`/`cargo test`/`tsc`/`vitest`/`npm run lint` green.
 
-## Security review (folded 2026-06-28) — verdict: SAFE-WITH-CONDITIONS
+## Deferred (not this build)
+- **Task: suggest-during-digest** (Artemis proposes suggestions proactively) → folded into spec
+  `proactive-heartbeat-module-wiring` (B); requires FLAG-4 sanitization of externally-sourced suggestion
+  fields (truncate/strip) before a real source feeds `suggestion.create`.
+- **Time-block scheduling** (`scheduled_block`) → needs a suggestions-schema extension; deferred lever.
 
-The core claim (scheduled_block writes are internal-reversible; the calendar-coupled tool is absent
-without `schedule_fn`) HOLDS. But two BLOCKs must be resolved before build:
+## Permissions
+### File Operations
+| Action | Paths |
+|--------|-------|
+| Modify | `src/artemis/modules/productivity/manifest.py`, `src/artemis/gateway.py`, `src/artemis/api_app.py`, `client/src-tauri/src/gateway.rs`, `client/src-tauri/src/lib.rs`, `client/src/api/gateway.ts`, `client/src/screens/TasksDetail.tsx` |
+| Create | `tests/` Python tests + client vitest as needed |
 
-**BLOCK-1 — registering `tasks_manifest` opens the WHOLE write surface, not just scheduling.**
-`_task_tool_specs()` unconditionally registers `tasks.cancel`, `tasks.complete`, `tasks.update`,
-`tasks.set_recurrence`, `tasks.assign_to_project` (all `ActionRisk.WRITE`). `tasks.cancel` is NOT
-internal-reversible (no `task_uncancel`). The "no GATE" argument only covered `scheduled_block`.
-→ **FOLD (required):** register ONLY the minimal tool set this slice needs (internal schedule +
-suggestion tools) via a new `include_write_surface=False` flag on `tasks_manifest`; cancel/complete/
-update stay OFF until a separate GATE-gated spec. Task 2 + an acceptance criterion updated accordingly.
+### Commands
+| Command | Purpose |
+|---------|---------|
+| `uv run --no-sync mypy` / `uv run --no-sync pytest -q` | Host verify (use `--no-sync` if a live brain holds artemis-brain.exe). |
+| `cargo check` / `cargo test` / `tsc` / `vitest` / `npm run lint` (in `client`) | Client verify. |
 
-**BLOCK-2 — "never silent-auto" has ZERO code enforcement (the open fork — see below).**
-`brain.py:266` dispatches any registered front-door callable immediately, no approval step. Convention
-is not enough for the first action-taking capability. → **OWNER DECISION REQUIRED** (§ Open fork).
+### Git Operations
+| Operation | Scope |
+|-----------|-------|
+| `git add` (by name) + `git commit` | "feat(agency): internal task scheduling via due-date (suggest/accept, no GATE)" |
 
-**FLAG-3 (fold):** the new schedule callable must `assert _schedule_fn is None` and import nothing
-from `calendar.schedule_task` — the module-level `_schedule_fn` global (`tools.py:25`) must not be
-reachable. Acceptance criterion's grep/test must verify this.
-**FLAG-4 (fold):** define a truncation + control-char-strip policy for externally-sourced suggestion
-fields (`title`/`notes`/`source`) before the digest wiring (Task 3) ships — pre-empts injection once a
-real source feeds suggestions.
-**Hello-unlock (fold):** add an explicit acceptance criterion — locked vault → task tools degrade to
-423/no-op at the gateway registration site, verified by test.
+## Security Context (folded from review 2026-06-28)
+- BLOCK-1 → `include_write_surface=False` keeps the irreversible writes (`tasks.cancel` etc.) off the
+  live path. BLOCK-2 → resolved by Invariant 2 (accept/reject owner-route-only, never model-reachable).
+- FLAG-3 → the accept/reject routes import no calendar code; `tasks_manifest` registered without
+  `schedule_fn`. FLAG-4 → suggestion-field sanitization travels with the deferred digest task (no
+  external suggestion source in this build). Hello-unlock no-op is an explicit acceptance criterion.
 
-## BLOCK-2 resolution — Option B1 (LOCKED 2026-06-28, owner)
-**Suggest/accept ONLY — no GATE, "never auto" enforced by construction.**
-- The internal `schedule_block` action is **NOT registered as a front-door reactive tool** (it is
-  absent from the tool index `brain.py:266` selects from), so the model can never call it directly.
-- The ONLY path that sets `scheduled_block` is the handler behind `suggestion.accept` — an explicit
-  owner action. Artemis may `suggestion.create` a proposed slot (during the digest or on request);
-  nothing schedules until the owner accepts.
-- This makes Invariant 2 structural, not conventional: there is no code path from a model turn to a
-  schedule write. Free-form "just schedule X for tomorrow" is intentionally deferred to the future
-  GATE lever.
+## Progress
+_(Coding mode writes here — do not edit manually)_
 
-### Enforcement design (B1)
-- `_register_modules` registers `tasks_manifest(include_write_surface=False)` → exposes ONLY the
-  suggestion tools (`suggestion.create/list/accept/reject`) + read tools. NO `tasks.schedule`,
-  NO cancel/complete/update (BLOCK-1 fold).
-- `suggestion.accept`'s handler performs the internal `scheduled_block` write directly (in-process,
-  not via a registered tool callable). It asserts `_schedule_fn is None` and imports no calendar code
-  (FLAG-3).
-- Acceptance criterion: grep the registered reactive tool names → the schedule-write callable is
-  absent; the only way to reach a `scheduled_block` write in a test is through `suggestion.accept`.
+### 2026-06-28 — built by Codex (gpt-5.5, high effort), host-verified + cross-model reviewed
+- [x] Task 1 — `include_write_surface=False` filters `tasks_manifest` to `suggestion.create`/`suggestion.list` + read tools only (no write surface, no accept/reject). `True` preserves the full set.
+- [x] Task 2 — `_register_modules` registers `tasks_manifest(store, include_write_surface=False)` without `schedule_fn`; Hello-unlock no-op preserved.
+- [x] Task 3 — owner routes `POST /app/tasks/suggestion/accept` (sets `due_at`, `scheduled_block` null, 404 on unknown) + `/reject` (idempotent) behind `require_unlocked` + `rate_limited`; no calendar import.
+- [x] Task 4 — Tauri commands `task_suggestion_accept`/`reject` + TS transports + `screens/TasksDetail.tsx` accept(due-date)/reject wiring; external time-block button disabled.
+- [x] Task 5 — registry-invariant test (accept/reject/writes absent from reactive index), accept-due_at, locked-423, client tests.
+
+**Deviations / notes:** spec path `world/TasksDetail.tsx` was wrong → real path `screens/TasksDetail.tsx` (Codex adapted; spec corrected). Codex's sandbox blocked vitest → host fixed 1 test bug (React native value-setter) + ran vitest (84). Cross-model (Opus) review = PASS-WITH-FLAGS: FLAG-2 `suggestion.list`→READ applied (rippled `test_productivity_core` counts 9/13→10/12); FLAG-1 (reject→500) was a review misread — `reject_suggestion` is an idempotent no-op, reverted speculative handler; FLAG-3 (`complete`/`reschedule` dead buttons) = pre-existing finding C, deferred to `client-detail-action-wiring`.
+
+**Host verify:** full mypy clean (343) · targeted pytest 48 · vitest 84 · eslint · cargo check/test · full pytest (final-state run in progress at write time).
