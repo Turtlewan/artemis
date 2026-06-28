@@ -10,13 +10,17 @@ import type { PendingAction } from "./dtos";
 
 interface ReviewDetailProps extends DomainDetailProps {
   reader?: () => Promise<ReviewItem[]>;
-  autoReader?: () => Promise<boolean>;
+  autoReader?: () => Promise<ReviewItem[]>;
   approve?: (name: string) => Promise<unknown>;
   reject?: (name: string) => Promise<unknown>;
   actionsReader?: () => Promise<PendingAction[]>;
   actionApprove?: (id: string) => Promise<unknown>;
   actionReject?: (id: string) => Promise<unknown>;
 }
+
+type LegacyReviewDetailProps = Omit<ReviewDetailProps, "autoReader"> & {
+  autoReader?: () => Promise<boolean>;
+};
 
 const titleOf = (item: ReviewItem): string => item.name;
 const engineOf = (item: ReviewItem): "local" | "codex" | "review" =>
@@ -29,6 +33,8 @@ const expiresSoon = (expiresAt: string): boolean => {
 
 const actionCaption = (action: PendingAction): string => `${action.module}.${action.tool}`;
 
+export function ReviewDetail(props: ReviewDetailProps): React.JSX.Element;
+export function ReviewDetail(props: LegacyReviewDetailProps): React.JSX.Element;
 export function ReviewDetail({
   domainId,
   onClose,
@@ -39,7 +45,7 @@ export function ReviewDetail({
   actionsReader = gateway.actionsPending,
   actionApprove = gateway.actionApprove,
   actionReject = gateway.actionReject,
-}: ReviewDetailProps) {
+}: ReviewDetailProps | LegacyReviewDetailProps) {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [autoEnabled, setAutoEnabled] = useState(false);
@@ -54,7 +60,7 @@ export function ReviewDetail({
         if (!alive) return;
         setActions(pendingActions);
         setItems(pending);
-        setAutoEnabled(auto);
+        setAutoEnabled(Array.isArray(auto) ? auto.length > 0 : auto);
         setError(null);
       })
       .catch(() => {

@@ -274,8 +274,9 @@ pub(crate) async fn review_pending(state: &AppState) -> Result<Vec<ReviewItem>, 
     request_json::<Vec<ReviewItem>, ()>(state, Method::GET, "/app/review/pending", None, true).await
 }
 
-pub(crate) async fn review_auto_enabled(state: &AppState) -> Result<bool, GatewayError> {
-    request_json::<bool, ()>(state, Method::GET, "/app/review/auto_enabled", None, true).await
+pub(crate) async fn review_auto_enabled(state: &AppState) -> Result<Vec<ReviewItem>, GatewayError> {
+    request_json::<Vec<ReviewItem>, ()>(state, Method::GET, "/app/review/auto-enabled", None, true)
+        .await
 }
 
 pub(crate) async fn review_approve(
@@ -459,7 +460,7 @@ pub(crate) async fn app_review_pending(
 #[tauri::command]
 pub(crate) async fn app_review_auto_enabled(
     state: State<'_, AppState>,
-) -> Result<bool, GatewayError> {
+) -> Result<Vec<ReviewItem>, GatewayError> {
     review_auto_enabled(&state).await
 }
 

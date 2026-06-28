@@ -14,7 +14,6 @@ import asyncio
 import inspect
 import json
 import logging
-import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +22,7 @@ from typing import Literal, Protocol, cast
 from artemis import paths
 from artemis.adapters.model_adapters import OpenAIModelPort
 from artemis.config import Settings, get_settings
-from artemis.identity.key_provider import KeyProvider, SecretKey
+from artemis.identity.key_provider import KeyProvider
 from artemis.identity.owner_provider import build_owner_key_provider
 from artemis.identity.scope import OWNER_PRIVATE
 from artemis.identity.windows_key_provider import UnlockDeniedError, UnlockUnavailableError
@@ -68,10 +67,6 @@ from artemis.untrusted.quarantine import QuarantinedReader
 
 _DEFAULT_QUERY = "newer_than:7d in:inbox"
 logger = logging.getLogger(__name__)
-
-
-class BuildKeyProviderError(RuntimeError):
-    """Raised when no dev key provider is configured for the harness."""
 
 
 class _StructuredSink(Protocol):
@@ -208,28 +203,6 @@ class _NoopMemory:
     ) -> str:
         del subject, relation, object_, category, source_ref, sensitivity
         raise RuntimeError("dev email harness effect seam invoked in observe mode")
-
-
-class _EnvKeyProvider:
-    """Minimal dev key provider for owner-run CLI use."""
-
-    def dek_for_scope(self, scope: str) -> SecretKey:
-        if scope != OWNER_PRIVATE:
-            raise BuildKeyProviderError(f"unsupported dev scope: {scope}")
-        raw = os.environ.get("ARTEMIS_OWNER_PRIVATE_DEK_HEX", "").strip()
-        if len(raw) != 64:
-            raise BuildKeyProviderError(
-                "set ARTEMIS_OWNER_PRIVATE_DEK_HEX to a 32-byte hex key for dev harness storage"
-            )
-        try:
-            return SecretKey(bytes.fromhex(raw))
-        except ValueError as exc:
-            raise BuildKeyProviderError(
-                "ARTEMIS_OWNER_PRIVATE_DEK_HEX must be 32 bytes of valid hex"
-            ) from exc
-
-    def is_owner_unlocked(self) -> bool:
-        return True
 
 
 def build_dev_rules_runtime(

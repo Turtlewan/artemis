@@ -24,7 +24,7 @@ export const status = (): Promise<StatusResponse> => call("app_status");
 
 export const reviewPending = (): Promise<ReviewItem[]> => call("app_review_pending");
 
-export const reviewAutoEnabled = (): Promise<boolean> => call("app_review_auto_enabled");
+export const reviewAutoEnabled = (): Promise<ReviewItem[]> => call("app_review_auto_enabled");
 
 export const reviewApprove = (name: string): Promise<OkResponse> =>
   call("app_review_approve", { name });
