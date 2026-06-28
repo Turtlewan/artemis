@@ -147,6 +147,7 @@ def test_finance_knowledge_tool_and_manifest_wiring(tmp_path: Path) -> None:
         store,
         ingest_pipeline=ingest,  # type: ignore[arg-type]
         settings=Settings(data_root=tmp_path),
+        include_write_surface=True,
     )
 
     spec = next(tool for tool in manifest.tools if tool.name == "finance_knowledge_push")

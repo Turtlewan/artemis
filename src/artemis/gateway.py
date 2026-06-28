@@ -533,4 +533,17 @@ def _register_modules(
         except ImportError:
             logger.debug("Gateway: tasks module not available -- skipping")
 
+        if key_provider.is_owner_unlocked():
+            try:
+                from artemis.modules.finance import FinanceStore, finance_manifest
+
+                finance_settings = settings if settings is not None else get_settings()
+                finance_store = FinanceStore(finance_settings, key_provider)
+                registry.register(finance_manifest(finance_store, include_write_surface=False))
+                logger.debug("Gateway: registered finance module manifest")
+            except ImportError:
+                logger.debug("Gateway: finance module not available -- skipping")
+        else:
+            logger.debug("Gateway: owner locked -- skipping finance module manifest")
+
     return registry

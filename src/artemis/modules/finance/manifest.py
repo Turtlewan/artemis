@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from artemis.config import Settings
 from artemis.ingest.pipeline import IngestPipeline
-from artemis.manifest import DataScope, ModuleManifest, Permissions, UiSurface
+from artemis.manifest import ActionRisk, DataScope, ModuleManifest, Permissions, ToolSpec, UiSurface
 from artemis.modules.finance import tools
 from artemis.modules.finance.events import Emit, _noop_emit
 from artemis.modules.finance.extraction import FinanceExtractor
@@ -23,6 +23,7 @@ def finance_manifest(
     gmail_cache: GmailReadCache | None = None,
     settings: Settings | None = None,
     emit: Emit = _noop_emit,
+    include_write_surface: bool = False,
 ) -> ModuleManifest:
     """Return the owner-private Finance awareness manifest."""
     tools.init_finance_tools(store, emit=emit)
@@ -34,13 +35,21 @@ def finance_manifest(
         tools.init_finance_knowledge(ingest_pipeline, store.settings)
     if registry is not None:
         register_finance_templates(registry)
+    tool_specs = _finance_tool_specs(include_write_surface=include_write_surface)
     return ModuleManifest(
         name="finance",
         version="0.1.0",
         description="Always-local owner-private finance ledger awareness.",
-        tools=tools.build_finance_tool_specs(),
+        tools=tool_specs,
         data_scope=DataScope.OWNER_PRIVATE,
         permissions=Permissions(owner=True, guest=False),
         proactive_hooks=build_finance_hooks(store),
         ui=UiSurface(kind="card"),
     )
+
+
+def _finance_tool_specs(*, include_write_surface: bool) -> list[ToolSpec]:
+    tool_specs = tools.build_finance_tool_specs()
+    if include_write_surface:
+        return tool_specs
+    return [tool for tool in tool_specs if tool.action_risk == ActionRisk.READ]

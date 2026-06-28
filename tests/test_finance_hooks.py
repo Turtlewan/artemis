@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -103,6 +104,9 @@ def test_hooks_hit_with_count_id_scalar_payloads(store: FinanceStore) -> None:
     }
     for result in (renewal, new_recurring, bill_due, spending):
         assert _payload_is_counts_ids_scalars(result.payload)
+        payload_text = json.dumps(result.payload, sort_keys=True)
+        assert "Lunch" not in payload_text
+        assert "hook:lunch" not in payload_text
 
 
 def test_build_hooks_and_manifest_validate(tmp_path: Path) -> None:
@@ -124,10 +128,15 @@ def test_build_hooks_and_manifest_validate(tmp_path: Path) -> None:
     assert {
         "subscription_list",
         "bill_list",
-        "recurring_scan",
-        "reconcile_run",
         "unusual_spend_list",
     } <= {tool.name for tool in manifest.tools}
+    assert {"recurring_scan", "reconcile_run"}.isdisjoint({tool.name for tool in manifest.tools})
+
+    full_manifest = finance_manifest(store, include_write_surface=True)
+    assert {
+        "recurring_scan",
+        "reconcile_run",
+    } <= {tool.name for tool in full_manifest.tools}
 
 
 def test_scope_locked_degrades_to_miss(tmp_path: Path) -> None:

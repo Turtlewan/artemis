@@ -251,9 +251,8 @@ def test_finance_store_fails_closed_without_binding(
 
 
 def test_finance_manifest_and_tools_shape(tmp_path: Path) -> None:
-    manifest = finance_manifest(
-        FinanceStore(Settings(data_root=tmp_path), FakeKeyProvider(owner_unlocked=True))
-    )
+    store = FinanceStore(Settings(data_root=tmp_path), FakeKeyProvider(owner_unlocked=True))
+    manifest = finance_manifest(store)
     assert manifest.name == "finance"
     assert manifest.data_scope.value == OWNER_PRIVATE
     assert manifest.permissions.guest is False
@@ -262,6 +261,38 @@ def test_finance_manifest_and_tools_shape(tmp_path: Path) -> None:
     assert all(hook.tier == 1 for hook in manifest.proactive_hooks)
     assert manifest.ui.kind == "card"
     assert all(inspect.iscoroutinefunction(tool.callable_ref) for tool in manifest.tools)
+    read_tool_names = {tool.name for tool in manifest.tools}
+    assert read_tool_names == {
+        "spend_summary",
+        "spend_total",
+        "transaction_list",
+        "transaction_get",
+        "category_list",
+        "account_list",
+        "fin_suggestion_list",
+        "subscription_list",
+        "bill_list",
+        "unusual_spend_list",
+    }
+    assert all(tool.action_risk.value == "read" for tool in manifest.tools)
+
+    full_manifest = finance_manifest(store, include_write_surface=True)
+    full_tool_names = {tool.name for tool in full_manifest.tools}
+    assert read_tool_names < full_tool_names
+    assert {
+        "transaction_add",
+        "transaction_update",
+        "transaction_recategorize",
+        "category_add",
+        "account_add",
+        "csv_import",
+        "transaction_extract_email",
+        "fin_suggestion_accept",
+        "fin_suggestion_reject",
+        "recurring_scan",
+        "reconcile_run",
+        "finance_knowledge_push",
+    } <= full_tool_names
     with pytest.raises(ValidationError):
         TxnAddArgs(txn_date="2026-06-01", amount="not-decimal")
 
