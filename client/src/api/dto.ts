@@ -47,6 +47,7 @@ export interface StatusResponse {
 
 export interface AskRequest {
   text: string;
+  speak?: boolean;
 }
 
 export interface AskResponse {

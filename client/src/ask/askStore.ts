@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { ask } from "../api/gateway";
+import * as gateway from "../api/gateway";
 import { connectionStore } from "../state/connection";
 import type { AskEngine } from "./EngineTag";
 
@@ -31,6 +31,8 @@ export interface AskSnapshot {
   politeAnnouncement: string;
   assertiveAnnouncement: string;
   sending: boolean;
+  muted: boolean;
+  speaking: boolean;
 }
 
 type Listener = () => void;
@@ -44,6 +46,8 @@ const initialSnapshot = (): AskSnapshot => ({
   politeAnnouncement: "",
   assertiveAnnouncement: "",
   sending: false,
+  muted: false,
+  speaking: false,
 });
 
 let snapshot = initialSnapshot();
@@ -92,6 +96,14 @@ const replaceMessage = (messageId: string, replacement: AskMessage): void => {
   });
 };
 
+const appendTextToMessage = (messageId: string, text: string): void => {
+  update({
+    messages: snapshot.messages.map((message) =>
+      message.id === messageId ? { ...message, text } : message,
+    ),
+  });
+};
+
 const markEngine = (engine: AskEngine): void => {
   update({ engineStatus: { ...snapshot.engineStatus, [engine]: true } });
 };
@@ -116,6 +128,12 @@ export const askStore = {
   setUnlockPromptForTest: (prompt: UnlockPrompt): void => {
     unlockPrompt = prompt;
   },
+  toggleMute: (): void => {
+    update({ muted: !snapshot.muted });
+  },
+  setSpeaking: (speaking: boolean): void => {
+    update({ speaking });
+  },
   resetForTest: (): void => {
     snapshot = initialSnapshot();
     nextId = 0;
@@ -139,19 +157,52 @@ export const askStore = {
     update({ streaming: "", sending: true, assertiveAnnouncement: "" });
 
     try {
-      const response = await ask({ text: trimmed });
-      const engine = deriveEngine(response.path, response.escalated);
-      markEngine(engine);
-      replaceMessage(assistantId, {
-        id: assistantId,
-        role: "assistant",
-        text: response.text,
-        engine,
-        path: response.path,
-        tool: response.tool_used ?? undefined,
-      });
-      update({ streaming: "", sending: false });
-      publishPolite(response.text, true);
+      let streamed = "";
+      let finalized = false;
+      const requestMuted = snapshot.muted;
+
+      for await (const event of gateway.askStream({ text: trimmed, speak: !requestMuted })) {
+        if (event.type === "text") {
+          streamed += event.text;
+          appendTextToMessage(assistantId, streamed);
+          update({ streaming: streamed });
+          publishPolite(streamed);
+          continue;
+        }
+
+        if (event.type === "vault_locked") {
+          unlockPrompt();
+          replaceMessage(assistantId, {
+            id: assistantId,
+            role: "assistant",
+            text: "",
+            engine: "local",
+            failedLocked: true,
+          });
+          update({
+            streaming: "",
+            sending: false,
+            assertiveAnnouncement: "Vault locked - re-authentication required",
+          });
+          return;
+        }
+
+        const engine = deriveEngine(event.path, event.escalated);
+        markEngine(engine);
+        replaceMessage(assistantId, {
+          id: assistantId,
+          role: "assistant",
+          text: streamed,
+          engine,
+          path: event.path,
+          tool: event.tool_used,
+        });
+        update({ streaming: "", sending: false });
+        publishPolite(streamed, true);
+        finalized = true;
+      }
+
+      if (!finalized) update({ streaming: "", sending: false });
     } catch (error: unknown) {
       if (isVaultLockedError(error)) {
         unlockPrompt();

@@ -7,6 +7,7 @@ import { ResultRow } from "./ResultRow";
 interface AskPopupProps {
   isOpen: boolean;
   onClose: () => void;
+  onVoiceTrigger?: (options: { speak: boolean }) => void | Promise<void>;
 }
 
 const focusableSelector = [
@@ -103,6 +104,31 @@ const styles = `
 
 .ask-close {
   margin-inline-start: auto;
+}
+
+.ask-icon-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--p) 10%, transparent);
+}
+
+.ask-icon-button[aria-pressed="true"] {
+  color: var(--a);
+  border-color: color-mix(in srgb, var(--a) 58%, transparent);
+  background: color-mix(in srgb, var(--a) 12%, transparent);
+}
+
+.ask-icon-button__glyph {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .ask-input-line {
@@ -218,6 +244,23 @@ const styles = `
   gap: 8px;
 }
 
+.ask-speaking {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--a);
+}
+
+.ask-speaking::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--a);
+  box-shadow: 0 0 12px var(--a);
+  animation: ask-speaking-pulse 1s ease-in-out infinite;
+}
+
 .ask-status-chip span {
   color: var(--p);
 }
@@ -239,11 +282,22 @@ const styles = `
   .ask-input {
     caret-color: auto;
   }
+
+  .ask-speaking::before {
+    animation: none;
+  }
+}
+
+@keyframes ask-speaking-pulse {
+  50% {
+    opacity: 0.42;
+    transform: scale(0.82);
+  }
 }
 `;
 
 /** Floating Ask Artemis dialog with manual focus trap and streaming status regions. */
-export function AskPopup({ isOpen, onClose }: AskPopupProps) {
+export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
   const titleId = useId();
   const inputId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -293,6 +347,10 @@ export function AskPopup({ isOpen, onClose }: AskPopupProps) {
     const pending = text;
     setText("");
     void askStore.send(pending);
+  };
+
+  const onMic = (): void => {
+    void onVoiceTrigger?.({ speak: !snapshot.muted });
   };
 
   const assistantRows = snapshot.messages.filter((message) => message.role === "assistant");
@@ -347,6 +405,22 @@ export function AskPopup({ isOpen, onClose }: AskPopupProps) {
                 aria-label="Ask Artemis"
                 autoComplete="off"
               />
+              <button className="ask-icon-button" type="button" aria-label="Hold to talk" onClick={onMic}>
+                <span className="ask-icon-button__glyph" aria-hidden="true">
+                  mic
+                </span>
+              </button>
+              <button
+                className="ask-icon-button"
+                type="button"
+                aria-label={snapshot.muted ? "Muted" : "Speak answers"}
+                aria-pressed={snapshot.muted}
+                onClick={askStore.toggleMute}
+              >
+                <span className="ask-icon-button__glyph" aria-hidden="true">
+                  {snapshot.muted ? "off" : "spk"}
+                </span>
+              </button>
               <span className="ask-mode-chip">{snapshot.modeHint}</span>
             </form>
 
@@ -363,6 +437,11 @@ export function AskPopup({ isOpen, onClose }: AskPopupProps) {
             </ol>
 
             <footer className="ask-footer" aria-label="Engine status">
+              {snapshot.speaking ? (
+                <span className="ask-status-chip ask-speaking" aria-live="polite">
+                  Speaking
+                </span>
+              ) : null}
               {Object.entries(snapshot.engineStatus).map(([engine, active]) => (
                 <span className="ask-status-chip" key={engine}>
                   <span aria-hidden="true">o</span> {engine} {active ? "ready" : "idle"}

@@ -27,7 +27,12 @@ import { useAskHotkey } from "./useAskHotkey";
 
 const roleSelector = (role: string): string => `[role="${role}"]`;
 
-const getByRole = (container: HTMLElement, role: string, name?: RegExp): HTMLElement => {
+const getByRole = (
+  container: HTMLElement,
+  role: string,
+  name?: RegExp,
+  options?: { pressed?: boolean },
+): HTMLElement => {
   const candidates = Array.from(container.querySelectorAll<HTMLElement>(roleSelector(role)));
   if (role === "textbox") {
     candidates.push(...Array.from(container.querySelectorAll<HTMLInputElement>("input")));
@@ -41,7 +46,10 @@ const getByRole = (container: HTMLElement, role: string, name?: RegExp): HTMLEle
     const label = candidate.getAttribute("aria-label");
     const labelledBy = candidate.getAttribute("aria-labelledby");
     const namedBy = labelledBy === null ? "" : (container.querySelector(`#${labelledBy}`)?.textContent ?? "");
-    return name.test(`${label ?? ""} ${namedBy} ${candidate.textContent ?? ""}`);
+    const pressedMatches =
+      options?.pressed === undefined ||
+      candidate.getAttribute("aria-pressed") === String(options.pressed);
+    return pressedMatches && name.test(`${label ?? ""} ${namedBy} ${candidate.textContent ?? ""}`);
   });
   if (match === undefined) throw new Error(`Missing role ${role}`);
   return match;
@@ -82,6 +90,43 @@ describe("AskPopup", () => {
     expect(getByRole(container, "dialog", /ask artemis/i)).toBeTruthy();
     expect(getByRole(container, "textbox", /ask/i)).toBeTruthy();
     expect(container.textContent).toMatch(/local|codex|review/);
+  });
+
+  it("calls the voice trigger when the mic button is pressed", () => {
+    const onVoiceTrigger = vi.fn();
+    const { container } = render(
+      <AskPopup isOpen={true} onClose={vi.fn()} onVoiceTrigger={onVoiceTrigger} />,
+    );
+
+    act(() => {
+      getByRole(container, "button", /hold to talk/i).click();
+    });
+
+    expect(onVoiceTrigger).toHaveBeenCalledWith({ speak: true });
+  });
+
+  it("toggles mute with aria-pressed and persists across opens", () => {
+    const { container, root } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+    const toggle = getByRole(container, "button", /speak answers/i, { pressed: false });
+
+    act(() => {
+      toggle.click();
+    });
+
+    expect(getByRole(container, "button", /muted/i, { pressed: true })).toBeTruthy();
+
+    act(() => root.render(<AskPopup isOpen={false} onClose={vi.fn()} />));
+    act(() => root.render(<AskPopup isOpen={true} onClose={vi.fn()} />));
+
+    expect(getByRole(container, "button", /muted/i, { pressed: true })).toBeTruthy();
+  });
+
+  it("announces the speaking indicator while speaking", () => {
+    askStore.setSpeaking(true);
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    const indicator = container.querySelector<HTMLElement>('[aria-live="polite"].ask-speaking');
+    expect(indicator?.textContent).toContain("Speaking");
   });
 
   it("focuses the input on open and wraps Tab inside the manual trap", () => {
