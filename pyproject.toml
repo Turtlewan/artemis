@@ -79,6 +79,12 @@ environments = [
     "python_version == '3.12' and sys_platform == 'win32'",
     "python_version == '3.12' and sys_platform == 'darwin'",
 ]
+# Security floors on transitive deps (pip-audit, 2026-06-28). Not direct deps —
+# constrained here to pull the CVE-fixed versions without promoting them.
+constraint-dependencies = [
+    "pyjwt>=2.13.0",          # PYSEC-2026-176..179
+    "python-multipart>=0.0.31",  # CVE-2026-53538/53539/53540
+]
 
 [build-system]
 requires = ["hatchling"]
