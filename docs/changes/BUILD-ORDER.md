@@ -47,6 +47,16 @@ All dev-buildable voice specs built (Codex/Opus), host-verified (full mypy + pyt
 **Concurrency:** A, B, C are mutually independent (disjoint files, no cross-prereqs) → may run concurrently;
 owner priority is **A first**. Within A/B follow the wave order; C any time.
 
+### Group D — 2026-06-28 planning sweep (10 specs, after the on-box activation run)
+New dev-buildable queue from the "start all the planning" session. **Wave order:**
+| Wave | Spec(s) | Notes |
+|------|---------|-------|
+| D1 (independent, Windows-testable, parallel-safe) | `fix-quarantine-transport-error` → `fix-local-model-structured-output` (SERIAL — both edit `quarantine.read()`) · `fix-google-auth-scope-registration` · `cleanup-bundle-2026-06-28` · `client-pairing-screen` · `voice-ask-S1-speakable-tee` | Build first; the two quarantine fixes are the only ordering constraint |
+| D2 (depend on the S1 seam: `handle_ask_unified`/`to_speakable`/`app.state.speak_sink`) | `voice-ask-S2-push-to-talk-input` (also OWNS the `app_ask_voice` mic→brain Rust glue) · `voice-ask-S3-voice-output-wiring` · `voice-ask-S4-client-affordances` | After D1's S1 lands; S3 real-audio playback Mac-gated, FakeTTS/Sidecar testable now |
+| D3 (gated / owner-run) | `client-pairing-live-handshake` (owner-run verification: DER sig + X9.63 pubkey vs live brain — CLIENT-auth Task 7 / runbook Step 4b) · voice real-audio (Mac) | After D1–D2 |
+
+Provenance: ADR-034 (unified voice+text Ask) · `docs/findings/unified-voice-ask-design-brief.md` · `docs/findings/client-pairing-ui-design-brief.md` · `docs/handoff/2026-06-28.md`. The 6 first-run gaps that seeded the fix specs: `docs/handoff/2026-06-28.md`.
+
 ## Gated — NOT in the active queue (wait for host/dependency)
 | Spec | Gate |
 |------|------|

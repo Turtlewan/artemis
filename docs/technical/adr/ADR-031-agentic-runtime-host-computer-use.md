@@ -192,7 +192,7 @@ Spec-time research (`docs/research/2026-06-26-openhands-windows/README.md`) pins
 
 - Exact `AskOwnerTool` protocol (message schema, timeout behaviour, partial-result surface on timeout) — parked to coding-subsystem spec.
 - ~~OpenHands embed bindings + Windows sandbox~~ — **RESOLVED 2026-06-26** (§ Refinement above).
-- Sensitive-screen pre-filter detector list (which apps / which classifier signals trigger a skip) — parked to Rung 3 spec (Mac-gated).
-- `cloud_reasoning_enabled` config surface (where the kill-switch lives in user config, default value) — parked to GEPA spec (end-state).
+- Sensitive-screen pre-filter detector list (which apps / which classifier signals trigger a skip) — parked to Rung 3 spec (Mac-gated). **Deferral ratified 2026-06-28** (owner): the ADR-031 Fork-2 §1 approach stands (local pre-filter, built-in denylist banking/health/password-manager skip + owner-extensible, skip-on-unknown); the concrete app/signal list is pinned when the Rung-3 spec is written.
+- `cloud_reasoning_enabled` config surface (where the kill-switch lives in user config, default value) — parked to GEPA spec (end-state). **Default DECIDED 2026-06-28 (owner) = ON.** Guardrails to carry into the GEPA spec: the kill-switch is retained, and the sensitivity wall still gates traces regardless of the flag (sensitive reasoning traces never leave the box; this default governs only the non-sensitive GEPA path). Decision brief: `docs/drafts/agentic-fork-decisions-brief.md`.
 - Agentic UI design (4 surfaces above) — downstream, in BACKLOG.
 - Spec series authoring — **IN PROGRESS 2026-06-26** (dev-buildable Phases 1–4; owner chose full-engine plan).
