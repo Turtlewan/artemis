@@ -5,11 +5,10 @@ use std::mem::size_of;
 use std::ptr::{null, null_mut};
 
 use windows_sys::Win32::Security::Cryptography::{
-    BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB, MS_PLATFORM_CRYPTO_PROVIDER,
+    BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB, MS_KEY_STORAGE_PROVIDER,
     NCRYPT_ECDSA_P256_ALGORITHM, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE,
-    NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG, NCRYPT_UI_POLICY, NCRYPT_UI_POLICY_PROPERTY,
     NCryptCreatePersistedKey, NCryptDeleteKey, NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject,
-    NCryptOpenKey, NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
+    NCryptOpenKey, NCryptOpenStorageProvider, NCryptSignHash,
 };
 use windows_sys::core::w;
 
@@ -17,10 +16,12 @@ use crate::error::KeystoreError;
 use crate::{Keystore, sig};
 
 const KEY_NAME: windows_sys::core::PCWSTR = w!("ArtemisDeviceSigningKey");
-const FRIENDLY_NAME: windows_sys::core::PCWSTR = w!("Artemis device signing key");
-const DESCRIPTION: windows_sys::core::PCWSTR = w!("Require Windows Hello to authenticate Artemis");
 const S_OK: i32 = 0;
 const NTE_NOT_FOUND: i32 = unchecked_hresult(0x80090011);
+// CNG providers (Platform Crypto Provider AND the software KSP) return NTE_BAD_KEYSET, not
+// NTE_NOT_FOUND, when a persisted key has not been created yet — treat it as "key not found"
+// so has_key() returns false and create_key() proceeds (first-pairing bootstrap).
+const NTE_BAD_KEYSET: i32 = unchecked_hresult(0x80090016);
 const NTE_DEVICE_NOT_READY: i32 = unchecked_hresult(0x80090030);
 const NTE_DEVICE_NOT_FOUND: i32 = unchecked_hresult(0x80090035);
 const NTE_USER_CANCELLED: i32 = unchecked_hresult(0x80090036);
@@ -63,7 +64,9 @@ impl Drop for NcryptHandle {
     }
 }
 
-/// Windows TPM-backed P-256 signer using NCrypt and the Microsoft Platform Crypto Provider.
+/// Windows P-256 device signer using NCrypt. DEV-TWIN: the device key lives in the software Key
+/// Storage Provider (see `open_provider`); the hardware-bound, gesture-gated key is the Mac Secure
+/// Enclave path (`macos.rs`, ADR-025).
 pub struct WindowsKeystore;
 
 impl WindowsKeystore {
@@ -71,12 +74,19 @@ impl WindowsKeystore {
         Self
     }
 
+    /// Open the device-key storage provider.
+    ///
+    /// DEV-TWIN (Windows dev box): uses the software Key Storage Provider. The TPM Platform
+    /// Crypto Provider opens on this AMD fTPM box, but its key operations fail with NTE_BAD_KEYSET,
+    /// so the Windows dev twin keeps the device key in software. The hardware-bound, gesture-gated
+    /// device key is the Mac Secure Enclave's job in production (ADR-025; see macos.rs) — the
+    /// software key here is the Windows-dev accommodation only, NOT the Mac/production custody.
+    /// See docs/handoff/2026-06-28.md (CLIENT-auth Task 7).
     fn open_provider(&self) -> Result<NcryptHandle, KeystoreError> {
         let mut provider: NCRYPT_PROV_HANDLE = 0;
         // SAFETY: NCrypt writes a provider handle to the out pointer on success.
-        let status = unsafe {
-            NCryptOpenStorageProvider(&mut provider, MS_PLATFORM_CRYPTO_PROVIDER, 0)
-        };
+        let status =
+            unsafe { NCryptOpenStorageProvider(&mut provider, MS_KEY_STORAGE_PROVIDER, 0) };
         map_status(status)?;
         Ok(NcryptHandle::provider(provider))
     }
@@ -148,24 +158,9 @@ impl Keystore for WindowsKeystore {
         };
         map_status(status)?;
         let key = NcryptHandle::key(key);
-        let ui_policy = NCRYPT_UI_POLICY {
-            dwVersion: 1,
-            dwFlags: NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG,
-            pszCreationTitle: null(),
-            pszFriendlyName: FRIENDLY_NAME,
-            pszDescription: DESCRIPTION,
-        };
-        // SAFETY: NCRYPT_UI_POLICY is a C-compatible struct and must be set before finalize.
-        let status = unsafe {
-            NCryptSetProperty(
-                key.get(),
-                NCRYPT_UI_POLICY_PROPERTY,
-                &ui_policy as *const NCRYPT_UI_POLICY as *const u8,
-                size_of::<NCRYPT_UI_POLICY>() as u32,
-                0,
-            )
-        };
-        map_status(status)?;
+        // Software-KSP dev-twin key: no NCRYPT_UI_POLICY gesture gate (a software key can't offer
+        // the hardware-bound high-protection guarantee anyway). The gesture-gated hardware key is
+        // the Mac Secure Enclave path (macos.rs, ADR-025).
         // SAFETY: Finalizes the newly-created key after all properties are set.
         let status = unsafe { NCryptFinalizeKey(key.get(), 0) };
         map_status(status)?;
@@ -266,7 +261,7 @@ fn public_blob_to_x963(blob: &[u8]) -> Result<Vec<u8>, KeystoreError> {
 fn map_status(status: i32) -> Result<(), KeystoreError> {
     match status {
         S_OK => Ok(()),
-        NTE_NOT_FOUND => Err(KeystoreError::KeyNotFound),
+        NTE_NOT_FOUND | NTE_BAD_KEYSET => Err(KeystoreError::KeyNotFound),
         NTE_USER_CANCELLED => Err(KeystoreError::BiometricCancelled),
         NTE_DEVICE_NOT_READY | NTE_DEVICE_NOT_FOUND => Err(KeystoreError::HardwareUnavailable),
         _ => Err(KeystoreError::HardwareUnavailable),
@@ -285,5 +280,37 @@ mod tests {
         let digest = [42u8; 32];
         let signature = keystore.sign(&digest).unwrap();
         assert!(!signature.is_empty());
+    }
+
+    // Headless end-to-end proof of the software-KSP device key (no Hello gesture). Exercises the
+    // NTE_BAD_KEYSET -> KeyNotFound bootstrap fix and verifies the DER signature against the
+    // exported X9.63 public key over the prehashed digest — the same check the brain performs.
+    #[test]
+    fn software_ksp_roundtrip_create_sign_verify() {
+        use p256::ecdsa::signature::hazmat::PrehashVerifier;
+        use p256::ecdsa::{Signature as P256Signature, VerifyingKey};
+
+        let mut keystore = WindowsKeystore::new();
+        let _ = keystore.destroy_key();
+        // A not-yet-created key must report false (not error) — the pairing bootstrap depends on it.
+        assert!(!keystore
+            .has_key()
+            .expect("has_key on a missing key must not error"));
+
+        keystore.create_key().expect("create_key on software KSP");
+        assert!(keystore.has_key().expect("has_key after create"));
+
+        let pub_x963 = keystore.get_public_key().expect("get_public_key");
+        let digest = [42u8; 32];
+        let der = keystore.sign(&digest).expect("sign");
+
+        let verifying_key = VerifyingKey::from_sec1_bytes(&pub_x963).expect("parse public key");
+        let signature = P256Signature::from_der(&der).expect("parse DER signature");
+        verifying_key
+            .verify_prehash(&digest, &signature)
+            .expect("device signature verifies against the exported public key");
+
+        keystore.destroy_key().expect("destroy_key");
+        assert!(!keystore.has_key().expect("has_key after destroy"));
     }
 }
