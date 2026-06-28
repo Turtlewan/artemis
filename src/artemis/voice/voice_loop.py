@@ -238,6 +238,7 @@ async def speak_overlay_answer(
     frontend: AudioFrontend,
     tts: Tts,
     cancel: asyncio.Event,
+    is_owner_unlocked: Callable[[], bool],
 ) -> None:
     """Drive the overlay speak branch through the existing voice-loop back half."""
     back_half = VoiceLoop(
@@ -262,6 +263,8 @@ async def speak_overlay_answer(
             buffer += segment
             sentences, buffer = _pop_sentences(buffer)
             for sentence in sentences:
+                if not is_owner_unlocked():
+                    return
                 try:
                     await back_half._play_sentence(sentence, timer, cancel)
                 except Exception:
@@ -271,6 +274,8 @@ async def speak_overlay_answer(
                     return
         tail = buffer.strip()
         if tail and not cancel.is_set():
+            if not is_owner_unlocked():
+                return
             try:
                 await back_half._play_sentence(tail, timer, cancel)
             except Exception:
@@ -283,7 +288,7 @@ async def speak_overlay_answer(
 
 
 def compose_speak_sink(
-    frontend: AudioFrontend, tts: Tts
+    frontend: AudioFrontend, tts: Tts, *, is_owner_unlocked: Callable[[], bool]
 ) -> Callable[[AsyncIterator[SpeakSeg]], Awaitable[None]]:
     """Return the callable installed as app.state.speak_sink."""
 
@@ -293,6 +298,7 @@ def compose_speak_sink(
             frontend=frontend,
             tts=tts,
             cancel=asyncio.Event(),
+            is_owner_unlocked=is_owner_unlocked,
         )
 
     return speak_sink

@@ -30,6 +30,11 @@ from artemis.recipes.promotion import Promoter, RecurrenceStore
 from artemis.recipes.review import ReviewSurface
 from artemis.recipes.store import RecipeStore, recipes_dir
 from artemis.staging import ActionStagingService, PendingActionStore
+from artemis.voice.push_to_talk import PushToTalkCapture
+from artemis.voice.sidecar_client import SidecarAudioFrontend
+from artemis.voice.stt import ParakeetWhisperSTT
+from artemis.voice.tts import KokoroTTS
+from artemis.voice.voice_loop import compose_speak_sink
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +100,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(identity_dir(settings) / "layout.json")
     app.state.domain_read_source = DefaultDomainReadSource()
+    try:
+        frontend = SidecarAudioFrontend(settings=settings)
+        stt = ParakeetWhisperSTT(settings)
+        tts = KokoroTTS(settings)
+        app.state.speak_sink = compose_speak_sink(
+            frontend,
+            tts,
+            is_owner_unlocked=key_provider.is_owner_unlocked,
+        )
+        app.state.voice_capture = PushToTalkCapture(frontend, stt)
+        logger.info("voice ask components installed")
+    except Exception:
+        logger.warning("voice ask components unavailable; startup continuing", exc_info=True)
     if settings.heartbeat_enabled:
         try:
             heartbeat = compose_proactive(

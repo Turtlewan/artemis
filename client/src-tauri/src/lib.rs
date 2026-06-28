@@ -55,6 +55,7 @@ pub fn run() {
             gateway::app_actions_reject,
             gateway::app_ask,
             gateway::app_ask_stream,
+            gateway::app_ask_voice,
             gateway::app_lock,
             gateway::app_logout,
             gateway::app_layout_get,

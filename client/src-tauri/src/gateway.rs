@@ -67,6 +67,11 @@ pub(crate) struct AskRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct VoiceAskRequest {
+    speak: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct AskResponse {
     text: String,
     path: String,
@@ -445,6 +450,34 @@ pub(crate) async fn ask_stream(
     Ok(())
 }
 
+pub(crate) async fn ask_voice(
+    state: &AppState,
+    speak: bool,
+    channel: Channel<StreamEvent>,
+) -> Result<(), GatewayError> {
+    let url = format!("{}{}", base_url(state)?, "/app/ask/voice");
+    let response = client()
+        .post(url)
+        .bearer_auth(bearer(state)?)
+        .json(&VoiceAskRequest { speak })
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(GatewayError::from_status(response.status()));
+    }
+
+    let body = response.text().await?;
+    for line in body.lines() {
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        if let Some(event) = parse_stream_frame(data)? {
+            channel.send(event).map_err(|_| GatewayError::Network)?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn app_status(state: State<'_, AppState>) -> Result<StatusResponse, GatewayError> {
     status(&state).await
@@ -521,6 +554,15 @@ pub(crate) async fn app_ask_stream(
 }
 
 #[tauri::command]
+pub(crate) async fn app_ask_voice(
+    state: State<'_, AppState>,
+    speak: bool,
+    channel: Channel<StreamEvent>,
+) -> Result<(), GatewayError> {
+    ask_voice(&state, speak, channel).await
+}
+
+#[tauri::command]
 pub(crate) async fn app_lock(state: State<'_, AppState>) -> Result<OkResponse, GatewayError> {
     lock(&state).await
 }
@@ -547,6 +589,8 @@ pub(crate) async fn app_layout_put(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use tauri::ipc::InvokeResponseBody;
     use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -899,5 +943,40 @@ mod tests {
         let response = actions_reject(&state, "act-1".to_string()).await.unwrap();
 
         assert!(response.ok);
+    }
+
+    #[tokio::test]
+    async fn ask_voice_posts_speak_flag_and_emits_stream_events() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/ask/voice"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({ "speak": true })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("data: hello\n\ndata: [DONE]\n\n"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured_events = Arc::clone(&events);
+        let channel = Channel::new(move |body| {
+            let InvokeResponseBody::Json(json) = body else {
+                return Err(tauri::Error::FailedToReceiveMessage);
+            };
+            captured_events
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str::<StreamEvent>(&json)?);
+            Ok(())
+        });
+
+        ask_voice(&state, true, channel).await.unwrap();
+
+        let events = events.lock().unwrap();
+        assert!(matches!(events[0], StreamEvent::Text { .. }));
+        assert!(matches!(events[1], StreamEvent::Done { .. }));
     }
 }

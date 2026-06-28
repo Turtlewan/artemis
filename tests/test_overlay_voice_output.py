@@ -43,6 +43,7 @@ async def test_speak_iter_synthesizes_and_plays_each_sentence_in_order() -> None
         frontend=sidecar,
         tts=tts,
         cancel=cancel,
+        is_owner_unlocked=lambda: True,
     )
 
     assert tts.texts == ["First sentence.", "Second sentence."]
@@ -63,6 +64,7 @@ async def test_bargein_cancels_mid_playback_and_ends_turn() -> None:
         frontend=sidecar,
         tts=tts,
         cancel=cancel,
+        is_owner_unlocked=lambda: True,
     )
 
     command_types = [command["type"] for command in sidecar.commands]
@@ -77,7 +79,7 @@ async def test_bargein_cancels_mid_playback_and_ends_turn() -> None:
 async def test_pointer_only_speak_iter_plays_once() -> None:
     sidecar = FakeSidecar()
     tts = FakeTTS(sidecar)
-    sink = compose_speak_sink(sidecar, tts)
+    sink = compose_speak_sink(sidecar, tts, is_owner_unlocked=lambda: True)
 
     await sink(_speak("Your results are on screen."))
 
@@ -98,6 +100,30 @@ async def test_tts_error_degrades_without_raising_or_logging_spoken_text(
             frontend=sidecar,
             tts=tts,
             cancel=asyncio.Event(),
+            is_owner_unlocked=lambda: True,
         )
 
     assert "Sensitive spoken text" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_speak_path_stops_when_owner_vault_locks_mid_iteration() -> None:
+    sidecar = FakeSidecar()
+    tts = FakeTTS(sidecar)
+    checks = 0
+
+    def unlocked_once() -> bool:
+        nonlocal checks
+        checks += 1
+        return checks == 1
+
+    await speak_overlay_answer(
+        _speak("First sentence. Second sentence."),
+        frontend=sidecar,
+        tts=tts,
+        cancel=asyncio.Event(),
+        is_owner_unlocked=unlocked_once,
+    )
+
+    assert tts.texts == ["First sentence."]
+    assert b"pcm:Second sentence." not in sidecar.speaker_pcm

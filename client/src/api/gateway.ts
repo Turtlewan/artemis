@@ -51,7 +51,10 @@ export const layoutGet = (): Promise<LayoutDTO> => call("app_layout_get");
 export const layoutPut = (layout: LayoutDTO): Promise<LayoutDTO> =>
   call("app_layout_put", { layout });
 
-export async function* askStream(request: AskRequest): AsyncGenerator<StreamEvent> {
+async function* streamCommand(
+  command: string,
+  args: (channel: Channel<StreamEvent>) => Record<string, unknown>,
+): AsyncGenerator<StreamEvent> {
   const queue: StreamEvent[] = [];
   let resolveNext: (() => void) | null = null;
   let finished = false;
@@ -70,7 +73,7 @@ export async function* askStream(request: AskRequest): AsyncGenerator<StreamEven
     wake();
   };
 
-  await call<void>("app_ask_stream", { request, channel });
+  await call<void>(command, args(channel));
 
   while (!finished || queue.length > 0) {
     if (queue.length === 0) {
@@ -83,4 +86,12 @@ export async function* askStream(request: AskRequest): AsyncGenerator<StreamEven
       yield event;
     }
   }
+}
+
+export async function* askStream(request: AskRequest): AsyncGenerator<StreamEvent> {
+  yield* streamCommand("app_ask_stream", (channel) => ({ request, channel }));
+}
+
+export async function* askVoice(speak: boolean): AsyncGenerator<StreamEvent> {
+  yield* streamCommand("app_ask_voice", (channel) => ({ speak, channel }));
 }

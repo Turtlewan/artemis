@@ -7,9 +7,10 @@ import base64
 import binascii
 import hmac
 import json
+import logging
 import secrets
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 
 from artemis.app_layout_store import LayoutDTO, LayoutStore, default_layout
 from artemis.brain import BrainResponse
+from artemis.gateway import Gateway
 from artemis.identity.app_auth import (
     AppAuth,
     AuthError,
@@ -39,10 +41,12 @@ from artemis.recipes.promotion import RecipeAlreadyRetiredError
 from artemis.recipes.review import RecipeReview
 from artemis.recipes.signing import RecipeSignatureError
 from artemis.speakable import DisplaySeg, SpeakSeg
+from artemis.voice.push_to_talk import PushToTalkCapture, overlay_voice_turn
 
 if TYPE_CHECKING:
     from artemis.staging import PendingAction
 
+LOGGER = logging.getLogger(__name__)
 PAIRING_CODE_TTL_SECONDS = 600
 RATE_LIMIT_ATTEMPTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 900.0
@@ -119,6 +123,12 @@ class GatewayProtocol(Protocol):
     ) -> tuple[AsyncIterator[DisplaySeg], AsyncIterator[SpeakSeg]]:
         """Return display and speak branches for one scoped request."""
         ...
+
+
+class VoiceAskRequest(BaseModel):
+    """Scoped voice Ask request."""
+
+    speak: bool = True
 
 
 class PairingCodeStore:
@@ -874,12 +884,8 @@ async def ask_stream(
         display_iter = gateway.handle_text_stream_scoped(body.text, scope)
         speak_iter = _drainable_empty_speak()
     if body.speak:
-        # S1 default sink drains (no emission). S3 NOTE: a real TTS speak_sink MUST
-        # re-check key_provider.is_owner_unlocked() before speaking each segment (the
-        # display branch below already does per-chunk) and should retain this task
-        # reference + log failures (fire-and-forget here is safe only for the drain).
         speak_sink = getattr(request.app.state, "speak_sink", _drain_speak)
-        asyncio.create_task(speak_sink(speak_iter))
+        _retain_speak_task(request, speak_sink(speak_iter))
 
     async def event_stream() -> AsyncIterator[str]:
         # Fail closed: re-check the vault BEFORE emitting any owner content,
@@ -900,6 +906,68 @@ async def ask_stream(
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app_router.post("/ask/voice")
+async def ask_voice(
+    request: Request,
+    body: VoiceAskRequest,
+    principal: Principal = Depends(require_unlocked),
+) -> StreamingResponse:
+    """Capture one push-to-talk utterance and stream the scoped answer as SSE frames."""
+    gateway = cast(GatewayProtocol, request.app.state.gateway)
+    capture = cast(PushToTalkCapture, request.app.state.voice_capture)
+    key_provider = cast(UnlockProvider, request.app.state.key_provider)
+    scope = resolve_scope(principal)
+    display_iter, speak_iter = await overlay_voice_turn(
+        cast(Gateway, gateway),
+        capture,
+        scope=scope,
+        speak=body.speak,
+    )
+    if body.speak:
+        speak_sink = getattr(request.app.state, "speak_sink", _drain_speak)
+        _retain_speak_task(request, speak_sink(speak_iter))
+
+    async def event_stream() -> AsyncIterator[str]:
+        if not key_provider.is_owner_unlocked():
+            yield f"data: {json.dumps({'error': 'vault_locked'})}\n\n"
+            return
+        try:
+            async for chunk in display_iter:
+                if not key_provider.is_owner_unlocked():
+                    yield f"data: {json.dumps({'error': 'vault_locked'})}\n\n"
+                    return
+                yield f"data: {chunk}\n\n"
+        except Exception:  # noqa: BLE001 - never truncate silently; fail closed
+            yield f"data: {json.dumps({'error': 'stream_failed'})}\n\n"
+            return
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _retain_speak_task(request: Request, awaitable: Awaitable[None]) -> None:
+    async def runner() -> None:
+        await awaitable
+
+    task = asyncio.create_task(runner())
+    tasks = getattr(request.app.state, "speak_tasks", None)
+    if tasks is None:
+        tasks = set()
+        request.app.state.speak_tasks = tasks
+    tasks.add(task)
+
+    def done_callback(done: asyncio.Task[None]) -> None:
+        tasks.discard(done)
+        try:
+            done.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            LOGGER.warning("overlay voice speak task failed", exc_info=True)
+
+    task.add_done_callback(done_callback)
 
 
 async def _drain_speak(it: AsyncIterator[SpeakSeg]) -> None:

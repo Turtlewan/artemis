@@ -33,8 +33,10 @@ from artemis.identity.app_auth import (
     SessionStore,
 )
 from artemis.identity.broker_client import BrokerError
+from artemis.identity.scope import Identity
 from artemis.ports.types import Scope
 from artemis.recipes.review import RecipeReview
+from artemis.speakable import DisplaySeg, SpeakSeg
 
 
 class FakeBroker:
@@ -168,6 +170,9 @@ class FakeActionStagingService:
 
 
 class FakeGateway:
+    def __init__(self) -> None:
+        self.unified_calls: list[tuple[str, Scope, bool]] = []
+
     async def handle_text_scoped(self, request_text: str, scope: Scope) -> BrainResponse:
         return BrainResponse(text=f"{scope}:{request_text}", path="local", tool_used=None)
 
@@ -178,6 +183,32 @@ class FakeGateway:
     ) -> AsyncIterator[str]:
         yield f"{scope}:"
         yield request_text
+
+    async def handle_ask_unified(
+        self,
+        query: str,
+        *,
+        scope_or_identity: Scope | Identity,
+        speak: bool,
+    ) -> tuple[AsyncIterator[DisplaySeg], AsyncIterator[SpeakSeg]]:
+        scope = cast(Scope, scope_or_identity)
+        self.unified_calls.append((query, scope, speak))
+        return self._display(query, scope), self._speak(query)
+
+    async def _display(self, query: str, scope: Scope) -> AsyncIterator[DisplaySeg]:
+        yield f"{scope}:"
+        yield query
+
+    async def _speak(self, query: str) -> AsyncIterator[SpeakSeg]:
+        yield f"speak:{query}"
+
+
+class FakeVoiceCapture:
+    def __init__(self, transcript: str) -> None:
+        self.transcript = transcript
+
+    async def capture_transcript(self) -> str:
+        return self.transcript
 
 
 class Phone:
@@ -664,4 +695,53 @@ def test_ask_stream_fails_closed_if_vault_locks_before_first_chunk(tmp_path: Pat
     assert stream.status_code == 200
     assert "vault_locked" in body
     assert "secret" not in body  # no owner content emitted before the lock re-check
+    assert "[DONE]" not in body
+
+
+def test_ask_voice_streams_display_and_retains_speak_iter(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    headers = _unlocked_session_headers(fixture, Phone())
+    fixture.app.state.voice_capture = FakeVoiceCapture("voice question")
+    received_speak: list[str] = []
+
+    async def speak_sink(speak_iter: AsyncIterator[SpeakSeg]) -> None:
+        async for chunk in speak_iter:
+            received_speak.append(chunk)
+
+    fixture.app.state.speak_sink = speak_sink
+
+    with fixture.client.stream(
+        "POST", "/app/ask/voice", json={"speak": True}, headers=headers
+    ) as stream:
+        body = stream.read().decode("utf-8")
+
+    assert stream.status_code == 200
+    assert fixture.app.state.gateway.unified_calls == [("voice question", "owner-private", True)]
+    assert "data: owner-private:" in body
+    assert "data: voice question" in body
+    assert "data: [DONE]" in body
+    assert received_speak == ["speak:voice question"]
+
+
+def test_ask_voice_fails_closed_if_vault_locks_mid_stream(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    headers = _unlocked_session_headers(fixture, Phone())
+    fixture.app.state.voice_capture = FakeVoiceCapture("voice secret")
+    calls = {"n": 0}
+
+    def unlocked_then_locked() -> bool:
+        calls["n"] += 1
+        return calls["n"] <= 3
+
+    fixture.key_provider.is_owner_unlocked = unlocked_then_locked  # type: ignore[method-assign]
+
+    with fixture.client.stream(
+        "POST", "/app/ask/voice", json={"speak": False}, headers=headers
+    ) as stream:
+        body = stream.read().decode("utf-8")
+
+    assert stream.status_code == 200
+    assert "data: owner-private:" in body
+    assert "vault_locked" in body
+    assert "voice secret" not in body
     assert "[DONE]" not in body

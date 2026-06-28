@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { askVoice } from "./api/gateway";
 import type { CardPlacement } from "./api/dto";
 import { AskPopup } from "./ask/AskPopup";
+import { askStore } from "./ask/askStore";
 import { useAskHotkey } from "./ask/useAskHotkey";
 import { PairingScreen } from "./auth/PairingScreen";
 import { DetailOverlay } from "./card/DetailOverlay";
@@ -112,6 +114,17 @@ function WorldShell() {
 
   const overlayOpen = overlay.openId !== null;
 
+  const onVoiceTrigger = useCallback(async ({ speak }: { speak: boolean }): Promise<void> => {
+    askStore.setSpeaking(speak);
+    try {
+      for await (const _event of askVoice(speak)) {
+        // The popup renders from askStore; the voice stream uses the same SSE event shape.
+      }
+    } finally {
+      askStore.setSpeaking(false);
+    }
+  }, []);
+
   const setBackgroundInert = useCallback((node: HTMLElement | null, inert: boolean): void => {
     if (node === null) return;
     if (inert) {
@@ -148,7 +161,7 @@ function WorldShell() {
           Reset layout
         </button>
       </div>
-      <AskPopup isOpen={ask.isOpen} onClose={ask.close} />
+      <AskPopup isOpen={ask.isOpen} onClose={ask.close} onVoiceTrigger={onVoiceTrigger} />
       <div ref={worldRef} data-testid="world-plane-layer">
         <WorldPlane
           placements={placements}
