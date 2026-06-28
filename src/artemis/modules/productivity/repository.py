@@ -29,6 +29,17 @@ from artemis.modules.productivity.schema import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+class SuggestionAlreadySettledError(Exception):
+    """Accepting a suggestion that is no longer pending.
+
+    Raised when the suggestion was already accepted/rejected, or a concurrent
+    accept claimed it first. The atomic claim (``WHERE status = 'pending'``) makes
+    accept idempotent: only one accept ever creates a task.
+    """
+
+
 WEEKDAYS = {
     "monday": 0,
     "tuesday": 1,
@@ -459,23 +470,30 @@ class ProductivityRepository:
         due_at: str | None = None,
     ) -> str:
         suggestion = self._suggestion(suggestion_id)
-        task_id = self.create_task(
+        # Atomic claim FIRST: only a still-pending suggestion can be accepted, so
+        # two concurrent accepts cannot both create a task (the loser matches 0 rows).
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE suggestions SET status = 'accepted', updated_at = ? "
+                "WHERE id = ? AND status = 'pending'",
+                (now_iso(), suggestion_id),
+            )
+        if cursor.rowcount != 1:
+            raise SuggestionAlreadySettledError(suggestion_id)
+        return self.create_task(
             cast(str, suggestion["title"]),
             notes=cast(str | None, suggestion["notes"]),
             project_id=project_id,
             due_at=due_at,
         )
-        with self._conn:
-            self._conn.execute(
-                "UPDATE suggestions SET status = 'accepted', updated_at = ? WHERE id = ?",
-                (now_iso(), suggestion_id),
-            )
-        return task_id
 
     def reject_suggestion(self, suggestion_id: str) -> None:
+        # Conditional on 'pending' keeps reject idempotent (no-op on unknown /
+        # already-settled) AND blocks an accept->reject overwrite race.
         with self._conn:
             self._conn.execute(
-                "UPDATE suggestions SET status = 'rejected', updated_at = ? WHERE id = ?",
+                "UPDATE suggestions SET status = 'rejected', updated_at = ? "
+                "WHERE id = ? AND status = 'pending'",
                 (now_iso(), suggestion_id),
             )
 

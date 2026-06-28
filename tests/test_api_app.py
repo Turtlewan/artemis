@@ -511,6 +511,42 @@ def test_task_suggestion_accept_sets_due_at_and_routes_are_unlock_gated(tmp_path
     assert verification_store.list_suggestions(status="rejected")[0]["id"] == rejected_id
 
 
+def test_task_suggestion_double_accept_is_idempotent(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    headers = _paired_session_headers(fixture, Phone())
+    store = _productivity_store(tmp_path)
+    suggestion_id = store.create_suggestion("Pay invoice", source="test")
+    store.close()
+    fixture.app.state.productivity_store = store
+    fixture.app.state.rate_limiter = RateLimiter()
+    fixture.key_provider.unlocked = True
+
+    first = fixture.client.post(
+        "/app/tasks/suggestion/accept",
+        json={"suggestion_id": suggestion_id, "due_at": "2026-07-03"},
+        headers=headers,
+    )
+    second = fixture.client.post(
+        "/app/tasks/suggestion/accept",
+        json={"suggestion_id": suggestion_id, "due_at": "2026-07-03"},
+        headers=headers,
+    )
+
+    # double-accept: the second is rejected (no duplicate task created)
+    assert first.status_code == 200
+    assert second.status_code == 409
+
+    # reject after accept is an idempotent no-op — it must NOT un-accept
+    rejected = fixture.client.post(
+        "/app/tasks/suggestion/reject",
+        json={"suggestion_id": suggestion_id},
+        headers=headers,
+    )
+    assert rejected.status_code == 200
+    verification_store = _productivity_store(tmp_path)
+    assert verification_store.list_suggestions(status="accepted")[0]["id"] == suggestion_id
+
+
 def test_action_routes_require_bearer(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     fixture.app.state.action_staging = FakeActionStagingService()

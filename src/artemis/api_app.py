@@ -884,6 +884,8 @@ async def task_suggestion_accept(
     _principal: Principal = Depends(require_unlocked),
 ) -> TaskSuggestionAcceptResponse:
     """Accept an owner task suggestion directly through the productivity store."""
+    from artemis.modules.productivity.repository import SuggestionAlreadySettledError
+
     store = _productivity_store(request)
     try:
         task_id = store.accept_suggestion(
@@ -896,6 +898,8 @@ async def task_suggestion_accept(
         raise HTTPException(status_code=423, detail="vault locked") from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="suggestion not found") from exc
+    except SuggestionAlreadySettledError as exc:
+        raise HTTPException(status_code=409, detail="suggestion already settled") from exc
     finally:
         store.close()
     if task is None:
