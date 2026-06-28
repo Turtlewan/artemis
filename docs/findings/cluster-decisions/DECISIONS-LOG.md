@@ -79,3 +79,18 @@ C3 location+optional buffer (Maps deferred) · C4 defer other-people scheduling 
 
 ---
 **✅ DECISION PASS COMPLETE — 2026-06-23.** All six areas (Gmail · Calendar · Tasks · Finance · Integration · UI) resolved. This record is the input to spec-writing.
+
+---
+
+## Agency & Proactivity scope — LOCKED 2026-06-28
+_Origin: the 2026-06-28 system-check surfaced built-but-uncomposed subsystems (GATE, agentic executor, starved heartbeat, dead action buttons). Owner decided what to switch on now vs. keep as levers._
+
+- **Proactivity (B) — LOCKED ON.** Wire the heartbeat to the already-decided alert/owner-rules designs: WAKE-triggered morning digest, weekend review, week-ahead, unusual-spend alert; email notify rubric = legal + payment only (important ≠ notify; VIPs Ashley/Debby); gentle-nudge posture, quiet-hours hold, working days 9–6 Mon–Fri SGT. **Read-and-notify only — no approval gate, no external effects.** (Closes system-check finding #3.)
+- **Agency (A) — LOCKED to ONE narrow action: schedule a task, internal store only.** Artemis may place a task into a time slot in its **own owned productivity store** (uses the built focus-window slot-pick). **No Google Calendar write** (the `calendar.schedule_task` external leg stays OFF). Because internal task-scheduling is **internal-reversible**, by the owner autonomy boundary it needs **no approval GATE**.
+  - **Trigger model:** suggest/ask-driven — owner can ask ("schedule X for tomorrow afternoon"); Artemis may **propose** a slot during the morning digest which the owner **accepts** (the `tasks.accept_suggestion` flow). **Never silently auto-schedules** — autonomous rearrangement is the "when it's smarter" lever.
+- **Deferred LEVERS (explicitly OFF, not gaps — graduated trust, ADR-031):**
+  - GATE / action-staging composition (system-check #1) — stays inert; nothing external-effect is registered, so it is not composed now.
+  - Agentic action executor (system-check #2) — not constructed.
+  - All other external-effect actions — `calendar.schedule_task`, email-send, etc. The external UI action buttons get **guarded** (system-check #4 / finding C Phase-1) so they don't dead-click.
+- **Build implication:** A pulls in the *internal* half of the dead-button finding (wire `tasks.schedule` + `tasks.accept_suggestion` + the Tasks detail buttons); the *external* half (`calendar.schedule_task`) stays guarded. Registering `tasks.schedule` into the live tool path must NOT transitively create a calendar event (the Task↔Event link stays off in internal-only mode).
+- **Next:** planning-review pass to turn this into build-ready specs — B (proactive-heartbeat-module-wiring draft) · A (new: internal task-schedule wiring) · C-Phase-1 (guard external buttons). Drafts in `docs/drafts/`.
