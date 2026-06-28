@@ -26,7 +26,7 @@ dependencies = [
 artemis-google-auth = "artemis.integrations.google.cli:main"
 artemis-dev-email-rules = "artemis.dev.email_rules:main"
 artemis-unlock = "artemis.cli.unlock:main"
-artemis-brain = "scripts.run_brain:main"
+artemis-brain = "artemis.run_brain:main"
 
 [dependency-groups]
 agentic = [

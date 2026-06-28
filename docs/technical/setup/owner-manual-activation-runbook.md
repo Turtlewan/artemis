@@ -18,8 +18,9 @@ Confirm the environment before touching anything live.
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Windows Hello enrolled | Settings → Accounts → Sign-in options → **Windows Hello** (face/fingerprint/PIN) | At least one biometric enrolled. **⚠ The build box has historically reported `DEVICE_NOT_PRESENT`** — if Hello isn't really enrolled, Steps 2 & 4a fall back to PIN (accepted dev-wall downgrade, ADR-025). |
-| Python deps synced | `uv sync` | exit 0 |
+| Windows Hello enrolled | Settings → Accounts → Sign-in options → **Windows Hello** (face/fingerprint/PIN) | At least one biometric enrolled. **⚠ The build box has historically reported `DEVICE_NOT_PRESENT`** — if Hello isn't really enrolled, Steps 2 & 4a fall back to PIN (accepted dev-wall downgrade, ADR-025), and **Step 1 needs the `ARTEMIS_REQUIRE_HELLO_UNLOCK=False` fallback** (see Step 1). |
+| Python deps synced | `uv sync --group agentic` | exit 0. **Use `--group agentic`** — bare `uv sync` *uninstalls* the agentic group (openhands-sdk + ~141 deps), which the brain imports. |
+| Owner-private data root (Windows) | `config/.env.dev` → `ARTEMIS_DATA_ROOT` must be under `%LOCALAPPDATA%` (e.g. `C:\Users\User\AppData\Local\Artemis`) | Path under AppData. The DPAPI `WindowsKeyProvider` **refuses** a key store outside `%APPDATA%`/`%LOCALAPPDATA%` (`InsecureKeyStoreError`). The original corpus default `/opt/artemis` fails this guard on Windows. _(Also fix the stale Mac `ARTEMIS_WORKTREE_ROOT` while here.)_ |
 | MSVC toolchain (client) | `cd client && npm run tauri info` | no missing-toolchain errors |
 | Local model server | `ollama list` | reachable (needed for Step 5 / Google) |
 
@@ -34,11 +35,21 @@ uv run artemis-brain
 ```
 
 - Serves on **http://127.0.0.1:8030** (loopback only).
-- **Verify:** in a second terminal → `curl http://127.0.0.1:8030/healthz` → **200**.
+- **Verify:** in a second terminal → `curl http://127.0.0.1:8030/healthz` → **200** (`{"status":"ok","slot":"dev"}`).
 - The startup log should show the **proactive heartbeat starting**.
 - Leave this running in its own terminal for Steps 4–5.
 
-**Records:** win-brain-runtime Task 1 (live `/healthz` 200 on-box).
+**⚠ Hello-at-startup gate.** The brain calls `win_kp.unlock()` at startup with `require_hello_unlock=True` (default). Two outcomes:
+- **Hello available** → a gesture prompt appears; authenticate → brain runs with owner-private scopes **UNLOCKED** (full memory/finance). This is the intended path.
+- **Hello unavailable** (this box's `DEVICE_NOT_PRESENT`) → startup **fails closed** (`UnlockUnavailableError`). Dev fallback:
+  ```
+  $env:ARTEMIS_REQUIRE_HELLO_UNLOCK="False"; uv run artemis-brain
+  ```
+  Brain boots with owner-private scopes **LOCKED** — `/healthz`, heartbeat, and non-private paths work; memory/finance are disabled (`compose_brain: memory unavailable` is expected, not a crash). `slot=prod` hard-blocks this flag.
+
+**Records:** win-brain-runtime Task 1 (live `/healthz` 200 on-box — note whether Hello unlocked or you used the dev fallback).
+
+> **Smoke-tested 2026-06-28:** brain boots → `/healthz` 200 via the dev fallback (Hello reported unavailable in a non-interactive process — confirm interactively at Step 2). Two activation blockers were fixed first: the `artemis-brain` entry point (was misrouted to the unpackaged `scripts/run_brain.py`) and `ARTEMIS_DATA_ROOT` (was the Mac `/opt/artemis`).
 
 ---
 
@@ -46,6 +57,17 @@ uv run artemis-brain
 
 Proves the owner-private vault unlocks behind a real Hello gesture. This is the gate every owner-private
 CLI (incl. Google auth) sits behind.
+
+> **⚠ Run in a REAL terminal window.** Windows Hello anchors its prompt to the console window
+> (`GetConsoleWindow()` must be non-zero). A windowless/piped host — e.g. an agent's in-session
+> `!` runner, a CI pipe, or some IDE-integrated terminals without a conhost — fails with
+> `UnlockUnavailableError: no console window for the Hello prompt`. Open a standalone Windows
+> Terminal / PowerShell window and run from `C:\Users\User\artemis`. **Applies to every Hello-gated
+> command:** `artemis-unlock`, plain `artemis-brain` (startup unlock), `artemis-google-auth login`.
+>
+> **PIN counts as Hello.** Enrolling a Windows Hello *PIN* (Settings → Accounts → Sign-in options →
+> PIN) flips `CheckAvailabilityAsync` to Available — the box does not need a fingerprint/face. The
+> live gesture is then a PIN tap (the accepted ADR-025 dev-wall downgrade).
 
 ```
 uv run artemis-unlock
@@ -61,6 +83,14 @@ uv run artemis-unlock
 ---
 
 ## Step 3 — Build + launch the client  *(prereq for Steps 4–5)*
+
+> **⛔ BLOCKED 2026-06-28 — no pairing UI wired in.** The client builds + launches (Rust compiles
+> clean, Vite serves), but it boots to `connection.state="unpaired"` and `App.tsx` renders `null`
+> until connected — and **nothing in the running app renders a pairing surface or calls
+> `pairDevice()`** (`auth/pairing.ts`, referenced only by its test). Result: permanent blank screen,
+> no way to pair from the UI. **Steps 3–5 (incl. the overlay demo) are blocked until a pairing
+> screen is built + the never-run live `auth_pair`/`auth_connect`/`auth_unlock` handshake (Step 4b)
+> is exercised.** Tracked in `BACKLOG.md` (2026-06-28); needs a planning→build cycle, not an ops fix.
 
 With the brain running (Step 1):
 
