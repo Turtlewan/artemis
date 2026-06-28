@@ -21,6 +21,7 @@ import { WorldPlane } from "./world/WorldPlane";
 import "./screens/registry";
 import "./theme/tokens.css";
 
+/** Root Artemis application component — wraps the spatial shell in ambient theme providers. */
 export default function App() {
   return (
     <AmbientProvider>
