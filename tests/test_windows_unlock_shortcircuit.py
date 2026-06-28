@@ -80,7 +80,7 @@ def test_windows_unlock_shortcircuit_unit(tmp_path: Path) -> None:
     nonce = provider.begin_unlock(OWNER_PRIVATE)
     assert len(nonce) == 32
 
-    provider.complete_unlock(OWNER_PRIVATE, nonce, b"garbage-proof")
+    provider.complete_unlock(OWNER_PRIVATE, nonce, {"garbage": "proof"})
     assert provider.is_owner_unlocked()
 
     provider.lock_all()
@@ -109,7 +109,7 @@ def test_sealed_windows_provider_unlock_complete_stays_fail_closed(
     provider.provision()
     nonce = provider.begin_unlock(OWNER_PRIVATE)
 
-    provider.complete_unlock(OWNER_PRIVATE, nonce, b"garbage-proof")
+    provider.complete_unlock(OWNER_PRIVATE, nonce, {"garbage": "proof"})
     assert not provider.is_owner_unlocked()
 
     fixture = _fixture(tmp_path, provider)
