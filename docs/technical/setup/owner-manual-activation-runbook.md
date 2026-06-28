@@ -84,13 +84,14 @@ uv run artemis-unlock
 
 ## Step 3 — Build + launch the client  *(prereq for Steps 4–5)*
 
-> **⛔ BLOCKED 2026-06-28 — no pairing UI wired in.** The client builds + launches (Rust compiles
-> clean, Vite serves), but it boots to `connection.state="unpaired"` and `App.tsx` renders `null`
-> until connected — and **nothing in the running app renders a pairing surface or calls
-> `pairDevice()`** (`auth/pairing.ts`, referenced only by its test). Result: permanent blank screen,
-> no way to pair from the UI. **Steps 3–5 (incl. the overlay demo) are blocked until a pairing
-> screen is built + the never-run live `auth_pair`/`auth_connect`/`auth_unlock` handshake (Step 4b)
-> is exercised.** Tracked in `BACKLOG.md` (2026-06-28); needs a planning→build cycle, not an ops fix.
+> **✅ UNBLOCKED 2026-06-28 (later same day) — pairing UI built + proof contract reconciled.**
+> `client-pairing-screen` wired the gateway/pairing surface into `App.tsx`, and
+> `client-auth-windows-bringup` reconciled the client↔brain session-proof framing (length-prefixed
+> `b"session"`) and added the Windows unlock short-circuit — the two gaps that had stalled the live
+> handshake at `session/complete 401`. Steps 3–5 are now exercisable. **For the focused
+> pairing + voice walkthrough, see `docs/technical/setup/live-bring-up-runbook.md`** (Part A = the
+> live `auth_pair`/`auth_connect`/`auth_unlock` handshake = Step 4b below; Part B = voice real-audio
+> bring-up from `voice-ask-wiring`).
 
 With the brain running (Step 1):
 
