@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,6 +34,10 @@ EXTRACTION_SCHEMA: dict[str, object] = {
     "additionalProperties": False,
 }
 """Bounded JSON schema for constrained decoding and post-parse validation."""
+
+_MAX_RAW_CHARS = 12000  # input cap: keep the laundered body inside qwen3:4b's context
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -90,6 +95,26 @@ def _validate_extract_payload(payload: object) -> tuple[str, tuple[str, ...], bo
     return summary, tuple(claims), flagged_injection
 
 
+def _coerce_json_text(text: str) -> str:
+    """Best-effort: strip <think> blocks / code fences, return the first balanced
+    top-level {...}. Returns text unchanged when no object is found.
+    """
+    stripped = _FENCE_RE.sub("", _THINK_RE.sub("", text)).strip()
+    start = stripped.find("{")
+    if start == -1:
+        return stripped
+    depth = 0
+    for i in range(start, len(stripped)):
+        ch = stripped[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return stripped[start : i + 1]
+    return stripped
+
+
 class QuarantinedReader:
     """Read raw untrusted content through a toolless, schema-constrained model.
 
@@ -126,7 +151,7 @@ class QuarantinedReader:
     ) -> Extract:
         """Return a bounded extract with caller-supplied provenance only."""
         safe_query = query.strip()[:512]
-        nonce, marked = spotlight(raw_content)
+        nonce, marked = spotlight(raw_content[:_MAX_RAW_CHARS])
         system = (
             SPOTLIGHT_INSTRUCTION.format(nonce=nonce)
             + f"\nExtract only facts relevant to: {safe_query}"
@@ -158,7 +183,7 @@ class QuarantinedReader:
         tokens_used = getattr(resp.usage, "total_tokens", 0) if resp.usage else 0
 
         try:
-            parsed = json.loads(resp.text)
+            parsed = json.loads(_coerce_json_text(resp.text))
             summary, claims, flagged_injection = _validate_extract_payload(parsed)
         except Exception as exc:
             logger.warning("Quarantined extract parse failed (%s)", type(exc).__name__)

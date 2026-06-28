@@ -218,6 +218,43 @@ async def test_non_json_degrades_without_raising(caplog: pytest.LogCaptureFixtur
 
 
 @pytest.mark.asyncio
+async def test_read_coerces_think_wrapped_json() -> None:
+    model = FakeModelPort(
+        '<think>reasoning...</think>\n```json\n{"summary":"s","claims":[],'
+        '"flagged_injection":false}\n```'
+    )
+    reader = QuarantinedReader(model, "reader")
+
+    extract = await reader.read(raw_content="<page>", source_url="u", source_domain="d", query="q")
+
+    assert extract.usable is True
+    assert extract.parse_failed is False
+    assert extract.summary == "s"
+
+
+@pytest.mark.asyncio
+async def test_read_coerces_prose_prefixed_json() -> None:
+    model = FakeModelPort(
+        'Here is the result: {"summary":"s","claims":[],"flagged_injection":false} thanks'
+    )
+    reader = QuarantinedReader(model, "reader")
+
+    extract = await reader.read(raw_content="<page>", source_url="u", source_domain="d", query="q")
+
+    assert extract.parse_failed is False
+
+
+@pytest.mark.asyncio
+async def test_read_no_json_still_parse_fails() -> None:
+    model = FakeModelPort("sorry I cannot")
+    reader = QuarantinedReader(model, "reader")
+
+    extract = await reader.read(raw_content="<page>", source_url="u", source_domain="d", query="q")
+
+    assert extract.parse_failed is True
+
+
+@pytest.mark.asyncio
 async def test_read_degrades_on_model_transport_error() -> None:
     class RaisingModelPort:
         async def complete(

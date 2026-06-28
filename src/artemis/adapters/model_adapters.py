@@ -17,6 +17,8 @@ from artemis.config import get_settings
 from artemis.ports.model import ModelResponse
 from artemis.ports.types import Message, Usage, Vector
 
+_OLLAMA_NUM_CTX = 8192
+
 
 def _auth_headers(settings: Any) -> dict[str, str]:
     """Bearer auth header for authed OpenAI-compatible endpoints.
@@ -25,6 +27,11 @@ def _auth_headers(settings: Any) -> dict[str, str]:
     """
     key = getattr(settings, "model_api_key", None)
     return {"Authorization": f"Bearer {key}"} if key else {}
+
+
+def _is_ollama(base_url: str) -> bool:
+    """True for the local Ollama dev endpoint (:11434); used to gate Ollama-only knobs."""
+    return ":11434" in base_url
 
 
 class OpenAIModelPort:
@@ -77,6 +84,10 @@ class OpenAIModelPort:
                     "strict": True,
                 },
             }
+        if _is_ollama(base_url):
+            body["options"] = {"num_ctx": _OLLAMA_NUM_CTX}
+            if response_schema is not None:
+                body["format"] = response_schema
 
         resp = await self._client.post(
             f"{base_url}/chat/completions",
