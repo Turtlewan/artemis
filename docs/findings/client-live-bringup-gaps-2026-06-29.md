@@ -85,6 +85,45 @@ for this domain."
   travel/health need checking), (c) the brain-DTO → locked-screen-DTO mapping, (d) optionally the
   glance-face content. This is the bulk of the remaining client work.
 
+## Finding 6 — Scope clarifications surfaced while poking (not bugs)
+- **No theme selector (by design, but no dev override).** Theming is ambient/automatic
+  (`AmbientProvider` → `resolveCell(new Date())`, season × time-of-day, re-checked each minute;
+  `src/theme/ambient.ts` + `palettes.ts`). `resolveCell` gates to **verified** palette cells and skips
+  draft ones, so several season/time combos fall back. There is no manual override/preview UI — you
+  can't see other palettes without changing the system clock. **Planning:** consider a dev-only theme
+  override/preview toggle for testing the ~16-cell grid; finalize which draft palettes get verified.
+- **Card iconography unbuilt.** No per-domain icons/glyphs exist. Only the **Dock** shows 2-letter text
+  abbreviations (`domainLabel(...).slice(0,2)`); map cards show placeholder count tiles
+  (`GlanceFace`). Same deferred bucket as the glance-content half of Finding 5. **Planning:** spec the
+  per-domain symbol/icon set alongside the glance-face content.
+
+## Finding 7 — Visual polish + "launch & demo cleanly" workstream (owner, live session)
+Surfaced rapid-fire while poking. Two were fixed live; the rest are a coherent demo-readiness pass
+for planning (several are BIG forks — auth/packaging — so not hot-patched).
+
+Fixed live (committed):
+- **Neural-web pulses misaligned** — comet keyframes had `translateX(-18→18px)` drift riding the
+  pulse off the static curve. Removed; clip-path reveal alone travels along the line. `ab0f19b`.
+- **No card hover emphasis** — `.world-card` had no `:hover` rule (designed, never built). Added an
+  on-brand hover/focus emphasis (border + glow + lift), reduced-motion safe. `ab0f19b`. (Reconcile the
+  exact feel against the mockup/design-brief in planning.)
+
+For planning (the demo-readiness pass — recommend specc'ing as one milestone):
+- **Dev demo mode / dummy data.** Detail screens were built against fake DTOs (`screens.test.tsx`);
+  the live reads are unbuilt (Finding 5). A runtime "demo mode" that injects fake DTOs into
+  `useDomainRead` would let all 11 modules be seen populated. Small build; high evaluation value.
+- **Single-click launch (no 2 terminals).** Today = brain (Terminal A, needs a real console for the
+  Hello prompt) + client (Terminal B). Owner wants one `.exe`. Tauri-sidecar bundling was REJECTED
+  (would silence proactivity, ADR-033 §Refinement). Real path = brain as a background service the
+  client launches/supervises; the Windows Hello-needs-a-console constraint must be solved (service
+  account vs. a first-run unlock window). Packaging + runtime design.
+- **Default / auto pairing code.** Owner wants to skip mint-and-copy each launch. Options: a fixed
+  dev pairing code (auth change, dev-slot only), auto-mint+prefill the pairing field, or persist the
+  paired session so reconnect skips pairing entirely. Auth-side; pairs with the Finding 2 rate-limit
+  and the reconnect UX.
+- **Theme edit/preview.** No in-app picker (ambient by design); palettes in `src/theme/palettes.ts`.
+  A dev-only override/preview to step through the ~16 cells would help (Finding 6).
+
 ## Dev-unblockers applied this session (mark for ratification, not the real fixes)
 - Loopback exemption in `rate_limited()` (Finding 2) — `src/artemis/api_app.py` (applied; effect on brain restart).
 - Ask hotkey → Ctrl+Alt+Space (Finding 4) — `client/src-tauri/src/lib.rs` (STAGED; apply at next client restart).
