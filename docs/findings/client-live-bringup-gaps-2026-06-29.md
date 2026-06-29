@@ -124,6 +124,36 @@ For planning (the demo-readiness pass — recommend specc'ing as one milestone):
 - **Theme edit/preview.** No in-app picker (ambient by design); palettes in `src/theme/palettes.ts`.
   A dev-only override/preview to step through the ~16 cells would help (Finding 6).
 
+## Finding 8 — Email extraction (KEYSTONE): pipeline works, dev model can't drive it
+Tested the email-extraction keystone directly (no OAuth needed — the dev harness
+`build_dev_rules_runtime` takes an injectable fake Gmail + unlocked `FakeKeyProvider`; with
+`model=None` it uses the real local model). Two clear results:
+
+- **Pipeline is BUILT and CORRECT.** With a model that returns structured output, the harness
+  laundered → classified → extracted → and fired the right reactions in observe mode
+  (`tests/test_dev_email_rules.py`, 3 passed): a commitment email → `WOULD suggest
+  reaction:email_to_task`; a flight email → `WOULD execute reaction:email_to_held_event` (calendar);
+  a gift email → `WOULD execute reaction:gift_signal`. So **email→task and email→calendar-event are
+  wired end-to-end** (observe). Security invariants hold (no raw body persisted; only laundered).
+- **The dev model (`qwen3:4b` via Ollama) CANNOT do the structured extraction.** Running the real
+  pipeline on 3 realistic emails → `JSONDecodeError` on the quarantine step for all three (the model
+  returns prose, not JSON) → everything degraded to empty → zero extracts, zero reactions. This
+  confirms the 2026-06-28 activation finding ("qwen3:4b ignores OpenAI json_schema → prose").
+
+**Implication:** the keystone capability is blocked on **structured-output model capability on the dev
+box**, NOT on missing pipeline code. **Planning (high priority):** make the local model emit valid
+JSON — Ollama-native `format: json` / `response_format` in `OpenAIModelPort` (the adapter currently
+sends OpenAI `response_schema` which Ollama's qwen3:4b ignores), tune `num_ctx`, and/or move to a
+stronger local model. This is the prerequisite for the tomorrow's email→task→calendar live demo.
+(Demo driver kept at `scratchpad/email_extract_demo.py`.)
+
+## Tomorrow's test plan (owner)
+- Email extraction live: re-run after the model JSON fix; show email→task + email→calendar-event.
+- **Google OAuth live** (owner-requested): `artemis-google-auth login` (needs OAuth client creds +
+  consent) → token stored in the owner-private SqlCipherTokenStore → then `artemis-dev-email-rules
+  --once` against a real test inbox. Re-surface the full OAuth steps at exercise time (memory
+  `dev-email-rules-oauth-at-exercise`). This is the live counterpart to Finding 8's fake-Gmail test.
+
 ## Dev-unblockers applied this session (mark for ratification, not the real fixes)
 - Loopback exemption in `rate_limited()` (Finding 2) — `src/artemis/api_app.py` (applied; effect on brain restart).
 - Ask hotkey → Ctrl+Alt+Space (Finding 4) — `client/src-tauri/src/lib.rs` (STAGED; apply at next client restart).
