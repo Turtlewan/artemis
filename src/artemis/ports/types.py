@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, NewType
 
 if TYPE_CHECKING:
@@ -20,6 +21,19 @@ Vector = Sequence[float]
 
 Mode = str
 """Retrieval mode: ``hybrid``, ``agentic``, or ``graph``."""
+
+
+class QueryShape(StrEnum):
+    """Retrieval query shape selected by the shape-aware router (KCQ wave).
+
+    ``PINPOINT`` is the existing hybrid top-k path; ``WHOLE_DOC`` and
+    ``AGGREGATE`` are the costlier-but-correct routes consumed by kcq-3.
+    ``EXACT_IDENTIFIER`` is a separate BACKLOG item and is intentionally absent.
+    """
+
+    PINPOINT = "pinpoint"
+    WHOLE_DOC = "whole_doc"
+    AGGREGATE = "aggregate"
 
 
 class AsOf:
