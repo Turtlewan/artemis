@@ -22,8 +22,10 @@ from artemis.identity.scope import (
 )
 from artemis.identity.tier import tier_for
 from artemis.manifest import DataScope
-from artemis.ports.types import PersonId, Scope
+from artemis.ports.types import Chunk, PersonId, Scope
 from artemis.ports.voice import SpeakerID
+from artemis.retrieval.shape import classify_query_shape
+from artemis.retrieval.shape_router import ShapeRouter
 from artemis.speakable import DisplaySeg, SpeakSeg, classify_shape, subject_phrase, to_speakable
 
 if TYPE_CHECKING:
@@ -440,9 +442,7 @@ def compose_brain(
             )
             agentic = AgenticRetriever(retriever, model)
 
-            async def retrieve_fn(query: str) -> list[RetrievedChunk]:
-                import asyncio
-
+            async def _pinpoint_retrieve(query: str) -> list[RetrievedChunk]:
                 owner_chunks, general_chunks = await asyncio.gather(
                     retriever.retrieve(query, OWNER_PRIVATE),
                     retriever.retrieve(query, GENERAL),
@@ -455,6 +455,51 @@ def compose_brain(
                     seen.add(chunk.chunk.chunk_id)
                     merged.append(chunk)
                 return merged
+
+            def _summary_category(value: object) -> str | None:
+                return value if isinstance(value, str) and value else None
+
+            def _summary_level(value: object) -> int:
+                return int(str(value))
+
+            async def _summary_lookup(document_id: str) -> list[RetrievedChunk]:
+                """Highest-level summary node(s) for a document across both scopes."""
+                if not document_id:
+                    return []
+                out: list[RetrievedChunk] = []
+                for scope, store in stores.items():
+                    rows = [
+                        r
+                        for r in store.rows()
+                        if str(r.get("document_id", "")) == document_id
+                        and bool(r.get("is_summary", False))
+                    ]
+                    if not rows:
+                        continue
+                    top_level = max(_summary_level(r.get("node_level", 0)) for r in rows)
+                    for r in rows:
+                        if _summary_level(r.get("node_level", 0)) != top_level:
+                            continue
+                        out.append(
+                            RetrievedChunk(
+                                Chunk(
+                                    chunk_id=str(r["id"]),
+                                    document_id=document_id,
+                                    text=str(r.get("text", "")),
+                                    scope=scope,
+                                    category=_summary_category(r.get("category")),
+                                ),
+                                score=1.0,
+                            )
+                        )
+                return out
+
+            _shape_router = ShapeRouter(
+                classify=classify_query_shape,
+                pinpoint=_pinpoint_retrieve,
+                summary_lookup=_summary_lookup,
+            )
+            retrieve_fn = _shape_router.route
 
         except Exception:
             logger.warning(
