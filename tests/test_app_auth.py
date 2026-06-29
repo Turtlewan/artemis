@@ -89,6 +89,20 @@ def test_challenge_response_happy_path_updates_counter(tmp_path: Path) -> None:
     assert stored_device.counter == 1
 
 
+def test_registry_bump_counter_updates_known_and_rejects_unknown(tmp_path: Path) -> None:
+    private_key = _private_key()
+    registry = DeviceRegistry(tmp_path / "identity" / "devices.json")
+    registry.register("dev", _public_key_b64(private_key))
+
+    registry.bump_counter("dev", 9)
+    stored_device = registry.get("dev")
+
+    assert stored_device is not None
+    assert stored_device.counter == 9
+    with pytest.raises(AuthError):
+        registry.bump_counter("unknown", 1)
+
+
 def test_replayed_nonce_is_rejected(tmp_path: Path) -> None:
     auth, private_key = _auth(tmp_path)
     nonce = auth.begin_session("dev")

@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException, Request
 
+from artemis.file_lock import file_lock
 from artemis.gateway import OWNER_PERSON_ID, OWNER_SCOPE
 from artemis.ports.types import PersonId, Scope
 
@@ -78,16 +79,17 @@ class DeviceRegistry:
     def register(self, device_id: str, public_key_b64: str) -> RegisteredDevice:
         """Upsert a device with a fresh pairing timestamp and counter reset."""
         _load_public_key(public_key_b64)
-        device = RegisteredDevice(
-            device_id=device_id,
-            public_key_b64=public_key_b64,
-            counter=0,
-            paired_at=datetime.now(UTC).isoformat(),
-        )
-        devices = self._read_all()
-        devices[device_id] = device
-        self._write_all(devices)
-        return device
+        with file_lock(self._path):
+            device = RegisteredDevice(
+                device_id=device_id,
+                public_key_b64=public_key_b64,
+                counter=0,
+                paired_at=datetime.now(UTC).isoformat(),
+            )
+            devices = self._read_all()
+            devices[device_id] = device
+            self._write_all(devices)
+            return device
 
     def get(self, device_id: str) -> RegisteredDevice | None:
         """Return a registered device, or None if absent."""
@@ -100,24 +102,26 @@ class DeviceRegistry:
 
     def remove(self, device_id: str) -> None:
         """Remove a device if present."""
-        devices = self._read_all()
-        if device_id in devices:
-            del devices[device_id]
-            self._write_all(devices)
+        with file_lock(self._path):
+            devices = self._read_all()
+            if device_id in devices:
+                del devices[device_id]
+                self._write_all(devices)
 
     def bump_counter(self, device_id: str, new_counter: int) -> None:
         """Persist a caller-validated strictly greater counter."""
-        devices = self._read_all()
-        device = devices.get(device_id)
-        if device is None:
-            raise AuthError
-        devices[device_id] = RegisteredDevice(
-            device_id=device.device_id,
-            public_key_b64=device.public_key_b64,
-            counter=new_counter,
-            paired_at=device.paired_at,
-        )
-        self._write_all(devices)
+        with file_lock(self._path):
+            devices = self._read_all()
+            device = devices.get(device_id)
+            if device is None:
+                raise AuthError
+            devices[device_id] = RegisteredDevice(
+                device_id=device.device_id,
+                public_key_b64=device.public_key_b64,
+                counter=new_counter,
+                paired_at=device.paired_at,
+            )
+            self._write_all(devices)
 
     def _read_all(self) -> dict[str, RegisteredDevice]:
         if not self._path.exists():

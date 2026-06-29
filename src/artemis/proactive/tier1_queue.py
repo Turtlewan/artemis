@@ -46,26 +46,28 @@ class Tier1Queue:
         self.path = path
         self.dead_path = path.with_name("tier1_dead.json")
         self._items = self._load()
+        self._lock = threading.Lock()
 
     def enqueue(self, hit: Hit) -> None:
         """Queue a Tier-1 hook identity, coalescing duplicates by fq hook name."""
-        key = _queue_key(hit.module, hit.hook_name)
-        existing = self._items.get(key)
-        if existing is None:
-            self._items[key] = QueuedHook(
-                module=hit.module,
-                hook_name=hit.hook_name,
-                queued_at=datetime.now().isoformat(),
-                retry_count=0,
-            )
-        else:
-            self._items[key] = QueuedHook(
-                module=hit.module,
-                hook_name=hit.hook_name,
-                queued_at=existing.queued_at,
-                retry_count=existing.retry_count,
-            )
-        self._persist()
+        with self._lock:
+            key = _queue_key(hit.module, hit.hook_name)
+            existing = self._items.get(key)
+            if existing is None:
+                self._items[key] = QueuedHook(
+                    module=hit.module,
+                    hook_name=hit.hook_name,
+                    queued_at=datetime.now().isoformat(),
+                    retry_count=0,
+                )
+            else:
+                self._items[key] = QueuedHook(
+                    module=hit.module,
+                    hook_name=hit.hook_name,
+                    queued_at=existing.queued_at,
+                    retry_count=existing.retry_count,
+                )
+            self._persist()
 
     def pending(self) -> list[QueuedHook]:
         """Return queued hooks in persisted order."""
@@ -103,7 +105,9 @@ class Tier1Queue:
         max_attempts: int,
     ) -> int:
         drained = 0
-        for item in list(self._items.values()):
+        with self._lock:
+            items = list(self._items.values())
+        for item in items:
             if not key_provider.is_owner_unlocked():
                 return drained
             hook = _resolve_hook(registry, item.module, item.hook_name)
@@ -177,23 +181,27 @@ class Tier1Queue:
         _atomic_json_write(self.path, [asdict(item) for item in self._items.values()])
 
     def _remove(self, item: QueuedHook) -> None:
-        self._items.pop(_queue_key(item.module, item.hook_name), None)
-        self._persist()
+        with self._lock:
+            self._items.pop(_queue_key(item.module, item.hook_name), None)
+            self._persist()
 
     def _fail(self, item: QueuedHook, *, logger: logging.Logger, max_attempts: int) -> None:
-        updated = QueuedHook(
-            module=item.module,
-            hook_name=item.hook_name,
-            queued_at=item.queued_at,
-            retry_count=item.retry_count + 1,
-        )
-        if updated.retry_count >= max_attempts:
-            self._dead_letter(updated)
-            self._items.pop(_queue_key(item.module, item.hook_name), None)
-            logger.warning("tier1 queued hook dead-lettered: %s.%s", item.module, item.hook_name)
-        else:
-            self._items[_queue_key(item.module, item.hook_name)] = updated
-        self._persist()
+        with self._lock:
+            updated = QueuedHook(
+                module=item.module,
+                hook_name=item.hook_name,
+                queued_at=item.queued_at,
+                retry_count=item.retry_count + 1,
+            )
+            if updated.retry_count >= max_attempts:
+                self._dead_letter(updated)
+                self._items.pop(_queue_key(item.module, item.hook_name), None)
+                logger.warning(
+                    "tier1 queued hook dead-lettered: %s.%s", item.module, item.hook_name
+                )
+            else:
+                self._items[_queue_key(item.module, item.hook_name)] = updated
+            self._persist()
 
     def _dead_letter(self, item: QueuedHook) -> None:
         existing: list[dict[str, object]]
