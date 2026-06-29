@@ -91,10 +91,12 @@ export function NeuralWeb({ layout, core, width, height, transform }: NeuralWebP
       overlay.append(path);
       const motion = path.animate(
         [
-          { opacity: 0, transform: "translateX(-18px)", clipPath: "inset(0 100% 0 0)" },
+          // No translateX: the clip-path reveal makes the comet travel ALONG the
+          // line; a horizontal translate would drift it off the static curve.
+          { opacity: 0, clipPath: "inset(0 100% 0 0)" },
           { opacity: 1, offset: 0.14, clipPath: "inset(0 52% 0 0)" },
           { opacity: 1, offset: 0.84, clipPath: "inset(0 0 0 52%)" },
-          { opacity: 0, transform: "translateX(18px)", clipPath: "inset(0 0 0 100%)" },
+          { opacity: 0, clipPath: "inset(0 0 0 100%)" },
         ],
         { duration: gold ? 1_700 : 3_000, easing: "linear" },
       );

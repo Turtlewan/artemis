@@ -32,7 +32,9 @@ const worldStyles = `
 .world-core__ring{position:absolute;width:136px;height:136px;border-radius:50%;border:1px solid color-mix(in srgb,var(--p) 32%,transparent);animation:world-core-ring 3.4s ease-out infinite}
 .world-core__ring:nth-child(3){animation-delay:1.7s}
 .world-core__mark{position:relative;width:72px;height:72px;border-radius:50%;border:1px solid color-mix(in srgb,var(--p) 62%,transparent);box-shadow:0 0 18px -4px var(--p),inset 0 0 18px -8px var(--p)}
-.world-card{position:absolute;display:flex;flex-direction:column;padding:0;color:var(--text);text-align:left;border-radius:16px;overflow:hidden;cursor:pointer}
+.world-card{position:absolute;display:flex;flex-direction:column;padding:0;color:var(--text);text-align:left;border-radius:16px;overflow:hidden;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.world-card:hover,.world-card:focus-visible{transform:translateY(-2px);border-color:color-mix(in srgb,var(--p) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--p) 30%,transparent),0 10px 30px -12px color-mix(in srgb,var(--p) 55%,transparent)}
+@media (prefers-reduced-motion:reduce){.world-card{transition:box-shadow .18s ease,border-color .18s ease}.world-card:hover,.world-card:focus-visible{transform:none}}
 .world-card,.world-dock__button{font:inherit}
 .world-card__chrome{display:flex;align-items:center;gap:10px;min-height:42px;padding:10px 12px;border-bottom:1px solid var(--hair)}
 .world-card__title{font-weight:600;letter-spacing:.01em}
