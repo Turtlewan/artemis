@@ -52,6 +52,12 @@ LOGGER = logging.getLogger(__name__)
 PAIRING_CODE_TTL_SECONDS = 600
 RATE_LIMIT_ATTEMPTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 900.0
+# Loopback peers are a local-trust boundary (ADR-033 Windows-host v1): on the
+# single-owner box one pair->connect->unlock handshake already spends the whole
+# per-IP budget, so a reconnect within the window 429s. Exempt loopback; the
+# limiter still throttles any remote (tailnet/prod) peer. Planning to ratify the
+# canonical answer (per-endpoint vs higher budget) — see findings 2026-06-29.
+_RATE_LIMIT_EXEMPT_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 app_router = APIRouter(prefix="/app")
 
@@ -597,6 +603,8 @@ class DefaultDomainReadSource:
 async def rate_limited(request: Request) -> None:
     """FastAPI dependency enforcing the peer-IP sliding-window budget."""
     host = request.client.host if request.client is not None else "unknown"
+    if host in _RATE_LIMIT_EXEMPT_HOSTS:
+        return
     limiter = cast(RateLimiter, request.app.state.rate_limiter)
     if not limiter.check(host):
         raise HTTPException(status_code=429, detail="too many attempts")

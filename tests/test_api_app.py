@@ -398,12 +398,25 @@ def test_session_rate_limit_replay_guards_and_lock_logout_flow(tmp_path: Path) -
 
 
 def test_rate_limit_blocks_sixth_begin_attempt(tmp_path: Path) -> None:
-    fixture = _fixture(tmp_path)
+    # A remote (non-loopback) peer is still throttled at the 6th attempt.
+    remote_app = _app(tmp_path / "remote")
+    remote = TestClient(remote_app, client=("100.64.0.1", 1234))
     statuses = [
-        fixture.client.post("/app/session/begin", json={"device_id": "unknown"}).status_code
+        remote.post("/app/session/begin", json={"device_id": "unknown"}).status_code
         for _ in range(6)
     ]
     assert statuses == [401, 401, 401, 401, 401, 429]
+
+
+def test_rate_limit_exempts_loopback(tmp_path: Path) -> None:
+    # Loopback is a local-trust boundary (ADR-033 Windows-host v1): exempt from
+    # the limiter so a single handshake (5 requests) does not lock out reconnects.
+    fixture = _fixture(tmp_path)
+    statuses = [
+        fixture.client.post("/app/session/begin", json={"device_id": "unknown"}).status_code
+        for _ in range(8)
+    ]
+    assert statuses == [401] * 8
 
 
 def test_layout_lww_round_trip_while_locked(tmp_path: Path) -> None:
