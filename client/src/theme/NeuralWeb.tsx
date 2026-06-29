@@ -44,16 +44,33 @@ export function NeuralWeb({ layout, core, width, height, transform }: NeuralWebP
   const svgRef = useRef<SVGSVGElement | null>(null);
   const overlayRef = useRef<SVGGElement | null>(null);
   const curves = useMemo<Curve[]>(() => {
-    const spokes = SPOKE_DOMAINS.map<Curve>((id, index) => ({
-      key: `spoke:${id}`,
-      kind: "spoke",
-      d: curvePath(core, layout[id], (index % 2 === 0 ? -1 : 1) * 0.1),
-    }));
-    const edges = DOMAIN_RELATIONSHIPS.map<Curve>(([a, b], index) => ({
-      key: `edge:${a}-${b}`,
-      kind: "edge",
-      d: curvePath(layout[a], layout[b], (index % 2 === 0 ? -1 : 1) * 0.16),
-    }));
+    // A domain only contributes a spoke/edge once it has a placement on the
+    // map; layout is keyed by placed domains, so skip endpoints not yet present
+    // (e.g. empty/partial placements right after connect) to avoid drawing from
+    // an undefined point.
+    const spokes = SPOKE_DOMAINS.flatMap<Curve>((id, index) => {
+      const point = layout[id];
+      if (point === undefined) return [];
+      return [
+        {
+          key: `spoke:${id}`,
+          kind: "spoke",
+          d: curvePath(core, point, (index % 2 === 0 ? -1 : 1) * 0.1),
+        },
+      ];
+    });
+    const edges = DOMAIN_RELATIONSHIPS.flatMap<Curve>(([a, b], index) => {
+      const from = layout[a];
+      const to = layout[b];
+      if (from === undefined || to === undefined) return [];
+      return [
+        {
+          key: `edge:${a}-${b}`,
+          kind: "edge",
+          d: curvePath(from, to, (index % 2 === 0 ? -1 : 1) * 0.16),
+        },
+      ];
+    });
     return [...spokes, ...edges];
   }, [core, layout]);
 
