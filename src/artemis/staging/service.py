@@ -55,7 +55,8 @@ class ActionStagingService:
 
         Twin lookup and args re-validation happen before the conditional
         ``PENDING`` to ``EXECUTING`` flip, so preparation failures leave the row
-        re-approvable. Expiry is checked before lookup and dispatch.
+        re-approvable. A failure after dispatch lands in terminal ``FAILED``,
+        so it is not re-approvable. Expiry is checked before lookup and dispatch.
         """
         action = self.store.get(action_id)
         if action.status is not ActionStatus.PENDING:
@@ -81,11 +82,11 @@ class ActionStagingService:
 
         try:
             result_obj = await tool_spec.callable_ref(validated_args)
-        except Exception:
-            self.store.set_status_conditional(
+        except Exception as exc:
+            self.store.set_status(
                 action_id,
-                new_status=ActionStatus.PENDING,
-                expected_status=ActionStatus.EXECUTING,
+                ActionStatus.FAILED,
+                result={"error": str(exc)},
             )
             raise
 

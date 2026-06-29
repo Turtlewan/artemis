@@ -162,7 +162,7 @@ async def test_service_approve_expiry_before_dispatch(tmp_path: Path) -> None:
     assert spy.call_count == 0
 
 
-async def test_service_approve_scope_locked_dispatch_reverts_to_pending(tmp_path: Path) -> None:
+async def test_service_approve_scope_locked_dispatch_fails_terminally(tmp_path: Path) -> None:
     spy = SpyCallable(fail_once=True)
     service = _service(tmp_path, spy=spy)
     action = service.stage("cal", "cal.create_event", {"title": "T"}, "Create event T")
@@ -170,10 +170,15 @@ async def test_service_approve_scope_locked_dispatch_reverts_to_pending(tmp_path
     with pytest.raises(ScopeLockedError):
         await service.approve(action.id)
 
-    assert service.store.get(action.id).status is ActionStatus.PENDING
-    approved = await service.approve(action.id)
-    assert spy.call_count == 2
-    assert approved.status is ActionStatus.APPROVED
+    failed = service.store.get(action.id)
+    assert failed.status is ActionStatus.FAILED
+    assert failed.result is not None
+    assert failed.result["error"] == "owner scope relocked"
+    with pytest.raises(ValueError):
+        await service.approve(action.id)
+    with pytest.raises(ValueError):
+        service.reject(action.id)
+    assert spy.call_count == 1
 
 
 def test_service_reject_blocks_approval(tmp_path: Path) -> None:

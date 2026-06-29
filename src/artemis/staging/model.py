@@ -17,6 +17,7 @@ class ActionStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     EXPIRED = "expired"
+    FAILED = "failed"
 
 
 class PendingAction(BaseModel):
