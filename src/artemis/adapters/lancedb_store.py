@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
 from typing import Any, cast
 
 import pyarrow as pa
@@ -95,6 +96,7 @@ class LanceDBVectorStore:
                 "parent_chunk_id": _optional_str(meta.get("parent_chunk_id")),
                 "sensitivity": _sensitivity(meta.get("sensitivity")),
                 "category": _optional_str(meta.get("category")),
+                "source_date": _iso_or_none(meta.get("source_date")),
             }
             for entry_id, vector, meta in zip(ids, vectors, metadata)
         ]
@@ -345,6 +347,7 @@ class LanceDBVectorStore:
                 pa.field("parent_chunk_id", pa.string()),
                 pa.field("sensitivity", pa.string()),
                 pa.field("category", pa.string()),
+                pa.field("source_date", pa.string()),
             ]
         )
 
@@ -380,6 +383,23 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
+def _iso_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _parse_iso(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
 def _sensitivity(value: object) -> str:
     if value == "general":
         return "general"
@@ -400,6 +420,7 @@ def _row_to_retrieved(row: Mapping[str, object], score: float) -> RetrievedChunk
     raw_sens = row.get("sensitivity")
     sensitivity: Sensitivity = "general" if raw_sens == "general" else "sensitive"
     category = _optional_str(row.get("category"))
+    source_date = _parse_iso(row.get("source_date"))
     return RetrievedChunk(
         chunk=Chunk(
             chunk_id=str(row["id"]),
@@ -408,6 +429,7 @@ def _row_to_retrieved(row: Mapping[str, object], score: float) -> RetrievedChunk
             scope=str(row.get("scope", "")),
             sensitivity=sensitivity,
             category=category,
+            source_date=source_date,
         ),
         score=score,
     )

@@ -211,7 +211,27 @@ def test_render_inject_block() -> None:
     assert render_inject_block([]) == ""
     block = render_inject_block([fact])
     assert "Known facts about the owner:" in block
-    assert "- owner lives_in Paris" in block
+    assert "- owner lives_in Paris (as of 2026-06-24, still current)" in block
+
+
+def test_rag_messages_includes_recency_instruction() -> None:
+    model = RecordingModelPort()
+    brain = _brain(model, owner_person_id=OWNER_PERSON_ID)
+    fact = Fact(
+        "f1",
+        OWNER_PERSON_ID,
+        "owner",
+        "lives_in",
+        "Paris",
+        0.9,
+        datetime(2026, 6, 24, tzinfo=UTC),
+    )
+
+    messages = brain._rag_messages("hi", (), (fact,))
+
+    system = next(m.content for m in messages if m.role == "system")
+    assert "recency" in system.lower()
+    assert "as of 2026-06-24, still current" in system
 
 
 @pytest.mark.asyncio

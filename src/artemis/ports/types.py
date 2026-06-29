@@ -101,6 +101,7 @@ class Chunk:
         scope: Scope,
         sensitivity: Sensitivity = "sensitive",
         category: str | None = None,
+        source_date: datetime | None = None,
     ) -> None:
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -108,6 +109,7 @@ class Chunk:
         self.scope = scope
         self.sensitivity = sensitivity
         self.category = category
+        self.source_date = source_date
 
 
 class RetrievedChunk:

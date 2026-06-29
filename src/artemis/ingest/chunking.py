@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from artemis.ingest.parsing import ParsedBlock, ParsedDocument
 from artemis.ports.types import Document, Scope
@@ -31,6 +32,7 @@ class ChunkRecord:
     parent_chunk_id: str | None = None
     sensitivity: Sensitivity = "sensitive"
     category: str | None = None
+    source_date: datetime | None = None
 
 
 def chunk_document(
@@ -40,6 +42,7 @@ def chunk_document(
     contextual: bool = False,
     context_fn: Callable[[str, str], str] | None = None,
     target_chars: int = DEFAULT_CHUNK_CHARS,
+    source_date: datetime | None = None,
 ) -> list[ChunkRecord]:
     """Group parsed blocks into stable chunks.
 
@@ -54,14 +57,18 @@ def chunk_document(
     for block in parsed.blocks:
         block_len = len(block.text)
         if current and current_len + block_len > target_chars:
-            chunks.append(_make_chunk(document, len(chunks), current, contextual, context_fn))
+            chunks.append(
+                _make_chunk(document, len(chunks), current, contextual, context_fn, source_date)
+            )
             current = []
             current_len = 0
         current.append(block)
         current_len += block_len
 
     if current:
-        chunks.append(_make_chunk(document, len(chunks), current, contextual, context_fn))
+        chunks.append(
+            _make_chunk(document, len(chunks), current, contextual, context_fn, source_date)
+        )
     return chunks
 
 
@@ -71,6 +78,7 @@ def _make_chunk(
     blocks: list[ParsedBlock],
     contextual: bool,
     context_fn: Callable[[str, str], str] | None,
+    source_date: datetime | None = None,
 ) -> ChunkRecord:
     first = blocks[0]
     text = "\n\n".join(block.text for block in blocks if block.text)
@@ -89,4 +97,5 @@ def _make_chunk(
         char_end=max(block.char_end for block in blocks),
         sensitivity=document.sensitivity,
         category=document.category,
+        source_date=source_date,
     )

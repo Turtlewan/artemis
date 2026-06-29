@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -147,6 +148,9 @@ async def test_file_ingest_writes_provenance_and_page_images(tmp_path: Path) -> 
         assert row["parent_chunk_id"] is None
         assert row["sensitivity"] == "sensitive"
         assert row["category"] is None
+        assert row["source_date"] == result.item.fetched_at.isoformat()
+    retrieved = store.search("owner-private", [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], k=1)
+    assert retrieved[0].chunk.source_date == result.item.fetched_at
 
 
 @pytest.mark.asyncio
@@ -275,10 +279,14 @@ def test_chunk_document_propagates_document_sensitivity() -> None:
         page_images=(),
     )
 
-    chunks = chunk_document(parsed, document)
+    source_date = datetime(2026, 6, 29, 12, 30, tzinfo=UTC)
+    chunks = chunk_document(parsed, document, source_date=source_date)
+    dateless_chunks = chunk_document(parsed, document)
 
     assert {chunk.sensitivity for chunk in chunks} == {"general"}
     assert {chunk.category for chunk in chunks} == {None}
+    assert {chunk.source_date for chunk in chunks} == {source_date}
+    assert {chunk.source_date for chunk in dateless_chunks} == {None}
     assert (
         ChunkRecord(
             chunk_id="chunk",

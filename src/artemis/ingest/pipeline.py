@@ -115,7 +115,7 @@ class IngestPipeline:
             # Structured-projection hook reserved; v1 does not persist projections.
             _ = self._projection_fn(parsed, document)
 
-        chunks = chunk_document(parsed, document)
+        chunks = chunk_document(parsed, document, source_date=item.fetched_at)
         vectors = await self._embedder.embed_documents([chunk.text for chunk in chunks])
         if len(vectors) != len(chunks):
             raise IngestError(f"Embedder returned {len(vectors)} vectors for {len(chunks)} chunks")
@@ -176,6 +176,7 @@ def _metadata_for(chunk: ChunkRecord) -> Mapping[str, object]:
         "parent_chunk_id": chunk.parent_chunk_id,
         "sensitivity": chunk.sensitivity,
         "category": chunk.category,
+        "source_date": chunk.source_date,
     }
 
 

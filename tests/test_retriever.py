@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -217,6 +218,7 @@ async def test_retriever_default_hybrid_reranks_known_chunk_first(tmp_path: Path
 async def test_retriever_carries_sensitivity_and_category(tmp_path: Path) -> None:
     embedder = FakeEmbedder()
     store = _store(tmp_path)
+    source_date = datetime(2026, 6, 29, 10, 15, tzinfo=UTC)
     texts = [
         "carrier query general source",
         "carrier query sensitive source",
@@ -237,6 +239,7 @@ async def test_retriever_carries_sensitivity_and_category(tmp_path: Path) -> Non
                 "char_end": len(texts[0]),
                 "sensitivity": "general",
                 "category": "health",
+                "source_date": source_date,
             },
             {
                 "text": texts[1],
@@ -267,10 +270,13 @@ async def test_retriever_carries_sensitivity_and_category(tmp_path: Path) -> Non
     assert set(by_id) == {"c-general", "c-sensitive", "c-missing"}
     assert by_id["c-general"].sensitivity == "general"
     assert by_id["c-general"].category == "health"
+    assert by_id["c-general"].source_date == source_date
     assert by_id["c-sensitive"].sensitivity == "sensitive"
     assert by_id["c-sensitive"].category is None
+    assert by_id["c-sensitive"].source_date is None
     assert by_id["c-missing"].sensitivity == "sensitive"
     assert by_id["c-missing"].category is None
+    assert by_id["c-missing"].source_date is None
 
 
 @pytest.mark.asyncio

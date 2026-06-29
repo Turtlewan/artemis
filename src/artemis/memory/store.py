@@ -122,9 +122,18 @@ class SqliteMemoryStore:
 
 
 def render_inject_block(facts: Sequence[Fact]) -> str:
-    """Render injected owner facts as a compact system-prompt block."""
+    """Render injected owner facts as a compact system-prompt block.
+
+    Each line carries the fact's ``valid_at`` date and a deterministic
+    "still current" tag -- facts arrive from ``inject_context`` (tx-open
+    rows), so they are current by construction.
+    """
     if not facts:
         return ""
-    return "Known facts about the owner:\n" + "\n".join(
-        f"- {fact.subject} {fact.relation} {fact.object}" for fact in facts
-    )
+    lines = []
+    for fact in facts:
+        as_of = fact.valid_at.date().isoformat()
+        lines.append(
+            f"- {fact.subject} {fact.relation} {fact.object} (as of {as_of}, still current)"
+        )
+    return "Known facts about the owner:\n" + "\n".join(lines)

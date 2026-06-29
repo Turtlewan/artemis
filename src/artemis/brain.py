@@ -33,6 +33,14 @@ from artemis.sensitivity import (
     SensitivityEnforcer,
     compose_with_gate,
 )
+from artemis.untrusted.citation_check import (
+    CITE_INSTRUCTION,
+    MATERIAL_GAP_NOTICE,
+    audit_answer,
+    has_material_gap,
+    usable_chunks,
+)
+from artemis.untrusted.spotlight import SPOTLIGHT_INSTRUCTION, spotlight
 
 if TYPE_CHECKING:
     from artemis.recipes.promotion import Promoter
@@ -40,6 +48,12 @@ if TYPE_CHECKING:
     from artemis.sensitivity import SensitivityClassifierProtocol
 
 logger = logging.getLogger(__name__)
+
+FACT_RECENCY_INSTRUCTION = (
+    "Weigh recency: each owner fact is tagged with the date it became valid "
+    "and whether it is still current. Prefer current information and note "
+    "when a fact may be dated."
+)
 
 
 class TelemetryWriter(Protocol):
@@ -65,12 +79,14 @@ class BrainResponse:
         tool_used: str | None = None,
         escalated: bool = False,
         held_back: list[HeldBackItem] | None = None,
+        notices: list[str] | None = None,
     ) -> None:
         self.text = text
         self.path = path
         self.tool_used = tool_used
         self.escalated = escalated
         self.held_back = held_back or []
+        self.notices = notices or []
 
 
 class Brain:
@@ -379,10 +395,21 @@ class Brain:
             request_text, decision.context.cloud_safe_chunks, decision.context.cloud_safe_facts
         )
         result = await self._model.complete(role=decision.role, messages=messages)
+        report = audit_answer(
+            result.text,
+            decision.context.cloud_safe_chunks,
+            decision.context.cloud_safe_facts,
+        )
+        notices = report.notices()
+        text = result.text
+        for notice in notices:
+            if notice not in text:
+                text = f"{text}\n\n{notice}"
         return BrainResponse(
-            text=result.text,
+            text=text,
             path="local",
             held_back=list(decision.context.held_back),
+            notices=notices,
         )
 
     def _rag_messages(
@@ -391,20 +418,22 @@ class Brain:
         chunks: tuple[RetrievedChunk, ...],
         facts: tuple[Fact, ...],
     ) -> list[Message]:
-        from artemis.untrusted.spotlight import SPOTLIGHT_INSTRUCTION, spotlight
-
         blocks: list[str] = []
         system_parts: list[str] = []
-        if chunks:
-            raw_block = "\n".join(
-                f"[{retrieved.chunk.chunk_id}] {retrieved.chunk.text}" for retrieved in chunks
-            )
+        usable = usable_chunks(chunks)
+        if usable:
+            raw_block = "\n".join(_chunk_citation(retrieved) for retrieved in usable)
             nonce, spotlighted = spotlight(raw_block)
             system_parts.append(SPOTLIGHT_INSTRUCTION.format(nonce=nonce))
             blocks.append("Retrieved context:\n" + spotlighted)
         fact_block = render_inject_block(facts)
         if fact_block:
+            system_parts.append(FACT_RECENCY_INSTRUCTION)
             blocks.append(fact_block)
+        if has_material_gap(chunks, facts):
+            blocks.append(MATERIAL_GAP_NOTICE)
+        if blocks:
+            system_parts.append(CITE_INSTRUCTION)
         if not blocks:
             return [Message(role="user", content=request_text)]
         combined_system = (
@@ -451,3 +480,11 @@ class Brain:
         if decision.candidate_tools:
             return decision.candidate_tools[0]
         return None
+
+
+def _chunk_citation(retrieved: RetrievedChunk) -> str:
+    chunk = retrieved.chunk
+    if chunk.source_date is not None:
+        as_of = chunk.source_date.date().isoformat()
+        return f"[{chunk.chunk_id} | as of {as_of}] {chunk.text}"
+    return f"[{chunk.chunk_id}] {chunk.text}"
