@@ -120,6 +120,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 brain._registry,
                 key_provider,
                 brain._model,
+                pre_tick_steps=[
+                    s for s in [getattr(brain, "summary_build_step", None)] if s is not None
+                ],
             )
             heartbeat_task = asyncio.create_task(heartbeat.run_forever())
             app.state.heartbeat_task = heartbeat_task

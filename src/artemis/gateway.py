@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Final, cast
 
 from artemis.brain import Brain, BrainResponse
@@ -340,6 +340,7 @@ def compose_brain(
     agentic = None
     recall_fn = None
     audit_log = None
+    summary_build_step: Callable[[], Awaitable[None]] | None = None
     if model is None:
         from artemis.adapters.composite_model import CompositeModelPort
         from artemis.sensitivity import SensitivityClassifier, SensitivityEnforcer
@@ -367,6 +368,7 @@ def compose_brain(
             from artemis.adapters.reranker import FakeReranker
             from artemis.data.sqlcipher import set_row_factory, sqlcipher_open
             from artemis.identity.scope import GENERAL
+            from artemis.ingest.summary_tree import ModelSummariser, make_summary_build_step
             from artemis.memory import build_write_path, memory_manifest
             from artemis.memory.repository import BitemporalRepository
             from artemis.memory.schema import create_schema
@@ -428,6 +430,14 @@ def compose_brain(
                 store_for,
                 reranker if reranker is not None else FakeReranker(),
             )
+            summary_build_step = make_summary_build_step(
+                store_for=store_for,
+                scopes=[OWNER_PRIVATE, GENERAL],
+                embedder=embedder,
+                summariser=ModelSummariser(model),
+                is_unlocked=key_provider.is_owner_unlocked,
+                logger=logger,
+            )
             agentic = AgenticRetriever(retriever, model)
 
             async def retrieve_fn(query: str) -> list[RetrievedChunk]:
@@ -480,7 +490,7 @@ def compose_brain(
                 )
 
     router = SemanticRouter(registry, embedder)
-    return Brain(
+    brain = Brain(
         router,
         registry,
         model,
@@ -495,6 +505,8 @@ def compose_brain(
         recall_fn=recall_fn,
         audit_log=audit_log,
     )
+    setattr(brain, "summary_build_step", summary_build_step)
+    return brain
 
 
 def _register_modules(
