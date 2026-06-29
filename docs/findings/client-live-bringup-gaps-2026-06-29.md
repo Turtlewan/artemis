@@ -148,6 +148,12 @@ stronger local model. This is the prerequisite for the tomorrow's email→task�
 (Demo driver kept at `scratchpad/email_extract_demo.py`.)
 
 ## Tomorrow's test plan (owner)
+- **Background task (run while the owner does OAuth):** construct a full **capability test matrix** —
+  every built capability as a one-by-one checklist (name · what · status built/partial/wired-unexercised/
+  not-built · how to test · gate/why-not). Dispatch parallel read-only agents over disjoint subsystems,
+  synthesize to `docs/CAPABILITIES-TEST-MATRIX.md`. Ground in `docs/changes/done/` + live `src/` +
+  `client/src/`; use Findings 1–8 for the why-not column. (Owner request; memory
+  `capability-test-matrix-request`.)
 - Email extraction live: re-run after the model JSON fix; show email→task + email→calendar-event.
 - **Google OAuth live** (owner-requested): `artemis-google-auth login` (needs OAuth client creds +
   consent) → token stored in the owner-private SqlCipherTokenStore → then `artemis-dev-email-rules
