@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 from dataclasses import dataclass
+from uuid import uuid4
 
 from artemis.model.compose import build_model_router
 from artemis.ports.model import ModelPort
 from artemis.ports.transport import TransportPort
 from artemis.proactivity import ProactiveWorker, build_proactive_worker
-from artemis.scheduler import DurableScheduler, build_scheduler
+from artemis.scheduler import DurableScheduler, ScheduleLedger, build_scheduler
 from artemis.transport import ConsoleTransport, telegram_from_env
+from artemis.types import ScheduledJob
 
 
 @dataclass
@@ -40,13 +43,77 @@ def build_app(
     return App(scheduler=scheduler, worker=worker)
 
 
-def main() -> None:
-    """Console-script entry: run the loop. Pushes to Telegram if configured, else the console."""
-    db_path = os.environ.get("ARTEMIS_DB", "scheduler.db")
+async def _noop_dispatch(payload: dict) -> None:  # type: ignore[type-arg]
+    """Dispatch sink for ledger-only CLI commands (add) that never run a job."""
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    """Start the always-on heartbeat. Pushes to Telegram if configured, else the console."""
     telegram = telegram_from_env(os.environ)
     if telegram is not None:
         owner_identity = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
-        app = build_app(db_path=db_path, transport=telegram, owner_identity=owner_identity)
+        app = build_app(db_path=args.db, transport=telegram, owner_identity=owner_identity)
     else:
-        app = build_app(db_path=db_path)
+        app = build_app(db_path=args.db)
     asyncio.run(app.run())
+
+
+def cmd_add(args: argparse.Namespace) -> None:
+    if not args.cron and not args.at:
+        raise SystemExit("add requires --cron or --at")
+    payload: dict[str, str] = {"goal": args.goal}
+    if args.context:
+        payload["context"] = args.context
+    if args.title:
+        payload["title"] = args.title
+    job = ScheduledJob(id=args.id or uuid4().hex, cron=args.cron, run_at=args.at, payload=payload)
+    scheduler = build_scheduler(dispatch=_noop_dispatch, db_path=args.db)
+    asyncio.run(scheduler.schedule(job))
+    print(f"scheduled {job.id}")
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    ledger = ScheduleLedger(args.db)
+    rows = ledger.active()
+    ledger.close()
+    if not rows:
+        print("(no active jobs)")
+        return
+    for row in rows:
+        when = row.cron or row.run_at or "?"
+        label = row.payload.get("title") or row.payload.get("goal") or ""
+        print(f"{row.id}  when={when}  next_fire={row.next_fire:.0f}  {label}")
+
+
+def cmd_cancel(args: argparse.Namespace) -> None:
+    ledger = ScheduleLedger(args.db)
+    ledger.deactivate(args.id)
+    ledger.close()
+    print(f"cancelled {args.id}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="artemis", description="Artemis proactivity hub")
+    parser.add_argument("--db", default=os.environ.get("ARTEMIS_DB", "scheduler.db"))
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("run", help="start the always-on heartbeat").set_defaults(func=cmd_run)
+
+    p_add = sub.add_parser("add", help="schedule a proactive job")
+    p_add.add_argument("--goal", required=True, help="what the job asks Artemis to do")
+    p_add.add_argument("--cron", help='cron expression, e.g. "0 7 * * *"')
+    p_add.add_argument("--at", help="one-shot ISO datetime, e.g. 2026-07-01T07:00:00")
+    p_add.add_argument("--title", help="optional message label")
+    p_add.add_argument("--context", help="optional extra context")
+    p_add.add_argument("--id", help="optional explicit job id")
+    p_add.set_defaults(func=cmd_add)
+
+    sub.add_parser("list", help="list active jobs").set_defaults(func=cmd_list)
+
+    p_cancel = sub.add_parser("cancel", help="deactivate a job")
+    p_cancel.add_argument("id", help="job id to cancel")
+    p_cancel.set_defaults(func=cmd_cancel)
+
+    args = parser.parse_args(argv)
+    func = getattr(args, "func", cmd_run)  # bare `artemis` -> run (back-compat)
+    func(args)
