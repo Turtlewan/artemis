@@ -53,6 +53,15 @@ class FakeConsolidator:
         return self._decision
 
 
+class FakeSummarizer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[str], str]] = []
+
+    async def summarize(self, items: Sequence[MemoryItem], *, query: str) -> str:
+        self.calls.append(([item.content for item in items], query))
+        return "SUMMARY"
+
+
 def _ledger_row(ledger: MemoryLedger, key: str) -> tuple[float, float, int, float, int]:
     rows = cast(
         list[tuple[float, float, int, float, int]],
@@ -248,6 +257,67 @@ async def test_retrieve_searches_and_applies_budget() -> None:
     assert [item.content for item in tiny.items] == ["alpha"]
     assert tiny.token_cost == 1
     assert tiny.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_retrieve_summarizes_overflow_when_enabled() -> None:
+    fake = FakeCognee(["a" * 40, "b" * 40, "c" * 40])
+    summarizer = FakeSummarizer()
+    mem = CogneeMemory(
+        MemoryConfig(
+            summarize_overflow=True,
+            overflow_reserve_tokens=5,
+            use_embedding_mmr=False,
+        ),
+        cognee_module=fake,
+        summarizer=summarizer,
+    )
+
+    result = await mem.retrieve("q", token_budget=25)
+
+    assert [item.content for item in result.items] == ["a" * 40, "b" * 40, "SUMMARY"]
+    assert result.items[-1].metadata["overflow_summary"] is True
+    assert result.token_cost == 21
+    assert result.truncated is True
+    assert summarizer.calls == [(["c" * 40], "q")]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_does_not_summarize_when_everything_fits() -> None:
+    fake = FakeCognee(["a" * 40])
+    summarizer = FakeSummarizer()
+    mem = CogneeMemory(
+        MemoryConfig(
+            summarize_overflow=True,
+            overflow_reserve_tokens=5,
+            use_embedding_mmr=False,
+        ),
+        cognee_module=fake,
+        summarizer=summarizer,
+    )
+
+    result = await mem.retrieve("q", token_budget=25)
+
+    assert result == assemble([MemoryItem(content="a" * 40, layer="semantic")], token_budget=25)
+    assert summarizer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_retrieve_summarize_overflow_off_truncates_without_summarizer_call() -> None:
+    fake = FakeCognee(["a" * 40, "b" * 40, "c" * 40])
+    summarizer = FakeSummarizer()
+    mem = CogneeMemory(
+        MemoryConfig(use_embedding_mmr=False),
+        cognee_module=fake,
+        summarizer=summarizer,
+    )
+
+    result = await mem.retrieve("q", token_budget=22)
+
+    assert [item.content for item in result.items] == ["a" * 40, "b" * 40]
+    assert result.token_cost == 20
+    assert result.truncated is True
+    assert summarizer.calls == []
 
 
 @pytest.mark.asyncio

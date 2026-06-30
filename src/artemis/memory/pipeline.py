@@ -132,6 +132,25 @@ def assemble(items: Sequence[MemoryItem], *, token_budget: int) -> RetrievedCont
     return RetrievedContext(items=kept, token_cost=token_cost, truncated=truncated)
 
 
+def split_for_budget(
+    items: Sequence[MemoryItem], *, token_budget: int
+) -> tuple[list[MemoryItem], list[MemoryItem], int]:
+    """Greedy fill to budget, exposing overflow for callers that can summarize it."""
+    kept: list[MemoryItem] = []
+    overflow: list[MemoryItem] = []
+    cost = 0
+
+    for item in items:
+        item_cost = estimate_tokens(item.content)
+        if cost + item_cost > token_budget:
+            overflow.append(item)
+            continue
+        kept.append(item)
+        cost += item_cost
+
+    return kept, overflow, cost
+
+
 def run_pipeline(
     query: str,
     candidates: Sequence[MemoryItem],

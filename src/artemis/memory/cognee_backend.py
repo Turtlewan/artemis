@@ -14,8 +14,10 @@ from artemis.memory.pipeline import (
     assemble,
     embedding_mmr_select,
     identity_reranker,
-    run_pipeline,
+    mmr_select,
+    split_for_budget,
 )
+from artemis.memory.summarize import Summarizer
 from artemis.memory.ledger import MemoryLedger
 from artemis.ports.embedding import EmbeddingPort
 from artemis.types import MemoryItem, RetrievedContext
@@ -44,12 +46,14 @@ class CogneeMemory:
         embedder: EmbeddingPort | None = None,
         consolidator: Consolidator | None = None,
         ledger: MemoryLedger | None = None,
+        summarizer: Summarizer | None = None,
     ) -> None:
         self._config = config or MemoryConfig()
         self._cognee = cognee_module
         self._embedder = embedder
         self._consolidator = consolidator
         self._ledger = ledger
+        self._summarizer = summarizer
         self._superseded: set[str] = set()
         self._configured = cognee_module is not None
 
@@ -149,19 +153,45 @@ class CogneeMemory:
                 k=self._config.retrieve_candidates,
                 mmr_lambda=self._config.mmr_lambda,
             )
-            result = assemble(deduped, token_budget=token_budget)
-            self._touch_retrieved(result)
-            return result
-        result = run_pipeline(
-            query,
-            candidates,
-            token_budget=token_budget,
-            mmr_lambda=self._config.mmr_lambda,
-            k=self._config.retrieve_candidates,
-            reranker=identity_reranker,
-        )
+        else:
+            deduped = mmr_select(
+                ranked,
+                k=self._config.retrieve_candidates,
+                mmr_lambda=self._config.mmr_lambda,
+            )
+        result = await self._finalize(query, deduped, token_budget)
         self._touch_retrieved(result)
         return result
+
+    async def _finalize(
+        self,
+        query: str,
+        deduped: Sequence[MemoryItem],
+        token_budget: int,
+    ) -> RetrievedContext:
+        if self._summarizer is None or not self._config.summarize_overflow:
+            return assemble(deduped, token_budget=token_budget)
+
+        reserve = self._config.overflow_reserve_tokens
+        kept, overflow, cost = split_for_budget(
+            deduped,
+            token_budget=max(0, token_budget - reserve),
+        )
+        if not overflow:
+            return assemble(deduped, token_budget=token_budget)
+
+        summary_text = await self._summarizer.summarize(overflow, query=query)
+        summary = MemoryItem(
+            content=summary_text,
+            layer="working",
+            metadata={"overflow_summary": True},
+        )
+        tail = assemble([summary], token_budget=reserve)
+        return RetrievedContext(
+            items=[*kept, *tail.items],
+            token_cost=cost + tail.token_cost,
+            truncated=True,
+        )
 
     def _touch_retrieved(self, context: RetrievedContext) -> None:
         if self._ledger is not None:

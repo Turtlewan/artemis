@@ -11,6 +11,7 @@ from artemis.memory.pipeline import (
     lexical_similarity,
     mmr_select,
     run_pipeline,
+    split_for_budget,
 )
 from artemis.types import MemoryItem
 
@@ -93,3 +94,31 @@ def test_assemble_applies_hard_token_budget() -> None:
     assert [item.content for item in full.items] == ["a" * 40, "b" * 40, "c" * 40]
     assert full.token_cost == 30
     assert full.truncated is False
+
+
+def test_split_for_budget_exposes_overflow_and_kept_cost() -> None:
+    items = [
+        _item("a" * 40),
+        _item("b" * 40),
+        _item("c" * 40),
+    ]
+
+    kept, overflow, kept_cost = split_for_budget(items, token_budget=22)
+
+    assert [item.content for item in kept] == ["a" * 40, "b" * 40]
+    assert [item.content for item in overflow] == ["c" * 40]
+    assert kept_cost == 20
+
+
+def test_split_for_budget_keeps_everything_with_huge_budget() -> None:
+    items = [
+        _item("a" * 40),
+        _item("b" * 40),
+        _item("c" * 40),
+    ]
+
+    kept, overflow, kept_cost = split_for_budget(items, token_budget=100)
+
+    assert kept == items
+    assert overflow == []
+    assert kept_cost == 30
