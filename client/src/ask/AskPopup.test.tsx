@@ -132,13 +132,13 @@ describe("AskPopup", () => {
   it("focuses the input on open and wraps Tab inside the manual trap", () => {
     const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
     const input = getByRole(container, "textbox", /ask/i);
-    const row = container.querySelector<HTMLElement>(".ask-result-row");
+    const last = getByRole(container, "button", /send/i);
 
     expect(document.activeElement).toBe(input);
 
     act(() => {
-      row?.focus();
-      row?.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      last.focus();
+      last.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
     });
     expect(document.activeElement).toBe(input);
 
@@ -146,7 +146,7 @@ describe("AskPopup", () => {
       input.focus();
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
     });
-    expect(document.activeElement).toBe(row);
+    expect(document.activeElement).toBe(last);
   });
 
   it("closes on Escape and click-away while restoring previous focus", async () => {

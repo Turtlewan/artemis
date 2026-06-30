@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ask Artemis — mockup</title>
+    <!--
+      EDIT FREELY. Double-click to open in a browser; refresh to see changes — no app rebuild.
+      Colours are the REAL app theme tokens (client/src/theme/tokens.css). Tweak the :root block.
+      When it looks right, the styles get ported into client/src/ask/AskPopup.tsx.
+    -->
+    <style>
+      :root {
+        /* ---- real app theme tokens (tokens.css :root) ---- */
+        --bg: rgb(6 12 20);
+        --p: rgb(88 198 255); /* primary / interactive (cyan) */
+        --a: rgb(255 240 216); /* accent (warm cream) */
+        --text: rgb(238 247 255);
+        --muted: rgb(168 188 203);
+        --hair: color-mix(in srgb, var(--p) 26%, transparent);
+
+        /* ---- derived surfaces ---- */
+        --panel: color-mix(in srgb, var(--bg) 82%, #0c1626 18%);
+        --panel-2: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
+        --line-2: color-mix(in srgb, var(--p) 38%, transparent);
+        --user-bubble: color-mix(in srgb, var(--p) 18%, transparent);
+        --radius: 16px;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(1100px 700px at 50% -12%, color-mix(in srgb, var(--p) 14%, transparent) 0%, transparent 70%),
+          var(--bg);
+        color: var(--text);
+        display: grid;
+        place-items: start center;
+        padding: 56px 18px;
+      }
+
+      .ask {
+        width: min(640px, 100%);
+        display: flex;
+        flex-direction: column;
+        max-height: 78vh;
+        background: var(--panel);
+        border: 1px solid var(--hair);
+        border-radius: var(--radius);
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        backdrop-filter: blur(18px);
+      }
+
+      .ask__header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--hair);
+      }
+      .ask__dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--a);
+        box-shadow: 0 0 14px var(--a);
+      }
+      .ask__title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+      .ask__engine {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--p);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border: 1px solid var(--hair);
+        border-radius: 999px;
+        padding: 4px 9px;
+      }
+      .ask__close {
+        background: transparent; border: 0; color: var(--muted);
+        font-size: 20px; line-height: 1; cursor: pointer; padding: 4px;
+      }
+      .ask__close:hover { color: var(--text); }
+
+      .ask__thread {
+        flex: 1;
+        min-height: 160px;
+        overflow-y: auto;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line-2) transparent;
+      }
+      .ask__thread::-webkit-scrollbar { width: 8px; }
+      .ask__thread::-webkit-scrollbar-thumb {
+        background: var(--line-2); border-radius: 999px;
+      }
+
+      .msg { max-width: 88%; display: flex; flex-direction: column; gap: 5px; }
+      .msg--user { align-self: flex-end; align-items: flex-end; }
+      .msg--bot { align-self: flex-start; align-items: flex-start; }
+      .msg__who { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; }
+      .msg__body {
+        padding: 12px 15px;
+        border-radius: 14px;
+        font-size: 15px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .msg--user .msg__body {
+        background: var(--user-bubble);
+        border: 1px solid var(--hair);
+        border-top-right-radius: 4px;
+      }
+      .msg--bot .msg__body {
+        background: var(--panel-2);
+        border: 1px solid var(--hair);
+        border-top-left-radius: 4px;
+      }
+      .msg__body p { margin: 0 0 10px; }
+      .msg__body p:last-child { margin-bottom: 0; }
+      .msg__body ul { margin: 0 0 10px; padding-left: 20px; }
+      .msg__body li { margin: 3px 0; }
+      .msg__body code {
+        background: color-mix(in srgb, var(--p) 16%, transparent);
+        padding: 1px 6px; border-radius: 6px; font-size: 13px;
+      }
+
+      .ask__input {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px;
+        border-top: 1px solid var(--hair);
+      }
+      .ask__field {
+        flex: 1; min-width: 0;
+        background: var(--panel-2);
+        border: 1px solid var(--line-2);
+        border-radius: 12px;
+        color: var(--text);
+        font-size: 15px;
+        padding: 12px 14px;
+        outline: none;
+      }
+      .ask__field::placeholder { color: var(--muted); }
+      .ask__field:focus { border-color: var(--p); }
+      .ask__send {
+        border: 0; border-radius: 12px;
+        background: var(--p); color: var(--bg);
+        font-weight: 700; font-size: 14px; padding: 12px 20px; cursor: pointer;
+      }
+      .ask__icon {
+        width: 42px; height: 42px; flex: 0 0 auto;
+        border: 1px solid var(--line-2); border-radius: 12px;
+        background: var(--panel-2); color: var(--muted);
+        font-size: 12px; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ask" role="dialog" aria-label="Ask Artemis">
+      <header class="ask__header">
+        <span class="ask__dot"></span>
+        <h2 class="ask__title">Ask Artemis</h2>
+        <span class="ask__engine">codex</span>
+        <button class="ask__close" aria-label="Close">&times;</button>
+      </header>
+
+      <div class="ask__thread">
+        <div class="msg msg--user">
+          <span class="msg__who">You</span>
+          <div class="msg__body">What can you actually do right now?</div>
+        </div>
+        <div class="msg msg--bot">
+          <span class="msg__who">Artemis</span>
+          <div class="msg__body">
+            <p>
+              Right now I'm a fresh harness with no capabilities built yet, so the map is empty. What
+              I <em>can</em> do is build new capabilities on demand — you describe a task, I author a
+              small skill, test it in a sandbox, and promote it so it's reusable.
+            </p>
+            <p>A few things people start with:</p>
+            <ul>
+              <li>Summarize a web page or a long document</li>
+              <li>Triage your inbox — flag what actually needs you</li>
+              <li>Draft replies in your voice and queue them for review</li>
+              <li>Watch a calendar and nudge you before things that need prep</li>
+            </ul>
+            <p>
+              Tell me which one to build first, or describe your own — e.g. <code>"every morning at
+              7, build me a digest of overnight email and today's calendar."</code>
+            </p>
+          </div>
+        </div>
+
+        <div class="msg msg--user">
+          <span class="msg__who">You</span>
+          <div class="msg__body">
+            Let's do the morning digest. Can it also include my unread Slack messages, and only the
+            ones where I'm directly mentioned or it's a DM? I don't want the noisy channels.
+          </div>
+        </div>
+        <div class="msg msg--bot">
+          <span class="msg__who">Artemis</span>
+          <div class="msg__body">
+            <p>
+              Good scope. I'll build a <strong>morning-digest</strong> capability that runs on a
+              schedule and pulls from three sources, with the filters you described:
+            </p>
+            <ul>
+              <li><strong>Email</strong> — overnight messages, grouped by "needs you" vs. signal</li>
+              <li><strong>Calendar</strong> — today's events, with prep flags for anything external</li>
+              <li><strong>Slack</strong> — only direct mentions and DMs; channel noise excluded</li>
+            </ul>
+            <p>
+              Two things I'll need from you when we wire it up: a Slack token (kept in the keychain,
+              never sent anywhere else) and confirmation of the send time. Want me to start authoring
+              it now, or adjust the scope first?
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <form class="ask__input" onsubmit="return false">
+        <button type="button" class="ask__icon" aria-label="Hold to talk">mic</button>
+        <input class="ask__field" placeholder="Ask Artemis anything..." aria-label="Ask Artemis" />
+        <button type="submit" class="ask__send">Send</button>
+      </form>
+    </div>
+  </body>
+</html>

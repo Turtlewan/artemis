@@ -1,8 +1,6 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
-import type { AskEngine } from "./EngineTag";
 import { useAskStore, askStore } from "./askStore";
-import { ResultRow } from "./ResultRow";
 
 interface AskPopupProps {
   isOpen: boolean;
@@ -17,13 +15,6 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-interface AskDisplayRow {
-  id: string;
-  text: string;
-  engine: AskEngine;
-  failedLocked?: boolean;
-}
-
 const styles = `
 .ask-backdrop {
   position: fixed;
@@ -32,243 +23,129 @@ const styles = `
   display: grid;
   place-items: start center;
   padding: clamp(32px, 9vh, 92px) 18px 24px;
-  background: color-mix(in srgb, var(--bg) 48%, transparent);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
 }
-
 .ask-backdrop[data-open="true"] {
   opacity: 1;
   pointer-events: auto;
 }
 
 .ask-panel {
-  width: min(720px, 100%);
-  max-height: min(680px, calc(100vh - 56px));
-  display: grid;
-  grid-template-rows: auto auto minmax(120px, 1fr) auto;
-  gap: 14px;
-  padding: 20px;
-  background: #16181d;
-  border: 1px solid #31353f;
-  border-radius: 18px;
-  color: #e9ebee;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  width: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 82%, #0c1626 18%);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  backdrop-filter: blur(18px);
+  color: var(--text);
   transform: translateY(-10px) scale(0.98);
   opacity: 0;
-  transition:
-    transform 180ms ease,
-    opacity 180ms ease;
+  transition: transform 180ms ease, opacity 180ms ease;
 }
-
 .ask-backdrop[data-open="true"] .ask-panel {
-  transform: translateY(0) scale(1);
+  transform: none;
   opacity: 1;
 }
 
-.ask-header,
-.ask-input-line,
-.ask-footer,
-.ask-result-row {
+.ask-header {
   display: flex;
   align-items: center;
-}
-
-.ask-header {
   gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--hair);
 }
-
-.ask-brand-mark {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--p) 52%, transparent);
-  box-shadow:
-    inset 0 0 0 7px color-mix(in srgb, var(--p) 10%, transparent),
-    0 0 22px color-mix(in srgb, var(--p) 28%, transparent);
-}
-
-.ask-brand-mark::after {
-  content: "";
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
+.ask-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: var(--a);
-  box-shadow: 0 0 18px var(--a);
+  box-shadow: 0 0 14px var(--a);
 }
-
 .ask-title {
   margin: 0;
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 1.2rem;
-  line-height: 1.1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
-
-.ask-close {
-  margin-inline-start: auto;
-}
-
-.ask-icon-button {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid var(--hair);
-  border-radius: 999px;
-  color: var(--text);
-  background: color-mix(in srgb, var(--p) 10%, transparent);
-}
-
-.ask-icon-button[aria-pressed="true"] {
-  color: var(--a);
-  border-color: color-mix(in srgb, var(--a) 58%, transparent);
-  background: color-mix(in srgb, var(--a) 12%, transparent);
-}
-
-.ask-icon-button__glyph {
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.ask-input-line {
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid #3a3f4a;
-  border-radius: 14px;
-  background: #1e2128;
-}
-
-.ask-send {
-  flex: 0 0 auto;
-  border: 0;
-  border-radius: 11px;
-  padding: 10px 18px;
-  font: 700 0.95rem/1 "Space Grotesk", system-ui, sans-serif;
-  color: #0b0c0f;
-  background: #7aa2ff;
-  cursor: pointer;
-}
-
-.ask-send:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.ask-input-line label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.ask-input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  background: transparent;
-  color: #e9ebee;
-  font: 600 1rem/1.2 "Space Grotesk", system-ui, sans-serif;
-  caret-color: #7aa2ff;
-  outline: none;
-}
-
-.ask-input::placeholder {
-  color: #7b818d;
-  font-weight: 500;
-}
-
-.ask-mode-chip,
-.ask-status-chip,
-.ask-engine-tag {
-  flex: 0 0 auto;
+.ask-engine {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--p);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   border: 1px solid var(--hair);
   border-radius: 999px;
   padding: 4px 9px;
+}
+.ask-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.ask-close:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--p) 10%, transparent);
-  font-size: 0.76rem;
-  letter-spacing: 0;
-  text-transform: uppercase;
 }
 
-.ask-results {
-  min-height: 0;
-  margin: 0;
-  padding: 0 2px 2px;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  overflow: auto;
-  scroll-padding-bottom: 16px;
-  list-style: none;
+/* Fixed thread height for now — adjust this value to taste. */
+.ask-thread {
+  height: 360px;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-
-.ask-result-row {
-  gap: 12px;
-  min-height: 68px;
-  padding: 12px 14px;
-  border: 1px solid #31353f;
-  border-radius: 12px;
-  background: #1e2128;
+.ask-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
 }
-
-.ask-result-row__icon {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--p) 16%, transparent);
+.ask-msg {
+  max-width: 88%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
-
-.ask-result-row__icon span {
-  width: 13px;
-  height: 13px;
-  border-radius: 999px;
-  background: var(--p);
-  opacity: 0.86;
+.ask-msg--user {
+  align-self: flex-end;
+  align-items: flex-end;
 }
-
-.ask-result-row__copy {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
+.ask-msg--bot {
+  align-self: flex-start;
+  align-items: flex-start;
 }
-
-.ask-result-row__title,
-.ask-result-row__subtitle {
+.ask-msg__who {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.ask-msg__body {
+  padding: 12px 15px;
+  border-radius: 14px;
+  font-size: 15px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border: 1px solid var(--hair);
 }
-
-.ask-result-row__title {
-  font-weight: 700;
+.ask-msg--user .ask-msg__body {
+  background: color-mix(in srgb, var(--p) 18%, transparent);
+  border-top-right-radius: 4px;
 }
-
-.ask-result-row__subtitle {
-  color: #d7dae0;
-  font-size: 1rem;
-  line-height: 1.5;
-}
-
-.ask-result-row .ask-engine-tag {
-  margin-inline-start: auto;
-}
-
-.ask-engine-tag--review {
-  border-color: var(--a);
-  color: var(--a);
-}
-
-.ask-footer {
-  flex-wrap: wrap;
-  gap: 8px;
+.ask-msg--bot .ask-msg__body {
+  background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
+  border-top-left-radius: 4px;
 }
 
 .ask-speaking {
@@ -276,20 +153,58 @@ const styles = `
   align-items: center;
   gap: 7px;
   color: var(--a);
+  padding: 0 18px 10px;
+  font-size: 13px;
 }
 
-.ask-speaking::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--a);
-  box-shadow: 0 0 12px var(--a);
-  animation: ask-speaking-pulse 1s ease-in-out infinite;
+.ask-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid var(--hair);
 }
-
-.ask-status-chip span {
-  color: var(--p);
+.ask-field {
+  flex: 1;
+  min-width: 0;
+  background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
+  border: 1px solid color-mix(in srgb, var(--p) 38%, transparent);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 15px;
+  padding: 12px 14px;
+  outline: none;
+}
+.ask-field::placeholder {
+  color: var(--muted);
+}
+.ask-field:focus {
+  border-color: var(--p);
+}
+.ask-send {
+  border: 0;
+  border-radius: 12px;
+  background: var(--p);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+.ask-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--p) 38%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ask-icon[aria-pressed="true"] {
+  color: var(--a);
+  border-color: color-mix(in srgb, var(--a) 58%, transparent);
 }
 
 .ask-sr {
@@ -305,30 +220,16 @@ const styles = `
   .ask-panel {
     transition: none;
   }
-
-  .ask-input {
-    caret-color: auto;
-  }
-
-  .ask-speaking::before {
-    animation: none;
-  }
-}
-
-@keyframes ask-speaking-pulse {
-  50% {
-    opacity: 0.42;
-    transform: scale(0.82);
-  }
 }
 `;
 
-/** Floating Ask Artemis dialog with manual focus trap and streaming status regions. */
+/** Floating Ask Artemis chat with manual focus trap and streaming status regions. */
 export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
   const titleId = useId();
   const inputId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const threadRef = useRef<HTMLDivElement | null>(null);
   const [text, setText] = useState("");
   const snapshot = useAskStore((current) => current);
 
@@ -336,6 +237,11 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
     if (!isOpen) return;
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [isOpen]);
+
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (thread !== null) thread.scrollTop = thread.scrollHeight;
+  }, [snapshot.messages, snapshot.streaming]);
 
   const focusable = (): HTMLElement[] => {
     if (panelRef.current === null) return [];
@@ -371,7 +277,8 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const pending = text;
+    const pending = text.trim();
+    if (pending === "") return;
     setText("");
     void askStore.send(pending);
   };
@@ -380,16 +287,10 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
     void onVoiceTrigger?.({ speak: !snapshot.muted });
   };
 
-  const assistantRows = snapshot.messages.filter((message) => message.role === "assistant");
-  const rows: AskDisplayRow[] =
-    assistantRows.length === 0 && snapshot.streaming === ""
-      ? [{ id: "empty", text: "Ask me anything to get started.", engine: "local" as const }]
-      : assistantRows.map((message) => ({
-          id: message.id,
-          text: message.text === "" ? snapshot.streaming : message.text,
-          engine: message.engine ?? "local",
-          failedLocked: message.failedLocked,
-        }));
+  const messages = snapshot.messages;
+  const lastBot = [...messages].reverse().find((message) => message.role === "assistant");
+  const engineTag = lastBot?.engine ?? "local";
+  const isEmpty = messages.length === 0 && snapshot.streaming === "";
 
   return (
     <>
@@ -404,81 +305,88 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
         {isOpen ? (
           <div
             ref={panelRef}
-            className="ask-panel glass"
+            className="ask-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
             onKeyDown={onKeyDown}
           >
-            <span className="glass-sheen" aria-hidden="true" />
             <header className="ask-header">
-              <span className="ask-brand-mark" aria-hidden="true" />
+              <span className="ask-dot" aria-hidden="true" />
               <h2 id={titleId} className="ask-title">
                 Ask Artemis
               </h2>
-              <button className="ask-close" type="button" aria-label="Close Ask Artemis" onClick={onClose}>
-                x
+              <span className="ask-engine">{engineTag}</span>
+              <button
+                className="ask-close"
+                type="button"
+                aria-label="Close Ask Artemis"
+                onClick={onClose}
+              >
+                ×
               </button>
             </header>
 
-            <form className="ask-input-line" onSubmit={onSubmit}>
-              <label htmlFor={inputId}>Ask Artemis</label>
+            <div className="ask-thread" ref={threadRef} aria-label="Conversation">
+              {isEmpty ? (
+                <p className="ask-empty">Ask me anything to get started.</p>
+              ) : (
+                messages.map((message) => {
+                  const isUser = message.role === "user";
+                  const body =
+                    !isUser && message.text === "" ? snapshot.streaming : message.text;
+                  return (
+                    <div
+                      key={message.id}
+                      className={`ask-msg ${isUser ? "ask-msg--user" : "ask-msg--bot"}`}
+                    >
+                      <span className="ask-msg__who">{isUser ? "You" : "Artemis"}</span>
+                      <div className="ask-msg__body">
+                        {message.failedLocked ? "Vault locked." : body}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {snapshot.speaking ? (
+              <span className="ask-speaking" aria-live="polite">
+                Speaking
+              </span>
+            ) : null}
+
+            <form className="ask-input" onSubmit={onSubmit}>
+              <button className="ask-icon" type="button" aria-label="Hold to talk" onClick={onMic}>
+                mic
+              </button>
+              <label className="ask-sr" htmlFor={inputId}>
+                Ask Artemis
+              </label>
               <input
                 ref={inputRef}
                 id={inputId}
-                className="ask-input caret-primary"
+                className="ask-field"
                 value={text}
                 onChange={(event) => setText(event.currentTarget.value)}
                 aria-label="Ask Artemis"
                 placeholder="Ask Artemis anything..."
                 autoComplete="off"
               />
-              <button className="ask-send" type="submit" aria-label="Send" disabled={text.trim() === ""}>
-                Send
-              </button>
-              <button className="ask-icon-button" type="button" aria-label="Hold to talk" onClick={onMic}>
-                <span className="ask-icon-button__glyph" aria-hidden="true">
-                  mic
-                </span>
-              </button>
               <button
-                className="ask-icon-button"
+                className="ask-icon"
                 type="button"
                 aria-label={snapshot.muted ? "Muted" : "Speak answers"}
                 aria-pressed={snapshot.muted}
                 onClick={askStore.toggleMute}
               >
-                <span className="ask-icon-button__glyph" aria-hidden="true">
-                  {snapshot.muted ? "off" : "spk"}
-                </span>
+                {snapshot.muted ? "off" : "spk"}
               </button>
-              <span className="ask-mode-chip">{snapshot.modeHint}</span>
+              <button className="ask-send" type="submit" aria-label="Send">
+                Send
+              </button>
             </form>
 
-            <ol className="ask-results" aria-label="Ask results">
-              {rows.map((row) => (
-                <ResultRow
-                  key={row.id}
-                  title={row.failedLocked ? "Vault locked" : "Answer"}
-                  subtitle={row.text}
-                  engine={row.engine}
-                  failedLocked={row.failedLocked}
-                />
-              ))}
-            </ol>
-
-            <footer className="ask-footer" aria-label="Engine status">
-              {snapshot.speaking ? (
-                <span className="ask-status-chip ask-speaking" aria-live="polite">
-                  Speaking
-                </span>
-              ) : null}
-              {Object.entries(snapshot.engineStatus).map(([engine, active]) => (
-                <span className="ask-status-chip" key={engine}>
-                  <span aria-hidden="true">o</span> {engine} {active ? "ready" : "idle"}
-                </span>
-              ))}
-            </footer>
             <div className="ask-sr" aria-live="polite">
               {snapshot.politeAnnouncement}
             </div>
