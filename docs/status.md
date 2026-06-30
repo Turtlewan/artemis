@@ -17,7 +17,7 @@ _Last updated by planning mode:_ 2026-06-30
 
 ## Current state — Slices 0–2 complete
 
-All green on `v2-rebuild` — brain (mypy --strict 88 files · 152 tests · ruff clean) + client (tsc/eslint clean · 95 vitest · 24 cargo · clippy). HEAD `2de2769`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
+All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff clean) + client (tsc/eslint clean · 95 vitest · 24 cargo · clippy). HEAD `6f56e06`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
 
 - **Slice 0 — spine proves itself.** Scaffold + 5 typed ports + model layer + schema-normalization shim + minimal plan→act→verify loop + one capability through its full lifecycle (author → sandbox → promote to `SKILL.md` → reuse).
 - **Slice 1 — model layer.** Own `QuotaAwareRouter` over the four-provider subscription-first chain (codex → claude_code → anthropic_api → ollama); per-backend schema down-conversion lives in each `RawProvider`. **LiteLLM rejected** (architecture.md §2).
@@ -37,7 +37,10 @@ All green on `v2-rebuild` — brain (mypy --strict 88 files · 152 tests · ruff
 - **Engine live-smoked end-to-end** (real codex authored + real sandbox + promote; the guard caught a real model-authored Gmail/IMAP module on `imaplib`+`ssl`). The hermetic-vs-live gap held no surprises.
 - **`CB-3` client gateway — done (Codex, `0c06297`).** Tauri `app_capability_propose/build/promote` commands (session token stays out of the webview) + `parse_build_frame` (named-event SSE parser) + TS `capabilityPropose/capabilityBuild/capabilityPromote` wrappers; `streamCommand` generalised over event type.
 - **`CB-4` visible build mode — done (Codex, `2de2769`).** `askStore` build state-machine (intent heuristic → propose → plan gate → build → result gate → promote) + AskPopup plan/status/result cards + `Build it`/`Adjust`/`Add`/`Discard` buttons + "Building capability" chip. **Type a build request in the Ask box and watch Artemis build itself a capability.** Baseline CSS (owner refines visuals); not yet visually run in the live app.
-- **▶ Build mode CB-1…CB-4 COMPLETE — the dogfood loop (talk → Artemis builds a capability, two owner gates) works end to end.** Remaining: `CB-5` (promoted capability → map node via `/app/capabilities` list); then the deferred tail — WSL2 isolated sandbox (unblocks network capabilities like `email_intake`), a clarify round, the secret-paste gate, diff-review-before-promote, true token streaming.
+- **`CB-5a` capabilities list — done (Codex, `6f56e06`).** `FileCapabilityStore.list()` + session-gated `GET /app/capabilities` (typed `CapabilitySummary` rows); store exposed on `app.state`. Brain data half only.
+- **▶ Build mode CB-1…CB-4 + CB-5a COMPLETE — the dogfood loop (talk → Artemis builds a capability, two owner gates) works end to end, and the brain can list what's been built.**
+- **`CB-5b` — map-node visual (deferred, owner decision pending).** How a built capability appears on the map is an open design decision (design note open Q#2: labeled node? cluster? click→detail of what it does + `uses`). **Owner directive (2026-07-01): before speccing CB-5b, fan out research agents on display/visualization approaches** (owner pre-authorized parallel research). CB-5b will also add the Tauri `app_capabilities_list` command + TS wrapper (deferred from CB-5a as dead-until-consumed).
+- **Deferred tail:** WSL2 isolated sandbox (unblocks network capabilities like `email_intake`), a clarify round, the secret-paste gate, diff-review-before-promote, true token streaming. Also: CB-4 build mode is test-green but **not yet visually run/polished in the live app**.
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
