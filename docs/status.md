@@ -24,8 +24,9 @@ All green on `v2-rebuild` (mypy --strict · 91 tests · ruff clean). HEAD `f2a1b
 - **Slice 2 — memory.** Engine = **Cognee** (confirmed by live LoCoMo spike, `docs/findings/cognee-vs-graphiti-spike-2026-06-30.md`). `CogneeMemory` behind `MemoryPort` (optional dep group) + retrieval-heavy pipeline (CHUNKS → rerank → MMR → token-budget → summarize-overflow) + embedding-cosine MMR (`EmbeddingPort`/`OllamaEmbedder`) + consolidation/latest-wins (`LLMConsolidator`: ADD/UPDATE/DELETE/NOOP + supersession) + `forget()`/decay over a durable SQLite ledger. Memory's internal LLM defaults to a small/local model.
 
 **Slice 3 — proactivity + transport (in progress).** First slice that makes Artemis *act*; the first to touch `client/`.
-- **`v2-13` durable scheduler — done.** SQLite-backed `Scheduler` (cron via croniter + one-shot) + heartbeat loop + fire-once catch-up after reboot; `dispatch` is an injected seam. mypy 63 files · 98 tests · ruff clean.
-- **Next:** wire `dispatch` to a real spine worker (the "Artemis acts" step) → watchers (event-based, via `scheduler.emit`) → transport adapters (Telegram + Tauri).
+- **`v2-13` durable scheduler — done.** SQLite-backed `Scheduler` (cron via croniter + one-shot) + heartbeat loop + fire-once catch-up after reboot; `dispatch` is an injected seam.
+- **`v2-14` proactive worker — done.** `ProactiveWorker.run_job` (the scheduler's `dispatch`): job payload → `Task` → `Spine.run` → proactive `OutboundMessage` out a `TransportPort`. The time-based loop is proven end-to-end (scheduler→spine→transport) in tests. mypy 66 files · 104 tests · ruff clean.
+- **Next:** a real `TransportPort` (Telegram bot adapter first) so pushes leave the box → watchers (event-based, via `scheduler.emit`) → wire the Tauri desktop UI → a runner that composes router+worker+scheduler and calls `scheduler.run()`.
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
@@ -47,7 +48,7 @@ _(none ready — Slice 3 specs not yet written.)_
 > ⚠️ The specs still sitting in `docs/changes/` (`M0-*`, `M2-*`, `M3-d`, `M5-a`, `CLIENT-*`, `BUILD-ORDER.md`) are **archived-stale v1** — do **not** build them. They survive the pivot only because the v1 cleanup is pending (see Open Questions). v2 specs live in `docs/changes/done/` (`v2-00`…`v2-12`).
 
 ## Open Questions
-- **Next Slice-3 spec** — wire the scheduler's injected `dispatch` to a real spine worker (job payload → `Task` → `Spine` → transport). Then watchers (event-based) + transport adapters (Telegram/Tauri). The `should_fire` quota-budget gate is a seam defaulting to always-fire; give it a real cheap-local check when there's a subscription cost to gate.
+- **Next Slice-3 spec** — a real `TransportPort` so proactive pushes leave the box (Telegram bot adapter first; bot token = keychain secret per architecture §7). Then: event-based watchers (via `scheduler.emit`), wiring the Tauri desktop UI, and a runner that composes router+worker+scheduler and calls `scheduler.run()`. The `should_fire` quota-budget gate and the per-job acceptance/verification option remain seams (defaults: always-fire, no acceptance).
 - **Layering follow-up (review ⚠️):** `memory/embedder.py` imports `ProviderUnavailableError` from `artemis.model.errors`, transitively loading the model providers (anthropic). Relocate the failover-error taxonomy to a neutral module (e.g. `artemis/errors.py`) so memory doesn't drag in model providers.
 - **`SubprocessSandbox` is interim** (timed host subprocess, no isolation). The WSL2-isolated runner (no-network + egress allowlist + resource caps) is **required before any *externally*-authored capability is trusted** — swaps in behind the `SandboxRunner` protocol. Security gate, not optional.
 - **Pre-existing `capabilities/sandbox.py` ruff-format drift** (from Slice 0) — still unfixed; fold into the next capabilities-touching spec or a one-line `ruff format` cleanup.
