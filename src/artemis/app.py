@@ -58,6 +58,15 @@ def cmd_run(args: argparse.Namespace) -> None:
     asyncio.run(app.run())
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Run the brain HTTP API the Tauri client connects to."""
+    import uvicorn
+
+    from artemis.api import create_app
+
+    uvicorn.run(create_app(), host="127.0.0.1", port=args.port)
+
+
 def cmd_add(args: argparse.Namespace) -> None:
     if not args.cron and not args.at:
         raise SystemExit("add requires --cron or --at")
@@ -98,6 +107,12 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run", help="start the always-on heartbeat").set_defaults(func=cmd_run)
+
+    p_serve = sub.add_parser("serve", help="run the brain HTTP API (for the desktop client)")
+    p_serve.add_argument(
+        "--port", type=int, default=int(os.environ.get("ARTEMIS_BRAIN_PORT", "8030"))
+    )
+    p_serve.set_defaults(func=cmd_serve)
 
     p_add = sub.add_parser("add", help="schedule a proactive job")
     p_add.add_argument("--goal", required=True, help="what the job asks Artemis to do")
