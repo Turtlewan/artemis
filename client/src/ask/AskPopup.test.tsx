@@ -227,6 +227,29 @@ describe("AskPopup", () => {
     expect(getByRole(container, "button", /build it/i)).toBeTruthy();
   });
 
+  it("wires Adjust to cancelBuild with the plan message id and removes the plan card", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(planCard());
+    await act(async () => {
+      await askStore.startBuild("build me a date utility module");
+    });
+    const planMessageId = askStore.getSnapshot().messages.find((message) => message.kind === "plan")?.id;
+    expect(planMessageId).toBeDefined();
+    const cancelBuild = vi.spyOn(askStore, "cancelBuild");
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    act(() => {
+      getByRole(container, "button", /adjust/i).click();
+    });
+
+    expect(cancelBuild).toHaveBeenCalledWith(planMessageId);
+    expect(container.textContent).not.toContain("Date Utility");
+    expect(container.textContent).not.toContain("Building capability");
+    expect(document.activeElement).toBe(getByRole(container, "textbox", /ask/i));
+    cancelBuild.mockRestore();
+  });
+
   it("wires Build it to confirmBuild with the plan build id", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();

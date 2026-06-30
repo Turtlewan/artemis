@@ -133,6 +133,23 @@ describe("askStore", () => {
     ]);
   });
 
+  it("cancelBuild removes the dismissed message and clears build mode", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.capabilityPropose.mockResolvedValueOnce(planCard());
+
+    await askStore.startBuild("build a date utility module");
+    const planMessageId = askStore.getSnapshot().messages.find((message) => message.kind === "plan")?.id;
+    expect(planMessageId).toBeDefined();
+
+    askStore.cancelBuild(planMessageId!);
+
+    const snapshot = askStore.getSnapshot();
+    expect(snapshot.buildMode).toBe(false);
+    expect(snapshot.messages.some((message) => message.id === planMessageId)).toBe(false);
+    expect(snapshot.messages).toMatchObject([{ role: "user", text: "build a date utility module" }]);
+  });
+
   it("keeps normal non-build messages on askStream", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();
@@ -184,8 +201,10 @@ describe("askStore", () => {
     expect(snapshot.messages[snapshot.messages.length - 1]).toMatchObject({
       role: "assistant",
       kind: "installed",
-      text: `Added "Date Utility". It's now a node on your map.`,
+      text: `Added "Date Utility" (v1) — built & verified.`,
     });
+    expect(snapshot.messages[snapshot.messages.length - 1]?.text).toContain("built & verified");
+    expect(snapshot.messages[snapshot.messages.length - 1]?.text).not.toContain("map");
   });
 
   it("appends blocked plan messages from capability propose", async () => {

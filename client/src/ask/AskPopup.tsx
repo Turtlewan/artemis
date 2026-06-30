@@ -347,6 +347,11 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
     void onVoiceTrigger?.({ speak: !snapshot.muted });
   };
 
+  const dismissBuildCard = (messageId: string): void => {
+    askStore.cancelBuild(messageId);
+    inputRef.current?.focus();
+  };
+
   const messages = snapshot.messages;
   const lastBot = [...messages].reverse().find((message) => message.role === "assistant");
   const engineTag = lastBot?.engine ?? "local";
@@ -422,7 +427,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                             <button
                               className="ask-cardbtn ask-cardbtn--ghost"
                               type="button"
-                              onClick={() => askStore.cancelBuild()}
+                              onClick={() => dismissBuildCard(message.id)}
                             >
                               Adjust
                             </button>
@@ -465,7 +470,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                               <button
                                 className="ask-cardbtn ask-cardbtn--ghost"
                                 type="button"
-                                onClick={() => askStore.cancelBuild()}
+                                onClick={() => dismissBuildCard(message.id)}
                               >
                                 Discard
                               </button>

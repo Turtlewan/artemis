@@ -314,15 +314,18 @@ export const askStore = {
       appendMessage({
         id: id(),
         role: "assistant",
-        text: `Added "${installed.name}". It's now a node on your map.`,
+        text: `Added "${installed.name}" (v${installed.version}) — built & verified.`,
         kind: "installed",
       });
     } finally {
       update({ sending: false, buildMode: false });
     }
   },
-  cancelBuild(): void {
-    update({ buildMode: false });
+  cancelBuild(messageId: string): void {
+    update({
+      messages: snapshot.messages.filter((message) => message.id !== messageId),
+      buildMode: false,
+    });
   },
 };
 
