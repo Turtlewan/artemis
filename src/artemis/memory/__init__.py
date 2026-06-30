@@ -2,6 +2,7 @@
 
 from artemis.memory.cognee_backend import CogneeMemory
 from artemis.memory.config import MemoryConfig
+from artemis.memory.consolidation import ConsolidationDecision, Consolidator, LLMConsolidator
 from artemis.memory.embedder import OllamaEmbedder
 from artemis.memory.pipeline import (
     Reranker,
@@ -14,6 +15,9 @@ from artemis.memory.pipeline import (
 
 __all__ = [
     "CogneeMemory",
+    "ConsolidationDecision",
+    "Consolidator",
+    "LLMConsolidator",
     "MemoryConfig",
     "OllamaEmbedder",
     "Reranker",

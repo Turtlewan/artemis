@@ -22,3 +22,5 @@ class MemoryConfig(BaseModel):
     mmr_lambda: float = 0.7
     use_embedding_mmr: bool = True
     search_type: str = "CHUNKS"
+    consolidate_on_write: bool = False
+    consolidation_similar_k: int = 5

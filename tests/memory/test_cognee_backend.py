@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from types import ModuleType, SimpleNamespace
 from collections.abc import Sequence
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from artemis.memory import CogneeMemory, MemoryConfig
-from artemis.memory.cognee_backend import _as_items, _extract_text
+from artemis.memory import CogneeMemory, ConsolidationDecision, MemoryConfig
+from artemis.memory.cognee_backend import _as_items, _extract_text, _normalize_fact
 from artemis.memory.pipeline import assemble
 from artemis.ports.memory import MemoryPort
 from artemis.types import MemoryItem
@@ -40,6 +40,16 @@ class FakeEmbedder:
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
         self.calls.append(list(texts))
         return self._embeddings
+
+
+class FakeConsolidator:
+    def __init__(self, decision: ConsolidationDecision) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+        self._decision = decision
+
+    async def classify(self, new: str, existing: Sequence[str]) -> ConsolidationDecision:
+        self.calls.append((new, list(existing)))
+        return self._decision
 
 
 def test_assemble_applies_token_budget() -> None:
@@ -103,6 +113,84 @@ async def test_write_routes_by_layer_to_dataset() -> None:
     assert fake.add_calls == [("x", "artemis"), ("rule", "rules_ds")]
 
 
+@pytest.mark.parametrize(
+    ("decision", "expected_adds", "expected_superseded"),
+    [
+        (ConsolidationDecision(op="NOOP", target=None, reason="known"), [], set()),
+        (
+            ConsolidationDecision(op="ADD", target=None, reason="new"),
+            [("new fact", "artemis")],
+            set(),
+        ),
+        (
+            ConsolidationDecision(op="UPDATE", target="old fact", reason="changed"),
+            [("new fact", "artemis")],
+            {"old fact"},
+        ),
+        (
+            ConsolidationDecision(op="DELETE", target="old fact", reason="negated"),
+            [],
+            {"old fact"},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_write_applies_consolidation_ops(
+    decision: ConsolidationDecision,
+    expected_adds: list[tuple[str, str]],
+    expected_superseded: set[str],
+) -> None:
+    fake = FakeCognee(["old fact"])
+    consolidator = FakeConsolidator(decision)
+    mem = CogneeMemory(
+        MemoryConfig(consolidate_on_write=True, use_embedding_mmr=False),
+        cognee_module=fake,
+        consolidator=consolidator,
+    )
+
+    await mem.write(MemoryItem(content="new fact", layer="semantic"))
+
+    assert fake.add_calls == expected_adds
+    assert mem._superseded == expected_superseded
+    assert consolidator.calls == [("new fact", ["old fact"])]
+
+
+class _SearchRaisesCognee(FakeCognee):
+    async def search(self, *, query_type: object, query_text: str) -> list[object]:
+        raise RuntimeError("store not created yet")
+
+
+@pytest.mark.asyncio
+async def test_consolidating_write_survives_uninitialized_store() -> None:
+    # First consolidating write happens before any add/cognify → Cognee search raises.
+    # _similar must degrade to empty existing, and the write must still ADD.
+    fake = _SearchRaisesCognee()
+    consolidator = FakeConsolidator(ConsolidationDecision(op="ADD", target=None, reason="new"))
+    mem = CogneeMemory(
+        MemoryConfig(consolidate_on_write=True, use_embedding_mmr=False),
+        cognee_module=fake,
+        consolidator=consolidator,
+    )
+
+    await mem.write(MemoryItem(content="first fact", layer="semantic"))
+
+    assert fake.add_calls == [("first fact", "artemis")]
+    assert consolidator.calls == [("first fact", [])]  # classified against empty existing
+
+
+@pytest.mark.asyncio
+async def test_write_default_path_adds_without_consolidator_call() -> None:
+    fake = FakeCognee(["old fact"])
+    consolidator = FakeConsolidator(ConsolidationDecision(op="NOOP", reason="known"))
+    mem = CogneeMemory(cognee_module=fake, consolidator=consolidator)
+
+    await mem.write(MemoryItem(content="new fact", layer="semantic"))
+
+    assert fake.add_calls == [("new fact", "artemis")]
+    assert fake.search_calls == []
+    assert consolidator.calls == []
+
+
 @pytest.mark.asyncio
 async def test_consolidate_awaits_cognify_once() -> None:
     fake = FakeCognee()
@@ -128,6 +216,35 @@ async def test_retrieve_searches_and_applies_budget() -> None:
     assert [item.content for item in tiny.items] == ["alpha"]
     assert tiny.token_cost == 1
     assert tiny.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_retrieve_filters_superseded_content() -> None:
+    fake = FakeCognee(["old fact", "new fact"])
+    mem = CogneeMemory(MemoryConfig(use_embedding_mmr=False), cognee_module=fake)
+    mem._superseded = {"old fact"}
+
+    result = await mem.retrieve("q", token_budget=10000)
+
+    assert [item.content for item in result.items] == ["new fact"]
+
+
+def test_normalize_fact_tolerates_case_and_trailing_punctuation() -> None:
+    assert _normalize_fact("Ben works at Acme.") == _normalize_fact("ben works at acme")
+    assert _normalize_fact("  Hi! ") == "hi"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_supersession_matches_despite_punctuation_drift() -> None:
+    # The LLM target ("Ben works at Acme") drops the period the stored chunk has
+    # ("Ben works at Acme.") — normalized matching must still filter it (live-smoke finding).
+    fake = FakeCognee(["Ben works at Acme.", "Ben now works at Globex."])
+    mem = CogneeMemory(MemoryConfig(use_embedding_mmr=False), cognee_module=fake)
+    mem._superseded = {_normalize_fact("Ben works at Acme")}
+
+    result = await mem.retrieve("where does Ben work", token_budget=10000)
+
+    assert [item.content for item in result.items] == ["Ben now works at Globex."]
 
 
 @pytest.mark.asyncio
