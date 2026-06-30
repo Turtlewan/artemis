@@ -5,7 +5,8 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from artemis.memory import CogneeMemory, MemoryConfig
-from artemis.memory.cognee_backend import _as_items, _assemble
+from artemis.memory.cognee_backend import _as_items, _extract_text
+from artemis.memory.pipeline import assemble
 from artemis.ports.memory import MemoryPort
 from artemis.types import MemoryItem
 
@@ -13,7 +14,7 @@ from artemis.types import MemoryItem
 class FakeCognee(ModuleType):
     def __init__(self, search_results: list[object] | None = None) -> None:
         super().__init__("fake_cognee")
-        self.SearchType = SimpleNamespace(GRAPH_COMPLETION="graph_completion")
+        self.SearchType = SimpleNamespace(CHUNKS="chunks")
         self.add_calls: list[tuple[str, str]] = []
         self.cognify_calls = 0
         self.search_calls: list[tuple[object, str]] = []
@@ -37,15 +38,35 @@ def test_assemble_applies_token_budget() -> None:
         MemoryItem(content="c" * 40, layer="semantic"),
     ]
 
-    limited = _assemble(items, token_budget=22)
+    limited = assemble(items, token_budget=22)
     assert [item.content for item in limited.items] == ["a" * 40, "b" * 40]
     assert limited.token_cost == 20
     assert limited.truncated is True
 
-    full = _assemble(items, token_budget=100)
+    full = assemble(items, token_budget=100)
     assert [item.content for item in full.items] == ["a" * 40, "b" * 40, "c" * 40]
     assert full.token_cost == 30
     assert full.truncated is False
+
+
+def test_extract_text_pulls_text_field_from_cognee_node_dicts() -> None:
+    # SearchType.CHUNKS returns node dicts whose chunk text is under "text" (Cognee 1.2.2).
+    chunk = {
+        "id": "abc",
+        "created_at": 1,
+        "text": "Caroline adopted a dog named Max.",
+        "chunk_index": 0,
+    }
+    assert _extract_text(chunk) == "Caroline adopted a dog named Max."
+    assert _extract_text("plain string") == "plain string"
+    assert _extract_text({"content": "via content"}) == "via content"
+    # no known text field → fall back to str(), never silently empty
+    assert _extract_text({"id": "x"}) == "{'id': 'x'}"
+
+
+def test_as_items_extracts_text_from_chunk_dicts() -> None:
+    raw = [{"text": "fact one", "id": "1"}, {"text": "fact two", "id": "2"}]
+    assert [item.content for item in _as_items(raw, None)] == ["fact one", "fact two"]
 
 
 def test_as_items_coerces_raw_results_and_filters_layers() -> None:
@@ -88,7 +109,7 @@ async def test_retrieve_searches_and_applies_budget() -> None:
 
     result = await mem.retrieve("q", token_budget=10000)
 
-    assert fake.search_calls == [("graph_completion", "q")]
+    assert fake.search_calls == [("chunks", "q")]
     assert [item.content for item in result.items] == ["alpha", "beta"]
     assert result.truncated is False
 
@@ -96,6 +117,32 @@ async def test_retrieve_searches_and_applies_budget() -> None:
     assert [item.content for item in tiny.items] == ["alpha"]
     assert tiny.token_cost == 1
     assert tiny.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_retrieve_wires_chunks_to_pipeline_and_collapses_duplicate() -> None:
+    fake = FakeCognee(
+        [
+            "the cat sat on the mat",
+            "the cat sat on the mat today",
+            "stock prices fell sharply",
+            "weather stayed clear",
+            "project notes mention retrieval",
+        ]
+    )
+    mem = CogneeMemory(
+        MemoryConfig(retrieve_candidates=2),
+        cognee_module=fake,
+    )
+
+    result = await mem.retrieve("q", token_budget=10000)
+
+    assert fake.search_calls == [("chunks", "q")]
+    assert [item.content for item in result.items] == [
+        "the cat sat on the mat",
+        "stock prices fell sharply",
+    ]
+    assert result.truncated is False
 
 
 @pytest.mark.asyncio

@@ -18,3 +18,6 @@ class MemoryConfig(BaseModel):
     data_root: str | None = None
     default_dataset: str = "artemis"
     layer_datasets: dict[str, str] = Field(default_factory=dict)
+    retrieve_candidates: int = 20
+    mmr_lambda: float = 0.7
+    search_type: str = "CHUNKS"

@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Protocol, cast
 
 from artemis.memory.config import MemoryConfig
+from artemis.memory.pipeline import identity_reranker, run_pipeline
 from artemis.types import MemoryItem, RetrievedContext
 
 
@@ -76,10 +77,19 @@ class CogneeMemory:
     ) -> RetrievedContext:
         cog = self._engine()
         search_type = getattr(cog, "SearchType")
-        graph_completion = getattr(search_type, "GRAPH_COMPLETION")
+        query_type = getattr(search_type, self._config.search_type, None)
+        if query_type is None:
+            query_type = getattr(search_type, "CHUNKS")
         search = cast(_CogneeSearch, getattr(cog, "search"))
-        raw = await search(query_type=graph_completion, query_text=query)
-        return _assemble(_as_items(raw, layers), token_budget)
+        raw = await search(query_type=query_type, query_text=query)
+        return run_pipeline(
+            query,
+            _as_items(raw, layers),
+            token_budget=token_budget,
+            mmr_lambda=self._config.mmr_lambda,
+            k=self._config.retrieve_candidates,
+            reranker=identity_reranker,
+        )
 
     async def consolidate(self) -> None:
         cognify = cast(_CogneeCognify, getattr(self._engine(), "cognify"))
@@ -94,6 +104,31 @@ class CogneeMemory:
         raise NotImplementedError("forget() lands in v2-09 (decay/supersession policy)")
 
 
+_TEXT_KEYS = ("text", "content", "name", "description")
+
+
+def _extract_text(value: object) -> str:
+    """Pull clean text from a Cognee result element.
+
+    SearchType.CHUNKS/SUMMARIES return node dicts whose chunk text lives under "text"
+    (verified against Cognee 1.2.2); GRAPH_COMPLETION returns plain strings. Fall back to
+    str() only when no known text field is present, so context is never a serialized node dict.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in _TEXT_KEYS:
+            field = value.get(key)
+            if isinstance(field, str) and field:
+                return field
+        return str(value)
+    for attr in _TEXT_KEYS:
+        field = getattr(value, attr, None)
+        if isinstance(field, str) and field:
+            return field
+    return str(value)
+
+
 def _as_items(raw: object, layers: Sequence[str] | None) -> list[MemoryItem]:
     if layers is not None and "semantic" not in layers:
         return []
@@ -105,20 +140,4 @@ def _as_items(raw: object, layers: Sequence[str] | None) -> list[MemoryItem]:
         values = list(raw)
     else:
         values = [raw]
-    return [MemoryItem(content=str(value), layer="semantic") for value in values]
-
-
-def _assemble(items: Sequence[MemoryItem], token_budget: int) -> RetrievedContext:
-    kept: list[MemoryItem] = []
-    token_cost = 0
-    truncated = False
-
-    for item in items:
-        item_cost = max(1, len(item.content) // 4)
-        if token_cost + item_cost > token_budget:
-            truncated = True
-            continue
-        kept.append(item)
-        token_cost += item_cost
-
-    return RetrievedContext(items=kept, token_cost=token_cost, truncated=truncated)
+    return [MemoryItem(content=_extract_text(value), layer="semantic") for value in values]
