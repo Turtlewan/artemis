@@ -17,6 +17,15 @@ const focusableSelector = [
 
 const styles = `
 .ask-backdrop {
+  /* Pin the Ask popup palette (matches the mockup) so it does NOT shift with the
+     app's ambient season/time theme. Tweak these to retheme the popup. */
+  --bg: #060c14;
+  --p: #58c6ff;
+  --a: #fff0d8;
+  --text: #eef7ff;
+  --muted: #a8bccb;
+  --hair: color-mix(in srgb, #58c6ff 26%, transparent);
+
   position: fixed;
   inset: 0;
   z-index: 60;
