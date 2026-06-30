@@ -53,14 +53,16 @@ def _draft(
     *,
     tests: str | None = "def test_skill() -> None:\n    assert True\n",
     tool_script: str | None = None,
+    uses: list[str] | None = None,
+    secrets: list[str] | None = None,
 ) -> SkillDraft:
     return SkillDraft(
         name="Echo",
         description="Echoes text.",
         body="Use this skill to echo text.",
         tool_script=tool_script,
-        uses=[],
-        secrets=[],
+        uses=uses or [],
+        secrets=secrets or [],
         tests=tests,
     )
 
@@ -100,6 +102,44 @@ def test_propose_clean_goal_returns_plan_card(tmp_path: Path) -> None:
     assert body["build_id"]
     assert body["name"] == "Echo"
     assert body["summary"] == "Use this skill to echo text."
+
+
+def test_list_capabilities_returns_empty_list(tmp_path: Path) -> None:
+    client = _client(tmp_path, _draft())
+
+    resp = client.get("/app/capabilities")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"capabilities": []}
+
+
+def test_list_capabilities_returns_promoted_capabilities(tmp_path: Path) -> None:
+    client = _client(
+        tmp_path,
+        _draft(uses=["clipboard"], secrets=["ECHO_TOKEN"]),
+    )
+    build_id = client.post("/app/capabilities/propose", json={"goal": "make an echo skill"}).json()[
+        "build_id"
+    ]
+    build_resp = client.post(f"/app/capabilities/{build_id}/build")
+    assert _result_json(build_resp.text)["passed"] is True
+    promote_resp = client.post("/app/capabilities/promote", json={"build_id": build_id})
+    assert promote_resp.status_code == 200
+
+    resp = client.get("/app/capabilities")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "capabilities": [
+            {
+                "name": "Echo",
+                "description": "Echoes text.",
+                "version": 1,
+                "uses": ["clipboard"],
+                "secrets": ["ECHO_TOKEN"],
+            }
+        ]
+    }
 
 
 def test_propose_network_draft_returns_blocked_plan(tmp_path: Path) -> None:
@@ -180,5 +220,6 @@ def test_capability_routes_require_session(tmp_path: Path) -> None:
     )
 
     assert client.post("/app/capabilities/propose", json={"goal": "hi"}).status_code == 401
+    assert client.get("/app/capabilities").status_code == 401
     assert client.post("/app/capabilities/unknown/build").status_code == 401
     assert client.post("/app/capabilities/promote", json={"build_id": "unknown"}).status_code == 401

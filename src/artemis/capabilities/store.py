@@ -121,6 +121,11 @@ class FileCapabilityStore:
             return None
         return self._read_skill(skill_path)
 
+    def list(self) -> list[Skill]:
+        """Every promoted capability in the library, sorted by name."""
+        skills = [self._read_skill(path) for path in self._library.glob("*/SKILL.md")]
+        return sorted(skills, key=lambda skill: skill.name)
+
     def staging_dir(self, staged_id: str) -> Path:
         return self._staging / staged_id
 

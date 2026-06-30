@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from artemis.api.auth import Principal, require_session
 from artemis.capabilities.forge import CapabilityForge
+from artemis.capabilities.store import FileCapabilityStore
 from artemis.types import BuildProposal
 
 
@@ -48,12 +49,29 @@ class InstalledCard(BaseModel):
     path: str
 
 
+class CapabilitySummary(BaseModel):
+    name: str
+    description: str
+    version: int
+    uses: list[str]
+    secrets: list[str]
+
+
+class CapabilitiesList(BaseModel):
+    capabilities: list[CapabilitySummary]
+
+
 router = APIRouter(prefix="/app/capabilities")
 
 
 def _forge(request: Request) -> CapabilityForge:
     forge: CapabilityForge = request.app.state.forge
     return forge
+
+
+def _store(request: Request) -> FileCapabilityStore:
+    store: FileCapabilityStore = request.app.state.capability_store
+    return store
 
 
 def _builds(request: Request) -> dict[str, BuildState]:
@@ -65,6 +83,26 @@ def _named_event(event: str, data: str) -> str:
     """One named SSE event; multi-line data is split into `data:` lines per the SSE spec."""
     lines = "".join(f"data: {line}\n" for line in data.split("\n"))
     return f"event: {event}\n{lines}\n"
+
+
+@router.get("", response_model=CapabilitiesList)
+async def list_capabilities(
+    request: Request,
+    _principal: Principal = Depends(require_session),
+) -> CapabilitiesList:
+    skills = _store(request).list()
+    return CapabilitiesList(
+        capabilities=[
+            CapabilitySummary(
+                name=s.name,
+                description=s.description,
+                version=s.version,
+                uses=s.uses,
+                secrets=s.secrets,
+            )
+            for s in skills
+        ]
+    )
 
 
 @router.post("/propose", response_model=PlanCard)

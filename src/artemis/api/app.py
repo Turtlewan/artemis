@@ -49,11 +49,9 @@ def create_app(
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else SubprocessSandbox()
-    app.state.forge = CapabilityForge(
-        app.state.model,
-        FileCapabilityStore(resolved_data_dir / "capabilities"),
-        resolved_sandbox,
-    )
+    capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
+    app.state.capability_store = capability_store
+    app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
     app.state.builds = {}  # build_id -> capability_routes.BuildState (in-memory, interim)
 
     @app.get("/healthz", response_model=HealthResponse)

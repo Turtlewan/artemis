@@ -119,6 +119,18 @@ async def test_get_returns_promoted_skill_or_none(tmp_path: Path) -> None:
     assert store.get("Unknown") is None
 
 
+@pytest.mark.asyncio
+async def test_list_returns_promoted_skills_sorted_by_name(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+
+    assert store.list() == []
+
+    beta = await store.promote((await store.stage(_draft("Beta", "Second skill."))).id)
+    alpha = await store.promote((await store.stage(_draft("Alpha", "First skill."))).id)
+
+    assert store.list() == [alpha, beta]
+
+
 def test_read_skill_md_raises_for_malformed_frontmatter(tmp_path: Path) -> None:
     path = tmp_path / "SKILL.md"
     path.write_text("name: broken\n\nbody", encoding="utf-8")
