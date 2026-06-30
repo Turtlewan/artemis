@@ -9,7 +9,6 @@ from typing import Any
 import jsonschema  # type: ignore[import-untyped]
 
 from artemis.model.codex_provider import RawProvider
-from artemis.model.schema_norm import to_strict_schema
 from artemis.types import Message, ModelResponse, Usage
 
 
@@ -52,14 +51,13 @@ class ModelClient:
                 usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
             )
 
-        strict_schema = to_strict_schema(response_schema)
         attempt_messages = list(messages)
         last_error: Exception | None = None
         for _attempt in range(self._max_reasks + 1):
             raw = await self._provider.generate(
                 messages=attempt_messages,
                 model=model_id,
-                schema=strict_schema,
+                schema=response_schema,
             )
             try:
                 parsed = json.loads(raw)

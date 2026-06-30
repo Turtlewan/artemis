@@ -25,8 +25,8 @@ _Status: DESIGN (2026-06-30). Supersedes the entire v1 corpus. v1 is archived at
 |---|---|---|
 | Language / runtime | **Python** | LOCKED |
 | Orchestration spine | **Thin own spine** over official Codex + Claude-Code SDKs; borrow LangGraph checkpoint/resume *patterns*, not the framework | LOCKED |
-| Model layer | **LiteLLM** core + Router; `CustomLLM` adapters wrap subscription CLIs as providers | LOCKED |
-| Routing policy | **Subscription-first**, cost/capability-aware, **graceful fallback on weekly-quota exhaustion** → other sub → metered API → local | LOCKED |
+| Model layer | **Thin own provider layer behind `ModelPort`** — each backend is a `RawProvider` that owns its schema down-conversion; an own `QuotaAwareRouter` does the fallover. **LiteLLM REJECTED 2026-06-30** (owner): our two primary backends are subscription CLIs needing subprocess wrappers either way, so LiteLLM's value (native API/Ollama providers + Router) did not outweigh the dependency vs. a ~50-line own router consistent with the "thin own spine" thesis. | LOCKED (reversed from LiteLLM) |
+| Routing policy | **Subscription-first**, cost/capability-aware, **graceful fallback on weekly-quota exhaustion** → other sub → metered API → local. Implemented as the own `QuotaAwareRouter` (Slice 1). | LOCKED |
 | Memory recall | **Retrieval-heavy** (remember a lot, retrieve smartly), behind a `MemoryPort` | LOCKED |
 | Capabilities | **SKILL.md folders** + **MCP** invocation | LOCKED |
 | Architecture style | Everything pluggable **behind thin interfaces** (model, memory, transport, scheduler, sandbox) | LOCKED |
@@ -36,7 +36,7 @@ _Status: DESIGN (2026-06-30). Supersedes the entire v1 corpus. v1 is archived at
 
 ## 3. The 5-layer harness
 
-1. **Model / provider layer** — LiteLLM unified interface; `CustomLLM` adapters wrap `codex exec` and `claude -p` as **first-class providers** (OAuth-subscription auth, no per-token bill). Router = subscription-first, cost/capability-aware, with fallback chains on quota/failure.
+1. **Model / provider layer** — a thin own layer behind `ModelPort`: per-backend `RawProvider` adapters wrap `codex exec` and `claude -p` as **first-class providers** (OAuth-subscription auth, no per-token bill), plus metered-API and local-Ollama fallback providers. An own `QuotaAwareRouter` = subscription-first, cost/capability-aware, with fallback chains on quota/failure. (LiteLLM rejected 2026-06-30 — see §2.)
    > _The reasoning supply. Prefer the flat-fee AIs; fall back gracefully when the weekly cap is hit._
 2. **Schema-normalization shim** — one canonical schema authored at **strictest** (OpenAI-strict) strictness; each adapter **down-converts** per backend (force `additionalProperties:false` + all-keys-required-nullable for strict targets; strip unsupported keywords; rewrite to a tool `input_schema` for Anthropic; pass-through for Ollama); **always validate client-side + re-ask**. This is the permanent fix for the v1 structured-output break.
    > _Strictness is the adapter's job, not an assumption baked into the schema._

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import shutil
 import tempfile
@@ -10,6 +9,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
+import artemis.model.cli_support as cli_support
+from artemis.model.errors import ProviderError, QuotaExhaustedError
+from artemis.model.schema_norm import to_strict_schema
 from artemis.types import Message
 
 
@@ -25,7 +27,7 @@ class RawProvider(Protocol):
         ...
 
 
-class CodexProviderError(RuntimeError):
+class CodexProviderError(ProviderError):
     def __init__(self, returncode: int, stderr_excerpt: str) -> None:
         self.returncode = returncode
         self.stderr_excerpt = stderr_excerpt
@@ -51,23 +53,20 @@ class CodexProvider:
             schema_path: Path | None = None
             if schema is not None:
                 schema_path = temp_path / "schema.json"
-                schema_path.write_text(json.dumps(schema), encoding="utf-8")
+                schema_path.write_text(json.dumps(to_strict_schema(schema)), encoding="utf-8")
 
             argv = self._build_argv(
                 model=model_id, output_path=output_path, schema_path=schema_path
             )
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            returncode, _stdout, stderr = await cli_support.run_cli(
+                argv, stdin=cli_support.render_messages(messages).encode("utf-8")
             )
-            _stdout, stderr = await process.communicate(_render_messages(messages).encode("utf-8"))
-            if process.returncode != 0:
-                raise CodexProviderError(
-                    process.returncode or 1,
-                    stderr.decode("utf-8", errors="replace")[:2000],
-                )
+            stderr_text = stderr.decode("utf-8", errors="replace")
+            if returncode != 0:
+                excerpt = stderr_text[:2000]
+                if cli_support.is_quota_signal(stderr_text):
+                    raise QuotaExhaustedError("codex", excerpt)
+                raise CodexProviderError(returncode or 1, excerpt)
             return output_path.read_text(encoding="utf-8").strip()
 
     def _build_argv(
@@ -95,7 +94,3 @@ class CodexProvider:
             argv.extend(["--output-schema", str(schema_path)])
         argv.append("-")
         return argv
-
-
-def _render_messages(messages: Sequence[Message]) -> str:
-    return "\n\n".join(f"{message.role.upper()}:\n{message.content}" for message in messages)
