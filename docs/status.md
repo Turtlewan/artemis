@@ -1,6 +1,11 @@
 # Project: Artemis
 _A personal assistant that integrates with everything (Jarvis-like in spirit), with a RAG-heavy second brain as its knowledge subsystem._
 
+> **⚠️ V2 REBUILD IN PROGRESS (since 2026-06-30) — everything below this banner is ARCHIVED v1.**
+> v1 was scrapped and rebuilt from scratch as a **multi-provider, subscription-first agent harness**. v1 is preserved at git tag `archive/v1`; v2 lives on branch **`v2-rebuild`**.
+> **Read first:** `docs/v2/architecture.md` (design) · `docs/v2/build-plan.md` (slice sequence) · `docs/handoff/2026-06-30.md` (latest). Memory: `artemis-v2-harness-pivot`, `artemis-v2-build-cadence`.
+> **State:** Slice 0 complete (`v2-00`…`v2-04`, all green: mypy --strict + 30 tests). **Next:** Slice 1 = widen model layer (LiteLLM + router); Slice 2 = memory (Cognee-vs-Graphiti spike). Do NOT build against the v1 ADRs/specs below.
+
 stack: LOCKED 2026-06-03 (ADR-001) — SwiftUI app + Swift audio sidecar · Python brain · MLX/mlx-openai-server · LanceDB · SQLite/SQLCipher · Claude-subscription teacher (bootstrapping, non-sensitive) · ntfy · MCP-at-edges · Mac Mini M4 Pro 48GB
 token_profile: lean
 autonomy_level: L5
