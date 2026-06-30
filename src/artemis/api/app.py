@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
-from artemis.api import ask_routes
+from artemis.api import ask_routes, domain_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
@@ -47,6 +47,7 @@ def create_app(*, data_dir: str | Path | None = None, model: ModelPort | None = 
 
     app.include_router(app_router)
     app.include_router(ask_routes.router)
+    app.include_router(domain_routes.router)
     return app
 
 
