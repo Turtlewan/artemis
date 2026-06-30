@@ -171,6 +171,30 @@ function WorldShell() {
           onOpen={onOpen}
         />
       </div>
+      {placements.length === 0 && (
+        <div
+          data-testid="world-empty"
+          role="status"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            zIndex: 2,
+            textAlign: "center",
+            padding: "24px",
+          }}
+        >
+          <div style={{ maxWidth: 420, opacity: 0.9 }}>
+            <p style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>Your map is empty</p>
+            <p style={{ fontSize: "14px", opacity: 0.7, margin: 0, lineHeight: 1.5 }}>
+              No capabilities built yet. Open <strong>Ask</strong> and tell Artemis what to build —
+              each new capability appears here as a node on the map.
+            </p>
+          </div>
+        </div>
+      )}
       <div ref={dockRef} data-testid="world-dock-layer">
         <Dock placements={placements} activeDomain={activeDomain} travelTo={camera.travelTo} />
       </div>
