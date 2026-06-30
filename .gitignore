@@ -21,6 +21,12 @@ keys/
 *.sqlite3
 # Runtime data root (lives on the Mini, never in the repo)
 /opt/artemis/
+# Dev-box runtime root is the repo root (ARTEMIS_DATA_DIR=.): forge + auth + layout artifacts
+.forge-test/
+/capabilities/
+/devices.json
+/devices.json.lock
+/layout.json
 
 # --- Python (forward-looking — code is built on the Mini) ---
 __pycache__/

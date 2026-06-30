@@ -28,6 +28,9 @@ ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
+# Forge-generated / sandboxed capability code is not project source — never lint it.
+# `.forge-test` = throwaway forge runs; `capabilities` = the runtime data-root store dir.
+extend-exclude = [".forge-test", "capabilities"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
