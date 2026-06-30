@@ -89,6 +89,30 @@ class StagedSkill(BaseModel):
     draft: SkillDraft
 
 
+class BuildProposal(BaseModel):
+    """A proposed capability awaiting the plan gate: the authored draft + a safety verdict.
+
+    `blocked` is True when the capability cannot proceed to build in the current
+    (no-isolation) sandbox -- either it has no test, or it imports a network/process
+    module (see `scan_for_unsafe_imports`). The UI offers `Build it` only when not blocked.
+    """
+
+    goal: str
+    draft: SkillDraft
+    blocked: bool
+    block_reason: str | None = None
+
+
+class BuildAttempt(BaseModel):
+    """The outcome of running a proposal through the sandbox. `staged_id` is None when the
+    proposal was blocked (never staged). `promote` is gated on `passed and staged_id`.
+    """
+
+    staged_id: str | None
+    passed: bool
+    output: str
+
+
 class ScheduledJob(BaseModel):
     id: str
     cron: str | None
