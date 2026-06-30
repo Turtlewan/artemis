@@ -14,13 +14,13 @@ def _client(tmp_path: object) -> TestClient:
     return TestClient(app)
 
 
-def test_get_returns_default_layout(tmp_path: object) -> None:
+def test_get_returns_empty_default_layout(tmp_path: object) -> None:
+    # The brain ships NO default cards; the client uses its own canonical seed for an empty list.
     resp = _client(tmp_path).get("/app/layout")
     assert resp.status_code == 200
     body = resp.json()
     assert body["version"] == 1
-    ids = {c["id"] for c in body["cards"]}
-    assert "email" in ids and "finance" in ids and len(body["cards"]) == 11
+    assert body["cards"] == []
 
 
 def test_put_then_get_roundtrips(tmp_path: object) -> None:

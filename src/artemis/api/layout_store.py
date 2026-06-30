@@ -36,28 +36,14 @@ class LayoutDTO(BaseModel):
 
 
 def default_layout() -> LayoutDTO:
-    """Return the 4-cluster / 11-domain seed used before the owner customises layout."""
-    now = datetime.now(UTC)
-    seed = [
-        ("email", "Comms", 0, 0),
-        ("people", "Comms", 2, 0),
-        ("schedule", "Planning", 0, 2),
-        ("tasks", "Planning", 2, 2),
-        ("projects", "Planning", 4, 2),
-        ("travel", "Planning", 6, 2),
-        ("memory", "Knowledge", 0, 4),
-        ("knowledge", "Knowledge", 2, 4),
-        ("review", "Knowledge", 4, 4),
-        ("health", "Self", 0, 6),
-        ("finance", "Self", 2, 6),
-    ]
-    return LayoutDTO(
-        version=1,
-        updated_at=now,
-        cards=[
-            CardPlacement(id=d, domain=d, cluster=c, x=x, y=y, w=2, h=2) for (d, c, x, y) in seed
-        ],
-    )
+    """Empty seed: the brain has no layout opinion until the owner drags a card.
+
+    The client treats an empty card list as "use my canonical seed" (`world/clusters.ts`
+    `defaultPlacements`, 250x150 cards positioned around the core), so the brain must NOT ship
+    placeholder coordinates — the client reads x/y/w/h as raw pixels and would render tiny clumped
+    cards. Once the owner repositions a card, the client PUTs the real layout and it persists here.
+    """
+    return LayoutDTO(version=1, updated_at=datetime.now(UTC), cards=[])
 
 
 class LayoutStore:
