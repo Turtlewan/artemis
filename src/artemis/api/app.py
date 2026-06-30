@@ -10,11 +10,14 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
-from artemis.api import ask_routes, domain_routes
+from artemis.api import ask_routes, capability_routes, domain_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
 from artemis.api.layout_store import LayoutDTO, LayoutStore, default_layout
+from artemis.capabilities.forge import CapabilityForge
+from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox
+from artemis.capabilities.store import FileCapabilityStore
 from artemis.model.compose import build_model_router
 from artemis.ports.model import ModelPort
 
@@ -29,7 +32,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app(*, data_dir: str | Path | None = None, model: ModelPort | None = None) -> FastAPI:
+def create_app(
+    *,
+    data_dir: str | Path | None = None,
+    model: ModelPort | None = None,
+    sandbox: SandboxRunner | None = None,
+) -> FastAPI:
     resolved_data_dir = (
         Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
     )
@@ -40,6 +48,13 @@ def create_app(*, data_dir: str | Path | None = None, model: ModelPort | None = 
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
+    resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else SubprocessSandbox()
+    app.state.forge = CapabilityForge(
+        app.state.model,
+        FileCapabilityStore(resolved_data_dir / "capabilities"),
+        resolved_sandbox,
+    )
+    app.state.builds = {}  # build_id -> capability_routes.BuildState (in-memory, interim)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
@@ -47,6 +62,7 @@ def create_app(*, data_dir: str | Path | None = None, model: ModelPort | None = 
 
     app.include_router(app_router)
     app.include_router(ask_routes.router)
+    app.include_router(capability_routes.router)
     app.include_router(domain_routes.router)
     return app
 
