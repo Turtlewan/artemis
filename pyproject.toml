@@ -1,128 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "artemis"
-version = "0.1.0"
-description = "Artemis — personal assistant core"
+version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.115",
-    "pydantic>=2",
-    "pydantic-settings>=2",
-    "uvicorn[standard]>=0.34",
-    "httpx>=0.28",
-    "tzdata>=2026.2",
-    "sqlite-vec>=0.1",
-    "lancedb>=0.33.0",
-    "google-auth>=2.55.0",
-    "google-auth-oauthlib>=1.4.0",
-    "google-api-python-client>=2.197.0",
-    "tldextract>=5.3.1",
-    "cryptography>=49.0.0",
-    "trafilatura>=2.1.0",
-    "sqlcipher3-wheels>=0.5.7",
-    "winsdk>=1.0.0b10,<2",
-]
-
-[project.scripts]
-artemis-google-auth = "artemis.integrations.google.cli:main"
-artemis-dev-email-rules = "artemis.dev.email_rules:main"
-artemis-unlock = "artemis.cli.unlock:main"
-artemis-brain = "artemis.run_brain:main"
+dependencies = ["pydantic>=2"]
 
 [dependency-groups]
-agentic = [
-    "litellm>=1.89.4",
-    "openhands-sdk>=1.29.2",
-    "openhands-tools>=1.29.2",
-    "pydantic-ai>=2.0.0",
-]
-dev = [
-    "mypy>=1.15",
-    "pytest>=8",
-    "pytest-asyncio>=0.25",
-    "ruff>=0.11",
-    "anyio>=4",
-]
-# Heavy torch-scale parser — NOT installed by plain `uv sync` (dev box stays lean,
-# M3-a runs against FakeParser). Install on Mac/prod with `uv sync --group docling`.
-docling = [
-    "docling>=2.99.0",
-]
-# Windows dev voice sidecar stack (M5-a-win-sidecar) — heavy (torch/onnxruntime/
-# audio runtimes). NOT installed by plain `uv sync`; the sidecar core builds + tests
-# against fakes. Install for GATED real-model runs with `uv sync --group voice-dev`.
-# GPU note: RTX 50-series needs the cu128 torch wheel from the PyTorch index, and
-# Kokoro needs the espeak-ng Windows binary on PATH — both are GATED-runtime setup,
-# not lock requirements (default-PyPI torch resolves here).
-voice-dev = [
-    "sounddevice>=0.4.7",
-    "PyAudioWPatch>=0.2.12; sys_platform == 'win32'",  # WASAPI loopback — Windows-only (Mac uses the Swift sidecar)
-    "livekit>=1.0",  # provides livekit.rtc (spec said livekit-rtc — not a real PyPI package)
-    "openwakeword>=0.6",
-    "silero-vad>=5.1",
-    "moonshine-voice>=0.0.62",  # package is 0.0.x; "v2" in the spec was the model, not the package version
-    "faster-whisper>=1.0",
-    "kokoro>=0.9.2",
-    "soundfile>=0.12",
-    "piper-tts>=1.2",
-    "scipy>=1.13",
-    "onnxruntime>=1.18",
-    "torch>=2.3",
-]
+dev = ["mypy", "ruff", "pytest", "pytest-asyncio"]
 
-# Artemis runtime targets are Windows (dev box, ADR-022) + macOS (production Mac
-# Mini, ADR-001) on Python 3.12 — NOT linux. Scoping uv's resolution universe to
-# those environments keeps the lock solvable: it drops the linux split (where
-# openwakeword pulls the cp312-less, linux-only tflite-runtime) and the future-
-# Python splits with no wheels yet. requires-python (>=3.12) is unchanged.
-[tool.uv]
-environments = [
-    "python_version == '3.12' and sys_platform == 'win32'",
-    "python_version == '3.12' and sys_platform == 'darwin'",
-]
-# Security floors on transitive deps (pip-audit, 2026-06-28). Not direct deps —
-# constrained here to pull the CVE-fixed versions without promoting them.
-constraint-dependencies = [
-    "pyjwt>=2.13.0",          # PYSEC-2026-176..179
-    "python-multipart>=0.0.31",  # CVE-2026-53538/53539/53540
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/artemis"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.mypy]
 strict = true
-plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
-exclude = [
-    ".venv/",
-    "scripts/",
-]
-
-[[tool.mypy.overrides]]
-module = "lancedb"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["winsdk", "winsdk.*"]
-ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-markers = [
-    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
 
 [tool.ruff]
-target-version = "py312"
 line-length = 100
-src = ["src"]
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]  # let formatter handle line length
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

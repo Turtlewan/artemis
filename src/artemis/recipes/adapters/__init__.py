@@ -1,1 +1,0 @@
-"""Recipe adapter package."""

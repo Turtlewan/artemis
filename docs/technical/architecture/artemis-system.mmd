@@ -1,0 +1,117 @@
+flowchart TB
+    %% ===================== INTERACTION SURFACES =====================
+    subgraph SURF["Interaction Surfaces (capture + render)"]
+        CLIENT["Tauri client<br/>spatial travel-zoom map<br/>ADR-023/028/030"]
+        VOICE["Voice pipeline (M5)<br/>STT to LLM to TTS<br/>audio sidecar"]
+        REMOTE["Remote access<br/>Tailscale private tunnel"]
+    end
+
+    %% ===================== SECURITY WALL =====================
+    subgraph WALL["Security Wall (M2) - owner data unreadable until unlock"]
+        BROKER["Key broker<br/>SE/TPM-wrapped DEK - ADR-005"]
+        UNLOCK["Unlock attest<br/>iPhone FaceID / Windows Hello (ADR-033)<br/>recovery passphrase escrow"]
+        SQLC["Per-scope SQLCipher DBs"]
+        VOL["Per-scope encrypted volume<br/>LanceDB + memory"]
+        UNLOCK --> BROKER --> SQLC
+        BROKER --> VOL
+    end
+
+    %% ===================== CORE BRAIN =====================
+    subgraph CORE["Core - the Brain (hub)"]
+        GW["Gateway<br/>scope from session, never client - ADR-010"]
+        BRAIN["Brain - router-first reactive loop<br/>respond_stream - pre_route"]
+        REG["Tool + Recipe registry<br/>RAG-for-tools - MCP at edges"]
+        RECIPES["Self-taught recipes (M7)"]
+        IDENT["Identity + scoping<br/>data_scope = sensitivity source of truth"]
+        GW --> BRAIN --> REG --> RECIPES
+        BRAIN --> IDENT
+    end
+
+    %% ===================== MODEL / REASONING (ADR-022) =====================
+    subgraph MODEL["Model / Reasoning layer - ADR-022 (the routing fork)"]
+        SENS["Sensitivity router"]
+        LOCALR["LOCAL responder<br/>MLX (prod) / Ollama (dev)<br/>Qwen3-4B-Instruct"]
+        CLOUDR["CLOUD responder<br/>Codex (ChatGPT sub) - gated"]
+        EMB["Embeddings - LOCAL only<br/>Qwen3-Embedding-0.6B"]
+        SENS -- "sensitive: never leaves box" --> LOCALR
+        SENS -- "general: on-demand" --> CLOUDR
+    end
+
+    %% ===================== KNOWLEDGE / RAG (M3) =====================
+    subgraph KNOW["Knowledge layer - second brain (M3, ADR-007)"]
+        INGEST["Ingestion connectors<br/>Docling parse - late chunk"]
+        QUAR["Untrusted quarantine boundary<br/>Seam 7 - spotlight - injection flag"]
+        LANCE["LanceDB<br/>dense + FTS (hybrid)"]
+        RETR["Adaptive retrieval<br/>hybrid + RRF + reranker<br/>agentic multi-hop - KCQ quality lane"]
+        INGEST --> QUAR --> LANCE
+        RETR --> LANCE
+    end
+
+    %% ===================== MEMORY (M4) =====================
+    subgraph MEM["Memory engine (M4, ADR-004/013)"]
+        MSTORE["Bitemporal MemoryStore<br/>episodic + semantic - A.U.D.N."]
+        ENT["Entity backbone<br/>Person - Place - Goal - resolve_entity"]
+        MSTORE --> ENT
+    end
+
+    %% ===================== DOMAIN SPOKES =====================
+    subgraph SPOKE["Domain modules / spokes (own or mirror truth - ADR-011)"]
+        CAL["Calendar"]
+        TASK["Tasks / Productivity"]
+        PROJ["Projects"]
+        FIN["Finance (content-sensitive)"]
+        HG["Habits / Goals / Areas (deferred)"]
+    end
+
+    %% ===================== REACTIONS + GATE =====================
+    subgraph REACT["Reactions runtime (ADR-021/032) + GATE"]
+        RULES["Email-rules / claim-check<br/>observe to live"]
+        GATE["GATE - action staging (ADR-012)<br/>external effects gated"]
+        RULES --> GATE
+    end
+
+    %% ===================== AGENTIC RUNTIME =====================
+    subgraph AGENT["Agentic runtime (ADR-031/024)"]
+        EXEC["Task executor<br/>plan to act to verify - agent-inbox"]
+        RUNGS["Host computer-use rungs 0-4<br/>blast-radius authority"]
+        CODE["Coding subsystem<br/>borrow OpenHands - Codex/DeepSeek backend"]
+        EXEC --> RUNGS
+        EXEC --> CODE
+    end
+
+    %% ===================== INTEGRATION / CONNECTORS =====================
+    subgraph INTEG["Integration layer (egress-allowlisted - ADR-009)"]
+        GOOG["Google - Gmail / Calendar"]
+        TG["Telegram"]
+        HA["Home Assistant"]
+        WEAR["Wearables / Weather"]
+    end
+
+    %% ===================== CROSS-CUTTING =====================
+    subgraph XCUT["Cross-cutting (every layer)"]
+        OBS["Observability - OTel (ADR-008)"]
+        PROACT["Proactivity (ADR-006)<br/>Tier-0 always-on - Tier-1 unlock-gated"]
+        SGATE["Sensitivity ingestion gate (ADR-029)<br/>local classifier, fail-closed"]
+    end
+
+    %% ===================== EDGES =====================
+    SURF -- "authenticated app API" --> GW
+    CORE --> WALL
+    BRAIN -- "reason" --> MODEL
+    BRAIN -- "live tool calls (exact facts)" --> SPOKE
+    BRAIN -- "search (connect-the-dots)" --> KNOW
+    BRAIN -- "recall facts" --> MEM
+    SPOKE -- "push knowledge + facts" --> KNOW
+    SPOKE --> MEM
+    SPOKE -- "connectors" --> INTEG
+    INGEST --> SGATE
+    INTEG --> INGEST
+    GATE -- "approved external effect" --> INTEG
+    BRAIN --> REACT
+    BRAIN --> AGENT
+    AGENT -- "gated" --> GATE
+    PROACT --> BRAIN
+    KNOW --> VOL
+    MEM --> SQLC
+    OBS -.-> CORE
+    OBS -.-> AGENT

@@ -1,1 +1,3 @@
-# Artemis — personal assistant core package
+"""Artemis v2 package."""
+
+__version__ = "0.0.0"

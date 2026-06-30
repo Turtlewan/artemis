@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artemis v2 — Living Capability Map (concept mockup)</title>
+<style>
+  :root {
+    --bg0:#0a0f16; --bg1:#0e1722; --ink:#e8eef6; --muted:#8aa0b8;
+    --comms:#39c2d6; --planning:#9a8cff; --knowledge:#f2b14e; --self:#5fd39a;
+    --glass:rgba(20,32,46,.62); --line:rgba(140,180,220,.16);
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); overflow:hidden; }
+  /* ambient photographic-ish backdrop (season×time driven in the real app) */
+  #stage {
+    position:fixed; inset:0; cursor:grab;
+    background:
+      radial-gradient(1200px 800px at 70% 18%, rgba(58,120,150,.20), transparent 60%),
+      radial-gradient(900px 700px at 22% 82%, rgba(120,90,180,.18), transparent 60%),
+      radial-gradient(600px 600px at 50% 50%, rgba(40,70,90,.25), transparent 70%),
+      linear-gradient(160deg,#0c131c,#080d14 70%);
+  }
+  #stage.grabbing { cursor:grabbing; }
+  /* subtle drifting particles */
+  .star { position:absolute; width:2px; height:2px; border-radius:50%; background:#cfe3f5; opacity:.0; animation:tw 6s ease-in-out infinite; }
+  @keyframes tw { 0%,100%{opacity:.05} 50%{opacity:.5} }
+
+  /* the pannable world */
+  #world { position:absolute; left:50%; top:50%; width:0; height:0; transform:translate(-50%,-50%) scale(1); transform-origin:center; }
+  svg.links { position:absolute; left:-1400px; top:-900px; width:2800px; height:1800px; pointer-events:none; overflow:visible; }
+  .link { stroke:var(--line); stroke-width:1.4; fill:none; }
+  .link.live { stroke:rgba(95,211,154,.55); stroke-width:2; stroke-dasharray:4 6; animation:flow 2.4s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset:-40; } }
+
+  /* the agent core */
+  #core {
+    position:absolute; left:-86px; top:-86px; width:172px; height:172px; border-radius:50%;
+    display:grid; place-content:center; text-align:center; cursor:pointer;
+    background:radial-gradient(circle at 50% 42%, rgba(120,200,230,.95), rgba(60,120,160,.5) 45%, rgba(20,40,60,.15) 70%);
+    box-shadow:0 0 60px 12px rgba(80,180,220,.35), inset 0 0 40px rgba(180,230,255,.4);
+    animation:breathe 4.5s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100%{ box-shadow:0 0 50px 8px rgba(80,180,220,.30), inset 0 0 36px rgba(180,230,255,.35);} 50%{ box-shadow:0 0 78px 18px rgba(95,200,235,.5), inset 0 0 48px rgba(200,240,255,.55);} }
+  #core .name { font-weight:600; letter-spacing:.14em; font-size:15px; }
+  #core .stat { font-size:10.5px; color:#0a1a22; opacity:.8; margin-top:3px; }
+
+  /* capability nodes */
+  .node {
+    position:absolute; width:178px; padding:12px 14px; border-radius:14px; cursor:pointer;
+    background:var(--glass); border:1px solid rgba(150,185,220,.16);
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    box-shadow:0 8px 30px rgba(0,0,0,.35); transition:transform .18s ease, box-shadow .18s ease, border-color .18s;
+    animation:float 9s ease-in-out infinite;
+  }
+  .node:hover { transform:translateY(-3px) scale(1.03); box-shadow:0 14px 40px rgba(0,0,0,.5); border-color:rgba(180,215,245,.4); }
+  @keyframes float { 0%,100%{ margin-top:0 } 50%{ margin-top:-6px } }
+  .node .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:7px; vertical-align:middle; }
+  .node .title { font-size:13px; font-weight:600; vertical-align:middle; }
+  .node .glance { margin-top:8px; font-size:11.5px; color:var(--muted); line-height:1.45; }
+  .node .metric { color:var(--ink); font-weight:600; }
+  .node.live::after { content:""; position:absolute; top:10px; right:12px; width:7px; height:7px; border-radius:50%; background:var(--self); box-shadow:0 0 0 0 rgba(95,211,154,.6); animation:ping 1.8s ease-out infinite; }
+  @keyframes ping { 0%{ box-shadow:0 0 0 0 rgba(95,211,154,.55);} 100%{ box-shadow:0 0 0 12px rgba(95,211,154,0);} }
+  .node.forming { border-style:dashed; opacity:.78; }
+  .node.forming .title { color:var(--knowledge); }
+
+  .c-comms .dot{background:var(--comms)} .c-planning .dot{background:var(--planning)}
+  .c-knowledge .dot{background:var(--knowledge)} .c-self .dot{background:var(--self)}
+  .c-comms{border-left:2px solid var(--comms)} .c-planning{border-left:2px solid var(--planning)}
+  .c-knowledge{border-left:2px solid var(--knowledge)} .c-self{border-left:2px solid var(--self)}
+
+  /* memory region — a larger zone you can zoom into */
+  #memory {
+    position:absolute; width:230px; height:150px; border-radius:20px; cursor:pointer;
+    background:radial-gradient(circle at 30% 30%, rgba(95,211,154,.14), rgba(20,40,40,.25));
+    border:1px dashed rgba(95,211,154,.4); display:grid; place-content:center; text-align:center;
+  }
+  #memory .t{ font-size:13px; font-weight:600 } #memory .s{ font-size:11px; color:var(--muted); margin-top:5px }
+
+  /* HUD */
+  .hud { position:fixed; z-index:5; color:var(--muted); font-size:12px; }
+  #brand { top:18px; left:22px; color:var(--ink); font-weight:600; letter-spacing:.22em; font-size:13px; }
+  #legend { bottom:20px; left:22px; display:flex; gap:14px; background:var(--glass); padding:9px 13px; border-radius:11px; border:1px solid var(--line); backdrop-filter:blur(8px); }
+  #legend span{ display:flex; align-items:center; gap:6px } #legend i{ width:8px;height:8px;border-radius:50% }
+  #hint { top:18px; right:22px; text-align:right; line-height:1.7 }
+  #ask {
+    position:fixed; z-index:6; bottom:22px; left:50%; transform:translateX(-50%);
+    width:min(560px,70vw); padding:13px 18px; border-radius:16px; display:flex; align-items:center; gap:12px;
+    background:rgba(14,24,36,.82); border:1px solid rgba(150,185,220,.22); backdrop-filter:blur(14px);
+    box-shadow:0 12px 50px rgba(0,0,0,.5);
+  }
+  #ask .kbd{ font-size:10.5px; color:#0a1a22; background:var(--comms); border-radius:6px; padding:3px 7px; font-weight:700; letter-spacing:.04em }
+  #ask input{ flex:1; background:transparent; border:0; outline:0; color:var(--ink); font-size:14px; }
+  #ask input::placeholder{ color:var(--muted) }
+
+  /* bloom-open detail overlay */
+  #overlay { position:fixed; inset:0; z-index:20; background:rgba(6,10,16,.55); backdrop-filter:blur(3px); display:none; }
+  #overlay.open{ display:block }
+  #panel {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(.96); opacity:0;
+    width:min(560px,80vw); padding:26px 28px; border-radius:22px;
+    background:linear-gradient(160deg, rgba(22,34,48,.96), rgba(14,22,32,.96));
+    border:1px solid rgba(160,195,230,.25); box-shadow:0 30px 80px rgba(0,0,0,.6);
+    transition:transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s;
+  }
+  #overlay.open #panel{ transform:translate(-50%,-50%) scale(1); opacity:1 }
+  #panel h2{ margin:0 0 4px; font-size:19px } #panel .sub{ color:var(--muted); font-size:12.5px; margin-bottom:16px }
+  #panel .row{ display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(150,180,210,.12); font-size:13px }
+  #panel .row span:last-child{ color:var(--muted) }
+  #panel .close{ position:absolute; top:16px; right:18px; cursor:pointer; color:var(--muted); font-size:20px }
+</style>
+</head>
+<body>
+  <div id="brand" class="hud">ARTEMIS</div>
+  <div id="hint" class="hud">drag to pan · scroll to zoom · click a node to open<br/>⌥Space — Ask Artemis</div>
+
+  <div id="stage">
+    <div id="world">
+      <svg class="links" id="links"></svg>
+      <div id="core" data-detail="core">
+        <div>
+          <div class="name">ARTEMIS</div>
+          <div class="stat">listening · 2 running</div>
+        </div>
+      </div>
+      <!-- nodes injected by JS -->
+    </div>
+  </div>
+
+  <div id="legend" class="hud">
+    <span><i style="background:var(--comms)"></i>Comms</span>
+    <span><i style="background:var(--planning)"></i>Planning</span>
+    <span><i style="background:var(--knowledge)"></i>Knowledge</span>
+    <span><i style="background:var(--self)"></i>Self</span>
+  </div>
+
+  <div id="ask">
+    <span class="kbd">⌥Space</span>
+    <input placeholder="Ask Artemis to do something — or to build a new capability…" />
+  </div>
+
+  <div id="overlay"><div id="panel"><div class="close">×</div><div id="panelBody"></div></div></div>
+
+<script>
+// --- capability nodes: a map of what the agent CAN do and IS doing (grows over time) ---
+const NODES = [
+  { id:'email',   title:'Email Triage',     cluster:'comms',     x:-360, y:-210, live:true,  glance:'<span class="metric">3</span> pending · 2 VIP flagged', detail:[['Last run','4 min ago'],['Pending','3 messages'],['Rule','notify = legal + payment'],['Built','from "watch my inbox"']] },
+  { id:'digest',  title:'Morning Digest',   cluster:'self',      x:340,  y:-200, live:false, glance:'runs <span class="metric">07:00</span> · next in 14h', detail:[['Schedule','daily 07:00 SGT'],['Sources','calendar · email · weather'],['Delivery','Telegram + desktop'],['Built','from "brief me each morning"']] },
+  { id:'finance', title:'Finance Tracker',  cluster:'planning',  x:-410, y:120,  live:false, glance:'synced <span class="metric">2h</span> ago · 4 accounts', detail:[['Last sync','2h ago'],['Accounts','4 linked'],['This month','spend view ready'],['Built','from "track my spending"']] },
+  { id:'cal',     title:'Calendar',         cluster:'planning',  x:120,  y:230,  live:false, glance:'<span class="metric">2</span> events today · 1 soon', detail:[['Today','2 events'],['Next','Standup · 30 min'],['Write','create/move events (gated)'],['Built','from Google Calendar']] },
+  { id:'know',    title:'Knowledge Search', cluster:'knowledge', x:430,  y:90,   live:false, glance:'<span class="metric">1,204</span> docs · hybrid+rerank', detail:[['Corpus','1,204 docs'],['Retrieval','hybrid + RAPTOR + rerank'],['Last query','"Q2 contract terms"'],['Built','second-brain ingest']] },
+  { id:'trip',    title:'Trip Planner',     cluster:'planning',  x:-150, y:-280, live:false, glance:'idle · last used 3d ago', detail:[['Status','idle'],['Composes','calendar + email + maps'],['Built','from "plan my Tokyo trip"']] },
+  { id:'web',     title:'Web Researcher',   cluster:'knowledge', x:300,  y:280,  live:true,  glance:'running · <span class="metric">2/5</span> sources', detail:[['Status','running'],['Task','"compare 3 vendors"'],['Sandbox','WSL2 · egress allowlist'],['Built','from a verified skill']] },
+];
+const FORMING = { title:'PDF Summarizer', x:-30, y:300, glance:'building… · sandbox verify 2/3' };
+
+const world = document.getElementById('world');
+const links = document.getElementById('links');
+
+function makeNode(n){
+  const el = document.createElement('div');
+  el.className = `node c-${n.cluster}` + (n.live?' live':'');
+  el.style.left = (n.x-89)+'px'; el.style.top = (n.y-32)+'px';
+  el.style.animationDelay = (Math.abs(n.x+n.y)%9)+'s';
+  el.innerHTML = `<div><span class="dot"></span><span class="title">${n.title}</span></div><div class="glance">${n.glance}</div>`;
+  el.addEventListener('click', e=>{ e.stopPropagation(); openDetail(n); });
+  world.appendChild(el);
+  // link from core
+  const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('class','link'+(n.live?' live':''));
+  path.setAttribute('d', `M ${1400} ${900} Q ${1400+n.x*0.5} ${900+n.y*0.5} ${1400+n.x} ${900+n.y}`);
+  links.appendChild(path);
+}
+NODES.forEach(makeNode);
+
+// memory region
+const mem = document.createElement('div');
+mem.id='memory'; mem.style.left='-115px'; mem.style.top='-330px';
+mem.innerHTML = '<div><div class="t">◈ Memory</div><div class="s">semantic · episodic · rules<br/>zoom in to explore</div></div>';
+mem.addEventListener('click', e=>{ e.stopPropagation(); openDetail({title:'Memory', sub:'the second brain — retrieval-heavy, tiered', detail:[['Semantic facts','live graph'],['Episodic','demote-not-delete tiers'],['Rules','VIPs, working hours…'],['Retrieval','wide search → budgeted inject']]}); });
+world.appendChild(mem);
+const memLink = document.createElementNS('http://www.w3.org/2000/svg','path');
+memLink.setAttribute('class','link'); memLink.setAttribute('d',`M 1400 900 Q 1350 770 1285 580`); links.appendChild(memLink);
+
+// "forming" capability — shows the map grows as the agent learns
+const f = document.createElement('div');
+f.className='node forming c-knowledge'; f.style.left=(FORMING.x-89)+'px'; f.style.top=(FORMING.y-32)+'px';
+f.innerHTML = `<div><span class="dot"></span><span class="title">⟳ ${FORMING.title}</span></div><div class="glance">${FORMING.glance}</div>`;
+world.appendChild(f);
+
+// --- pan + zoom ---
+let panX=0, panY=0, scale=1, dragging=false, sx=0, sy=0;
+const stage=document.getElementById('stage');
+function apply(){ world.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${scale})`; }
+stage.addEventListener('mousedown', e=>{ if(e.target.closest('.node,#core,#memory')) return; dragging=true; stage.classList.add('grabbing'); sx=e.clientX-panX; sy=e.clientY-panY; });
+window.addEventListener('mousemove', e=>{ if(!dragging) return; panX=e.clientX-sx; panY=e.clientY-sy; apply(); });
+window.addEventListener('mouseup', ()=>{ dragging=false; stage.classList.remove('grabbing'); });
+stage.addEventListener('wheel', e=>{ e.preventDefault(); scale=Math.min(1.8,Math.max(.45, scale - e.deltaY*0.0011)); apply(); }, {passive:false});
+
+// --- bloom-open detail ---
+const overlay=document.getElementById('overlay'), panelBody=document.getElementById('panelBody');
+function openDetail(n){
+  panelBody.innerHTML = `<h2>${n.title}</h2><div class="sub">${n.sub||'a capability your agent built · verified · reusable'}</div>`+
+    (n.detail||[]).map(r=>`<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')+
+    `<div class="row"><span>Exposed as</span><span>local MCP tool</span></div>`;
+  overlay.classList.add('open');
+}
+document.getElementById('core').addEventListener('click', ()=>openDetail({title:'Artemis', sub:'the agent core — router-first, subscription-backed', detail:[['Now','2 tasks running'],['Model','Codex (sub) · fallback ready'],['Capabilities',NODES.length+' learned'],['Proactive','heartbeat on']]}));
+overlay.addEventListener('click', ()=>overlay.classList.remove('open'));
+document.querySelector('#panel').addEventListener('click', e=>e.stopPropagation());
+document.querySelector('.close').addEventListener('click', ()=>overlay.classList.remove('open'));
+
+// starfield
+const sky=document.getElementById('stage');
+for(let i=0;i<60;i++){ const s=document.createElement('div'); s.className='star'; s.style.left=Math.random()*100+'vw'; s.style.top=Math.random()*100+'vh'; s.style.animationDelay=(Math.random()*6)+'s'; sky.appendChild(s); }
+
+// ⌥Space focuses Ask
+window.addEventListener('keydown', e=>{ if(e.altKey && e.code==='Space'){ e.preventDefault(); document.querySelector('#ask input').focus(); }});
+</script>
+</body>
+</html>
