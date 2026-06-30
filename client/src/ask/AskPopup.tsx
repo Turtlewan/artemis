@@ -49,7 +49,12 @@ const styles = `
   display: grid;
   grid-template-rows: auto auto minmax(120px, 1fr) auto;
   gap: 14px;
-  padding: 18px;
+  padding: 20px;
+  background: #16181d;
+  border: 1px solid #31353f;
+  border-radius: 18px;
+  color: #e9ebee;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   transform: translateY(-10px) scale(0.98);
   opacity: 0;
   transition:
@@ -133,10 +138,26 @@ const styles = `
 
 .ask-input-line {
   gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--hair);
+  padding: 12px 14px;
+  border: 1px solid #3a3f4a;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--bg) 36%, transparent);
+  background: #1e2128;
+}
+
+.ask-send {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 11px;
+  padding: 10px 18px;
+  font: 700 0.95rem/1 "Space Grotesk", system-ui, sans-serif;
+  color: #0b0c0f;
+  background: #7aa2ff;
+  cursor: pointer;
+}
+
+.ask-send:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .ask-input-line label {
@@ -152,10 +173,15 @@ const styles = `
   flex: 1;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: #e9ebee;
   font: 600 1rem/1.2 "Space Grotesk", system-ui, sans-serif;
-  caret-color: var(--p);
+  caret-color: #7aa2ff;
   outline: none;
+}
+
+.ask-input::placeholder {
+  color: #7b818d;
+  font-weight: 500;
 }
 
 .ask-mode-chip,
@@ -187,10 +213,10 @@ const styles = `
 .ask-result-row {
   gap: 12px;
   min-height: 68px;
-  padding: 10px;
-  border: 1px solid var(--hair);
+  padding: 12px 14px;
+  border: 1px solid #31353f;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg) 34%, transparent);
+  background: #1e2128;
 }
 
 .ask-result-row__icon {
@@ -226,8 +252,9 @@ const styles = `
 }
 
 .ask-result-row__subtitle {
-  color: var(--muted);
-  font-size: 0.9rem;
+  color: #d7dae0;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 .ask-result-row .ask-engine-tag {
@@ -356,7 +383,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
   const assistantRows = snapshot.messages.filter((message) => message.role === "assistant");
   const rows: AskDisplayRow[] =
     assistantRows.length === 0 && snapshot.streaming === ""
-      ? [{ id: "empty", text: "Ready when the vault is unlocked.", engine: "local" as const }]
+      ? [{ id: "empty", text: "Ask me anything to get started.", engine: "local" as const }]
       : assistantRows.map((message) => ({
           id: message.id,
           text: message.text === "" ? snapshot.streaming : message.text,
@@ -403,8 +430,12 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                 value={text}
                 onChange={(event) => setText(event.currentTarget.value)}
                 aria-label="Ask Artemis"
+                placeholder="Ask Artemis anything..."
                 autoComplete="off"
               />
+              <button className="ask-send" type="submit" aria-label="Send" disabled={text.trim() === ""}>
+                Send
+              </button>
               <button className="ask-icon-button" type="button" aria-label="Hold to talk" onClick={onMic}>
                 <span className="ask-icon-button__glyph" aria-hidden="true">
                   mic
