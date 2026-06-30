@@ -92,6 +92,15 @@ const styles = `
   border-radius: 999px;
   padding: 4px 9px;
 }
+.ask-chip {
+  font-size: 11px;
+  color: var(--a);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 4px 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 .ask-close {
   background: transparent;
   border: 0;
@@ -155,6 +164,48 @@ const styles = `
 .ask-msg--bot .ask-msg__body {
   background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
   border-top-left-radius: 4px;
+}
+.ask-card {
+  align-self: flex-start;
+  max-width: 88%;
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 15px;
+  background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-card__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.ask-card__meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ask-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ask-cardbtn {
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--p);
+  color: var(--bg);
+  font-weight: 600;
+}
+.ask-cardbtn--ghost {
+  background: transparent;
+  color: var(--text);
+}
+.ask-cardbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ask-speaking {
@@ -325,6 +376,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
               <h2 id={titleId} className="ask-title">
                 Ask Artemis
               </h2>
+              {snapshot.buildMode ? <span className="ask-chip">Building capability</span> : null}
               <span className="ask-engine">{engineTag}</span>
               <button
                 className="ask-close"
@@ -344,6 +396,85 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                   const isUser = message.role === "user";
                   const body =
                     !isUser && message.text === "" ? snapshot.streaming : message.text;
+                  if (message.kind === "plan" && message.plan !== undefined) {
+                    const plan = message.plan;
+                    return (
+                      <div key={message.id} className="ask-msg ask-msg--bot">
+                        <span className="ask-msg__who">Artemis</span>
+                        <div className="ask-card">
+                          <div className="ask-card__title">{plan.name}</div>
+                          <div>{plan.summary}</div>
+                          {plan.secrets.length > 0 ? (
+                            <div className="ask-card__meta">Secrets: {plan.secrets.join(", ")}</div>
+                          ) : null}
+                          {plan.blocked ? (
+                            <div className="ask-card__meta">{plan.block_reason}</div>
+                          ) : null}
+                          <div className="ask-card__actions">
+                            <button
+                              className="ask-cardbtn"
+                              type="button"
+                              disabled={plan.blocked}
+                              onClick={() => void askStore.confirmBuild(message.buildId!)}
+                            >
+                              Build it
+                            </button>
+                            <button
+                              className="ask-cardbtn ask-cardbtn--ghost"
+                              type="button"
+                              onClick={() => askStore.cancelBuild()}
+                            >
+                              Adjust
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (message.kind === "status") {
+                    return (
+                      <div key={message.id} className="ask-msg ask-msg--bot">
+                        <span className="ask-msg__who">Artemis</span>
+                        <div className="ask-card">
+                          <div className="ask-card__meta">{message.text}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (message.kind === "result" && message.result !== undefined) {
+                    const result = message.result;
+                    return (
+                      <div key={message.id} className="ask-msg ask-msg--bot">
+                        <span className="ask-msg__who">Artemis</span>
+                        <div className="ask-card">
+                          <div className="ask-card__title">
+                            {result.passed ? "✓ Verified" : result.blocked ? "Build blocked" : "Build failed"}
+                          </div>
+                          {result.output !== "" ? (
+                            <div className="ask-card__meta">{result.output}</div>
+                          ) : null}
+                          {result.passed ? (
+                            <div className="ask-card__actions">
+                              <button
+                                className="ask-cardbtn"
+                                type="button"
+                                onClick={() => void askStore.promoteBuild(message.buildId!)}
+                              >
+                                Add to my capabilities
+                              </button>
+                              <button
+                                className="ask-cardbtn ask-cardbtn--ghost"
+                                type="button"
+                                onClick={() => askStore.cancelBuild()}
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={message.id}

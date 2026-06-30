@@ -8,6 +8,13 @@ const eventMocks = vi.hoisted(() => ({
   askSummon: undefined as (() => void) | undefined,
 }));
 
+const gatewayMocks = vi.hoisted(() => ({
+  askStream: vi.fn(),
+  capabilityPropose: vi.fn(),
+  capabilityBuild: vi.fn(),
+  capabilityPromote: vi.fn(),
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((_event: string, callback: () => void) => {
     eventMocks.askSummon = callback;
@@ -18,9 +25,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("../api/gateway", () => ({
-  askStream: vi.fn(),
+  askStream: gatewayMocks.askStream,
+  capabilityPropose: gatewayMocks.capabilityPropose,
+  capabilityBuild: gatewayMocks.capabilityBuild,
+  capabilityPromote: gatewayMocks.capabilityPromote,
 }));
 
+import type { BuildPlanCard } from "../api/dto";
+import { connectionStore } from "../state/connection";
 import { AskPopup } from "./AskPopup";
 import { askStore } from "./askStore";
 import { useAskHotkey } from "./useAskHotkey";
@@ -63,6 +75,17 @@ const render = (node: ReactNode): { container: HTMLDivElement; root: Root } => {
   return { container, root };
 };
 
+const planCard = (patch: Partial<BuildPlanCard> = {}): BuildPlanCard => ({
+  build_id: "build-1",
+  name: "Date Utility",
+  description: "Creates a local date helper.",
+  summary: "Add a date utility module.",
+  secrets: [],
+  blocked: false,
+  block_reason: null,
+  ...patch,
+});
+
 function Harness() {
   const ask = useAskHotkey();
   return (
@@ -76,6 +99,11 @@ function Harness() {
 describe("AskPopup", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    gatewayMocks.askStream.mockReset();
+    gatewayMocks.capabilityPropose.mockReset();
+    gatewayMocks.capabilityBuild.mockReset();
+    gatewayMocks.capabilityPromote.mockReset();
+    connectionStore.resetForTest();
     askStore.resetForTest();
     eventMocks.askSummon = undefined;
     window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
@@ -182,5 +210,55 @@ describe("AskPopup", () => {
     });
     expect(container.querySelector(roleSelector("dialog"))).toBeNull();
     expect(document.activeElement).toBe(before);
+  });
+
+  it("renders a plan card and build-mode header chip", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(planCard());
+
+    await act(async () => {
+      await askStore.startBuild("build me a date utility module");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    expect(container.textContent).toContain("Building capability");
+    expect(container.textContent).toContain("Date Utility");
+    expect(getByRole(container, "button", /build it/i)).toBeTruthy();
+  });
+
+  it("wires Build it to confirmBuild with the plan build id", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(planCard());
+    await act(async () => {
+      await askStore.startBuild("build me a date utility module");
+    });
+    const confirmBuild = vi.spyOn(askStore, "confirmBuild").mockResolvedValueOnce(undefined);
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    act(() => {
+      getByRole(container, "button", /build it/i).click();
+    });
+
+    expect(confirmBuild).toHaveBeenCalledWith("build-1");
+    confirmBuild.mockRestore();
+  });
+
+  it("renders a blocked plan reason and disables Build it", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({ blocked: true, block_reason: "Requires a network secret." }),
+    );
+
+    await act(async () => {
+      await askStore.startBuild("build me a calendar capability");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+    const buildButton = getByRole(container, "button", /build it/i) as HTMLButtonElement;
+
+    expect(container.textContent).toContain("Requires a network secret.");
+    expect(buildButton.disabled).toBe(true);
   });
 });

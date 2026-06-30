@@ -1,16 +1,28 @@
 import { useSyncExternalStore } from "react";
 
 import * as gateway from "../api/gateway";
+import type { BuildPlanCard } from "../api/dto";
 import { connectionStore } from "../state/connection";
 import type { AskEngine } from "./EngineTag";
 
 export type AskRole = "user" | "assistant";
 export type AskModeHint = "TASK" | "DIGEST" | "WIND-DOWN";
+export type AskMessageKind = "text" | "plan" | "status" | "result" | "installed";
+
+export interface AskBuildResult {
+  passed: boolean;
+  blocked: boolean;
+  output: string;
+}
 
 export interface AskMessage {
   id: string;
   role: AskRole;
   text: string;
+  kind?: AskMessageKind;
+  plan?: BuildPlanCard;
+  result?: AskBuildResult;
+  buildId?: string;
   engine?: AskEngine;
   path?: string;
   tool?: string;
@@ -31,6 +43,7 @@ export interface AskSnapshot {
   politeAnnouncement: string;
   assertiveAnnouncement: string;
   sending: boolean;
+  buildMode: boolean;
   muted: boolean;
   speaking: boolean;
 }
@@ -46,6 +59,7 @@ const initialSnapshot = (): AskSnapshot => ({
   politeAnnouncement: "",
   assertiveAnnouncement: "",
   sending: false,
+  buildMode: false,
   muted: false,
   speaking: false,
 });
@@ -79,6 +93,17 @@ const deriveEngine = (path?: string, escalated?: boolean): AskEngine => {
 };
 
 const sentenceBoundary = /[.!?]\s*$/u;
+
+// Conservative build-intent match: an imperative build verb near the start + a capability noun.
+// Model-based intent classification is a later upgrade; a false positive only yields a dismissable plan card.
+const BUILD_INTENT =
+  /^\s*(?:please\s+)?(?:build|create|make|write)\b.*\b(capabilit(?:y|ies)|module|tool|skill|recipe|util(?:ity)?|function)\b/i;
+const isBuildIntent = (text: string): boolean => BUILD_INTENT.test(text);
+
+const isConnected = (): boolean => {
+  const state = connectionStore.getSnapshot().state;
+  return state === "connectedLocked" || state === "unlocked";
+};
 
 const publishPolite = (text: string, force = false): void => {
   if (force || sentenceBoundary.test(text)) {
@@ -144,8 +169,12 @@ export const askStore = {
     const trimmed = text.trim();
     if (trimmed === "") return;
 
-    const connectionState = connectionStore.getSnapshot().state;
-    if (connectionState !== "connectedLocked" && connectionState !== "unlocked") {
+    if (isBuildIntent(trimmed)) {
+      await this.startBuild(trimmed);
+      return;
+    }
+
+    if (!isConnected()) {
       unlockPrompt();
       update({ assertiveAnnouncement: "Not connected - re-authentication required" });
       return;
@@ -224,6 +253,76 @@ export const askStore = {
     } finally {
       if (snapshot.sending) update({ sending: false });
     }
+  },
+  async startBuild(goal: string): Promise<void> {
+    const trimmed = goal.trim();
+    if (trimmed === "") return;
+    if (!isConnected()) {
+      unlockPrompt();
+      update({ assertiveAnnouncement: "Not connected - re-authentication required" });
+      return;
+    }
+    appendMessage({ id: id(), role: "user", text: trimmed });
+    update({ buildMode: true, sending: true, assertiveAnnouncement: "" });
+    try {
+      const plan = await gateway.capabilityPropose(trimmed);
+      appendMessage({
+        id: id(),
+        role: "assistant",
+        text: "",
+        kind: "plan",
+        plan,
+        buildId: plan.build_id,
+      });
+    } finally {
+      update({ sending: false });
+    }
+  },
+  async confirmBuild(buildId: string): Promise<void> {
+    const statusId = id();
+    appendMessage({ id: statusId, role: "assistant", text: "Starting…", kind: "status", buildId });
+    update({ sending: true });
+    let result: AskBuildResult | null = null;
+    try {
+      for await (const event of gateway.capabilityBuild(buildId)) {
+        if (event.type === "build_status") {
+          appendTextToMessage(statusId, event.text);
+        } else if (event.type === "build_result") {
+          result = { passed: event.passed, blocked: event.blocked, output: event.output };
+        } else if (event.type === "error") {
+          appendTextToMessage(statusId, "Build error.");
+        }
+      }
+      if (result !== null) {
+        appendMessage({
+          id: id(),
+          role: "assistant",
+          text: "",
+          kind: "result",
+          result,
+          buildId,
+        });
+      }
+    } finally {
+      update({ sending: false });
+    }
+  },
+  async promoteBuild(buildId: string): Promise<void> {
+    update({ sending: true });
+    try {
+      const installed = await gateway.capabilityPromote(buildId);
+      appendMessage({
+        id: id(),
+        role: "assistant",
+        text: `Added "${installed.name}". It's now a node on your map.`,
+        kind: "installed",
+      });
+    } finally {
+      update({ sending: false, buildMode: false });
+    }
+  },
+  cancelBuild(): void {
+    update({ buildMode: false });
   },
 };
 

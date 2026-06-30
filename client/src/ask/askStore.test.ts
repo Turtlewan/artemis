@@ -2,18 +2,46 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   askStream: vi.fn(),
+  capabilityPropose: vi.fn(),
+  capabilityBuild: vi.fn(),
+  capabilityPromote: vi.fn(),
 }));
 
 vi.mock("../api/gateway", () => ({
   askStream: mocks.askStream,
+  capabilityPropose: mocks.capabilityPropose,
+  capabilityBuild: mocks.capabilityBuild,
+  capabilityPromote: mocks.capabilityPromote,
 }));
 
+import type { BuildPlanCard, InstalledCard } from "../api/dto";
 import { connectionStore } from "../state/connection";
 import { askStore } from "./askStore";
+
+const planCard = (patch: Partial<BuildPlanCard> = {}): BuildPlanCard => ({
+  build_id: "build-1",
+  name: "Date Utility",
+  description: "Creates a local date helper.",
+  summary: "Add a date utility module.",
+  secrets: [],
+  blocked: false,
+  block_reason: null,
+  ...patch,
+});
+
+const installedCard = (patch: Partial<InstalledCard> = {}): InstalledCard => ({
+  name: "Date Utility",
+  version: 1,
+  path: "capabilities/date-utility",
+  ...patch,
+});
 
 describe("askStore", () => {
   beforeEach(() => {
     mocks.askStream.mockReset();
+    mocks.capabilityPropose.mockReset();
+    mocks.capabilityBuild.mockReset();
+    mocks.capabilityPromote.mockReset();
     connectionStore.resetForTest();
     askStore.resetForTest();
   });
@@ -86,5 +114,93 @@ describe("askStore", () => {
     expect(raiseUnlock).toHaveBeenCalledTimes(1);
     expect(askStore.getSnapshot().assertiveAnnouncement).toContain("Vault locked");
     expect(askStore.getSnapshot().engineStatus.codex).toBe(false);
+  });
+
+  it("routes build intent to capability propose and appends a plan message", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.capabilityPropose.mockResolvedValueOnce(planCard());
+
+    await askStore.send("build me a date utility module");
+
+    const snapshot = askStore.getSnapshot();
+    expect(mocks.capabilityPropose).toHaveBeenCalledWith("build me a date utility module");
+    expect(mocks.askStream).not.toHaveBeenCalled();
+    expect(snapshot.buildMode).toBe(true);
+    expect(snapshot.messages).toMatchObject([
+      { role: "user", text: "build me a date utility module" },
+      { role: "assistant", kind: "plan", buildId: "build-1", plan: { name: "Date Utility" } },
+    ]);
+  });
+
+  it("keeps normal non-build messages on askStream", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.askStream.mockImplementationOnce(async function* () {
+      yield { type: "text", text: "Normal answer." };
+      yield { type: "done", path: "local", escalated: false };
+    });
+
+    await askStore.send("what is my status");
+
+    expect(mocks.askStream).toHaveBeenCalledWith({ text: "what is my status", speak: true });
+    expect(mocks.capabilityPropose).not.toHaveBeenCalled();
+  });
+
+  it("confirmBuild streams status and appends a passing result message", async () => {
+    mocks.capabilityBuild.mockImplementationOnce(async function* () {
+      yield { type: "build_status", text: "Running checks" };
+      yield { type: "build_result", build_id: "build-1", passed: true, blocked: false, output: "ok" };
+      yield { type: "done" };
+    });
+
+    await askStore.confirmBuild("build-1");
+
+    const snapshot = askStore.getSnapshot();
+    expect(mocks.capabilityBuild).toHaveBeenCalledWith("build-1");
+    expect(snapshot.messages).toMatchObject([
+      { role: "assistant", kind: "status", text: "Running checks", buildId: "build-1" },
+      {
+        role: "assistant",
+        kind: "result",
+        buildId: "build-1",
+        result: { passed: true, blocked: false, output: "ok" },
+      },
+    ]);
+  });
+
+  it("promoteBuild appends installed confirmation and clears build mode", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.capabilityPropose.mockResolvedValueOnce(planCard());
+    mocks.capabilityPromote.mockResolvedValueOnce(installedCard());
+
+    await askStore.startBuild("build a date utility module");
+    await askStore.promoteBuild("build-1");
+
+    const snapshot = askStore.getSnapshot();
+    expect(mocks.capabilityPromote).toHaveBeenCalledWith("build-1");
+    expect(snapshot.buildMode).toBe(false);
+    expect(snapshot.messages[snapshot.messages.length - 1]).toMatchObject({
+      role: "assistant",
+      kind: "installed",
+      text: `Added "Date Utility". It's now a node on your map.`,
+    });
+  });
+
+  it("appends blocked plan messages from capability propose", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({ blocked: true, block_reason: "Requires a network secret." }),
+    );
+
+    await askStore.send("build me a calendar capability");
+
+    const plan = askStore.getSnapshot().messages.find((message) => message.kind === "plan");
+    expect(plan).toMatchObject({
+      kind: "plan",
+      plan: { blocked: true, block_reason: "Requires a network secret." },
+    });
   });
 });
