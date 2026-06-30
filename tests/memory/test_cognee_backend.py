@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import ModuleType, SimpleNamespace
+from collections.abc import Sequence
 
 import pytest
 
@@ -29,6 +30,16 @@ class FakeCognee(ModuleType):
     async def search(self, *, query_type: object, query_text: str) -> list[object]:
         self.search_calls.append((query_type, query_text))
         return self._search_results
+
+
+class FakeEmbedder:
+    def __init__(self, embeddings: list[list[float]]) -> None:
+        self.calls: list[list[str]] = []
+        self._embeddings = embeddings
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        return self._embeddings
 
 
 def test_assemble_applies_token_budget() -> None:
@@ -143,6 +154,47 @@ async def test_retrieve_wires_chunks_to_pipeline_and_collapses_duplicate() -> No
         "stock prices fell sharply",
     ]
     assert result.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_retrieve_uses_embedding_mmr_when_embedder_is_injected() -> None:
+    fake = FakeCognee(
+        [
+            "the cat sat on the mat",
+            "the cat sat on the mat today",
+            "stock prices fell sharply",
+            "weather stayed clear",
+        ]
+    )
+    embedder = FakeEmbedder(
+        [
+            [1.0, 0.0],
+            [0.99, 0.01],
+            [0.0, 1.0],
+            [0.0, 0.8],
+        ]
+    )
+    mem = CogneeMemory(
+        MemoryConfig(retrieve_candidates=2),
+        cognee_module=fake,
+        embedder=embedder,
+    )
+
+    result = await mem.retrieve("q", token_budget=10000)
+
+    assert embedder.calls == [
+        [
+            "the cat sat on the mat",
+            "the cat sat on the mat today",
+            "stock prices fell sharply",
+            "weather stayed clear",
+        ]
+    ]
+    assert [item.content for item in result.items] == [
+        "the cat sat on the mat",
+        "stock prices fell sharply",
+    ]
+    assert "the cat sat on the mat today" not in [item.content for item in result.items]
 
 
 @pytest.mark.asyncio

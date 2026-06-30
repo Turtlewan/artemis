@@ -20,4 +20,5 @@ class MemoryConfig(BaseModel):
     layer_datasets: dict[str, str] = Field(default_factory=dict)
     retrieve_candidates: int = 20
     mmr_lambda: float = 0.7
+    use_embedding_mmr: bool = True
     search_type: str = "CHUNKS"

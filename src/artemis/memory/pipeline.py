@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import math
 from collections.abc import Callable, Sequence
 from typing import Protocol
 
@@ -64,6 +65,51 @@ def mmr_select(
         selected.append(pool.pop(best_i))
 
     return selected
+
+
+def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def embedding_mmr_select(
+    items: Sequence[MemoryItem],
+    embeddings: Sequence[Sequence[float]],
+    *,
+    k: int,
+    mmr_lambda: float = 0.7,
+) -> list[MemoryItem]:
+    """Select items with MMR using embedding cosine for diversity."""
+    pool = list(range(len(items)))
+    selected: list[int] = []
+    item_count = max(1, len(items))
+
+    while pool and len(selected) < k:
+        best_i = 0
+        best_score = float("-inf")
+        for i, candidate_index in enumerate(pool):
+            relevance = 1.0 - (candidate_index / item_count)
+            candidate_embedding = embeddings[candidate_index]
+            diversity_penalty = max(
+                (
+                    cosine_similarity(candidate_embedding, embeddings[selected_index])
+                    for selected_index in selected
+                ),
+                default=0.0,
+            )
+            score = mmr_lambda * relevance - (1 - mmr_lambda) * diversity_penalty
+            if score > best_score:
+                best_i = i
+                best_score = score
+        selected.append(pool.pop(best_i))
+
+    return [items[index] for index in selected]
 
 
 def estimate_tokens(text: str) -> int:

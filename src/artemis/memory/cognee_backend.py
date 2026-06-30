@@ -9,7 +9,13 @@ from types import ModuleType
 from typing import Protocol, cast
 
 from artemis.memory.config import MemoryConfig
-from artemis.memory.pipeline import identity_reranker, run_pipeline
+from artemis.memory.pipeline import (
+    assemble,
+    embedding_mmr_select,
+    identity_reranker,
+    run_pipeline,
+)
+from artemis.ports.embedding import EmbeddingPort
 from artemis.types import MemoryItem, RetrievedContext
 
 
@@ -33,9 +39,11 @@ class CogneeMemory:
         config: MemoryConfig | None = None,
         *,
         cognee_module: ModuleType | None = None,
+        embedder: EmbeddingPort | None = None,
     ) -> None:
         self._config = config or MemoryConfig()
         self._cognee = cognee_module
+        self._embedder = embedder
         self._configured = cognee_module is not None
 
     def _engine(self) -> ModuleType:
@@ -82,9 +90,20 @@ class CogneeMemory:
             query_type = getattr(search_type, "CHUNKS")
         search = cast(_CogneeSearch, getattr(cog, "search"))
         raw = await search(query_type=query_type, query_text=query)
+        candidates = _as_items(raw, layers)
+        ranked = identity_reranker(query, candidates)
+        if self._embedder is not None and self._config.use_embedding_mmr:
+            vecs = await self._embedder.embed([candidate.content for candidate in ranked])
+            deduped = embedding_mmr_select(
+                ranked,
+                vecs,
+                k=self._config.retrieve_candidates,
+                mmr_lambda=self._config.mmr_lambda,
+            )
+            return assemble(deduped, token_budget=token_budget)
         return run_pipeline(
             query,
-            _as_items(raw, layers),
+            candidates,
             token_budget=token_budget,
             mmr_lambda=self._config.mmr_lambda,
             k=self._config.retrieve_candidates,

@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from artemis.memory.pipeline import assemble, lexical_similarity, mmr_select, run_pipeline
+import pytest
+
+from artemis.memory.pipeline import (
+    assemble,
+    cosine_similarity,
+    embedding_mmr_select,
+    lexical_similarity,
+    mmr_select,
+    run_pipeline,
+)
 from artemis.types import MemoryItem
 
 
@@ -31,6 +40,22 @@ def test_mmr_drops_near_duplicate_for_novel_item() -> None:
         "the cat sat on the mat",
         "stock prices fell sharply",
     ]
+
+
+def test_cosine_similarity_scores_identical_orthogonal_and_invalid_vectors() -> None:
+    assert cosine_similarity([1.0, 2.0], [1.0, 2.0]) == pytest.approx(1.0)
+    assert cosine_similarity([1.0, 0.0], [0.0, 1.0]) == 0.0
+    assert cosine_similarity([1.0], [1.0, 2.0]) == 0.0
+    assert cosine_similarity([0.0, 0.0], [1.0, 2.0]) == 0.0
+
+
+def test_embedding_mmr_drops_vector_near_duplicate_for_distant_item() -> None:
+    items = [_item("alpha original"), _item("alpha paraphrase"), _item("distant")]
+    embeddings = [[1.0, 0.0], [0.99, 0.01], [0.0, 1.0]]
+
+    selected = embedding_mmr_select(items, embeddings, k=2)
+
+    assert [item.content for item in selected] == ["alpha original", "distant"]
 
 
 def test_run_pipeline_honors_rerank_order() -> None:
