@@ -17,7 +17,7 @@ _Last updated by planning mode:_ 2026-06-30
 
 ## Current state — Slices 0–2 complete
 
-All green on `v2-rebuild` (mypy --strict · 91 tests · ruff clean). HEAD `f2a1bea`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
+All green on `v2-rebuild` (mypy --strict 88 files · 152 tests · ruff clean). HEAD `67719e5`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
 
 - **Slice 0 — spine proves itself.** Scaffold + 5 typed ports + model layer + schema-normalization shim + minimal plan→act→verify loop + one capability through its full lifecycle (author → sandbox → promote to `SKILL.md` → reuse).
 - **Slice 1 — model layer.** Own `QuotaAwareRouter` over the four-provider subscription-first chain (codex → claude_code → anthropic_api → ollama); per-backend schema down-conversion lives in each `RawProvider`. **LiteLLM rejected** (architecture.md §2).
@@ -30,6 +30,11 @@ All green on `v2-rebuild` (mypy --strict · 91 tests · ruff clean). HEAD `f2a1b
 - **`v2-16` Telegram transport — done (built by Codex).** `TelegramTransport` (Bot API: send + allowlisted long-poll receive) + `telegram_from_env`; `uv run artemis` env-selects Telegram else console. Hermetically tested (`httpx.MockTransport`). **Not yet run live** (manual go-live — see Open Questions).
 - **`v2-17` schedule-management CLI — done (built by Codex).** `artemis add/list/cancel/run` (argparse, all in `app.py`, no new deps). Live-smoked: real `uv run artemis add/list/cancel` round-trip works. mypy 73 files · 117 tests · ruff clean.
 - **Next:** wire the Tauri desktop UI (first touch of `client/`) → event-based watchers (via `scheduler.emit`) → a real secret store (Telegram token is an env stopgap).
+
+**Capability-build slice — build-by-chat (in progress).** Turns the forge's one-shot autonomous build into a gated conversation in the Ask popup (owner approves the plan, then the verified result), so the owner builds capabilities *by talking to Artemis* — the v2 dogfood thesis. Design note: `docs/v2/capability-build-ux.md`.
+- **`CB-1` gated, network-guarded forge — done (Codex, `2efaa7e`).** Split `CapabilityForge.build()` into `propose` (author + safety-classify, no execution) → `build_proposed` (sandbox-verify, self-correcting, no promote) → `promote`. Added `scan_for_unsafe_imports` (AST import-level guard) that blocks network/process-touching capabilities from running in the no-isolation `SubprocessSandbox` — enforces "network capabilities wait for WSL2." Backend only.
+- **`CB-2` brain build endpoints — done (Codex, `67719e5`).** `/app/capabilities/propose` (→ PlanCard) · `/{build_id}/build` (SSE `status`→`result`→`[DONE]`) · `/promote` (→ InstalledCard). Forge wired onto `app.state` at the real data root (`<data_dir>/capabilities`); in-flight proposals held server-side between the two gates; `sandbox` injection seam on `create_app`. Session-gated.
+- **Next:** `CB-3` client gateway (Rust `app_capability_*` commands + SSE→`Channel` bridge + TS wrappers) → `CB-4` the visible build mode (Ask popup plan/status/result cards + "Building capability" chip + intent heuristic + askStore flow) → `CB-5` promoted capability becomes a map node (`/app/capabilities` list). First dogfood capability is network-free (no WSL2 dependency); WSL2 sandbox + `email_intake`-through-the-real-flow is the thread after.
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
