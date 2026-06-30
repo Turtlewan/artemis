@@ -11,7 +11,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, SessionStore
+from artemis.api import ask_routes
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
+from artemis.model.compose import build_model_router
+from artemis.ports.model import ModelPort
 
 
 class HealthResponse(BaseModel):
@@ -24,7 +27,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app(*, data_dir: str | Path | None = None) -> FastAPI:
+def create_app(*, data_dir: str | Path | None = None, model: ModelPort | None = None) -> FastAPI:
     resolved_data_dir = (
         Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
     )
@@ -33,10 +36,12 @@ def create_app(*, data_dir: str | Path | None = None) -> FastAPI:
     app.state.app_auth = AppAuth(registry, ChallengeStore(), SessionStore())
     app.state.pairing_codes = PairingCodeStore()
     app.state.rate_limiter = RateLimiter()
+    app.state.model = model if model is not None else build_model_router()
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
         return HealthResponse(status="ok")
 
     app.include_router(app_router)
+    app.include_router(ask_routes.router)
     return app
