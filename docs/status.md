@@ -25,8 +25,9 @@ All green on `v2-rebuild` (mypy --strict · 91 tests · ruff clean). HEAD `f2a1b
 
 **Slice 3 — proactivity + transport (in progress).** First slice that makes Artemis *act*; the first to touch `client/`.
 - **`v2-13` durable scheduler — done.** SQLite-backed `Scheduler` (cron via croniter + one-shot) + heartbeat loop + fire-once catch-up after reboot; `dispatch` is an injected seam.
-- **`v2-14` proactive worker — done.** `ProactiveWorker.run_job` (the scheduler's `dispatch`): job payload → `Task` → `Spine.run` → proactive `OutboundMessage` out a `TransportPort`. The time-based loop is proven end-to-end (scheduler→spine→transport) in tests. mypy 66 files · 104 tests · ruff clean.
-- **Next:** a real `TransportPort` (Telegram bot adapter first) so pushes leave the box → watchers (event-based, via `scheduler.emit`) → wire the Tauri desktop UI → a runner that composes router+worker+scheduler and calls `scheduler.run()`.
+- **`v2-14` proactive worker — done.** `ProactiveWorker.run_job` (the scheduler's `dispatch`): job payload → `Task` → `Spine.run` → proactive `OutboundMessage` out a `TransportPort`. The time-based loop is proven end-to-end (scheduler→spine→transport) in tests.
+- **`v2-15` runner + console transport — done (built by Codex).** `ConsoleTransport` (first real `TransportPort`) + `App`/`build_app` + an `artemis` console-script. **`uv run artemis` is now a live always-on heartbeat.** mypy 70 files · 108 tests · ruff clean (whole project; also cleared the old `sandbox.py` format drift, `8603623`).
+- **Next:** a **Telegram bot adapter** (real `TransportPort` so pushes reach the phone) → wire the Tauri desktop UI → event-based watchers (via `scheduler.emit`) → a schedule-management CLI.
 
 <!-- Do not remove or rename the CODING:START/END or PLANNING:START/END comment markers. They are used by automated writers to locate their blocks. -->
 
@@ -48,7 +49,8 @@ _(none ready — Slice 3 specs not yet written.)_
 > ⚠️ The specs still sitting in `docs/changes/` (`M0-*`, `M2-*`, `M3-d`, `M5-a`, `CLIENT-*`, `BUILD-ORDER.md`) are **archived-stale v1** — do **not** build them. They survive the pivot only because the v1 cleanup is pending (see Open Questions). v2 specs live in `docs/changes/done/` (`v2-00`…`v2-12`).
 
 ## Open Questions
-- **Next Slice-3 spec** — a real `TransportPort` so proactive pushes leave the box (Telegram bot adapter first; bot token = keychain secret per architecture §7). Then: event-based watchers (via `scheduler.emit`), wiring the Tauri desktop UI, and a runner that composes router+worker+scheduler and calls `scheduler.run()`. The `should_fire` quota-budget gate and the per-job acceptance/verification option remain seams (defaults: always-fire, no acceptance).
+- **Next Slice-3 spec** — a **Telegram bot adapter** (real `TransportPort`: send proactive + receive, chat-ID allowlist, bot token = keychain secret per architecture §7); drops in behind `build_app(transport=...)`. Then: wire the Tauri desktop UI, event-based watchers (via `scheduler.emit`), and a schedule-management CLI (`main()` only starts the loop today). The `should_fire` quota-budget gate and per-job acceptance remain seams (defaults: always-fire, no acceptance).
+- **Stale v1 dirs under `src/artemis/`** (`cli`, `voice`, `reactions`, `proactive`, `knowledge`, …) — the v2 scaffold left v1 directories in place; prune as part of the v1-cleanup item.
 - **Layering follow-up (review ⚠️):** `memory/embedder.py` imports `ProviderUnavailableError` from `artemis.model.errors`, transitively loading the model providers (anthropic). Relocate the failover-error taxonomy to a neutral module (e.g. `artemis/errors.py`) so memory doesn't drag in model providers.
 - **`SubprocessSandbox` is interim** (timed host subprocess, no isolation). The WSL2-isolated runner (no-network + egress allowlist + resource caps) is **required before any *externally*-authored capability is trusted** — swaps in behind the `SandboxRunner` protocol. Security gate, not optional.
 - **Pre-existing `capabilities/sandbox.py` ruff-format drift** (from Slice 0) — still unfixed; fold into the next capabilities-touching spec or a one-line `ruff format` cleanup.
