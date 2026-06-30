@@ -1,0 +1,20 @@
+"""Configuration for Artemis memory backends."""
+
+from pydantic import BaseModel, Field
+
+
+class MemoryConfig(BaseModel):
+    """Cognee memory backend configuration."""
+
+    llm_provider: str = "ollama"
+    llm_model: str = "qwen3:4b"
+    llm_endpoint: str = "http://localhost:11434/v1"
+    llm_api_key: str = "ollama"
+    embedding_provider: str = "ollama"
+    embedding_model: str = "qwen3-embedding:0.6b"
+    embedding_endpoint: str = "http://localhost:11434/api/embed"
+    embedding_dim: int = 1024
+    embedding_tokenizer: str = "Qwen/Qwen3-Embedding-0.6B"
+    data_root: str | None = None
+    default_dataset: str = "artemis"
+    layer_datasets: dict[str, str] = Field(default_factory=dict)
