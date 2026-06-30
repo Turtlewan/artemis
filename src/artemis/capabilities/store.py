@@ -121,6 +121,9 @@ class FileCapabilityStore:
             return None
         return self._read_skill(skill_path)
 
+    def staging_dir(self, staged_id: str) -> Path:
+        return self._staging / staged_id
+
     def _read_draft(self, staged_dir: Path) -> SkillDraft:
         meta, body = read_skill_md(staged_dir / "SKILL.md")
         tool_path = staged_dir / "tool.py"
