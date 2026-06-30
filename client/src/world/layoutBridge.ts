@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CardPlacement, LayoutDTO } from "../api/dto";
 import { layoutStore } from "../state/layout";
-import { defaultPlacements } from "./clusters";
 
 export interface LayoutBridge {
   placements: CardPlacement[];
@@ -16,8 +15,9 @@ const layoutFromPlacements = (placements: CardPlacement[]): LayoutDTO => ({
   cards: placements,
 });
 
-const validCards = (layout: LayoutDTO): CardPlacement[] =>
-  layout.cards.length > 0 ? layout.cards : defaultPlacements();
+// v2: the brain's capability-backed layout is the ONLY source of map nodes; no hardcoded
+// client-side domain seed. An empty layout means an empty map (nothing has been built yet).
+const validCards = (layout: LayoutDTO): CardPlacement[] => layout.cards;
 
 /** Bridges world card positions to CLIENT-core's debounced, brain-synced layout store. */
 export function useLayoutBridge(enabled = true): LayoutBridge {
@@ -33,7 +33,7 @@ export function useLayoutBridge(enabled = true): LayoutBridge {
     };
     const unsubscribe = layoutStore.subscribe(sync);
     void layoutStore.loadOnConnect().catch(() => {
-      if (active) setPlacements(defaultPlacements());
+      if (active) setPlacements([]);
     });
     sync();
     return () => {
@@ -51,7 +51,7 @@ export function useLayoutBridge(enabled = true): LayoutBridge {
   }, []);
 
   const resetToDefault = useCallback(() => {
-    const next = defaultPlacements();
+    const next: CardPlacement[] = [];
     setPlacements(next);
     layoutStore.saveAfterDragEnd(layoutFromPlacements(next), 0);
   }, []);

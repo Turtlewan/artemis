@@ -57,12 +57,13 @@ describe("world shell contracts", () => {
     expect(markup).toContain("inert=");
   });
 
-  it("layout bridge uses cluster defaults, persists DTO cards, and can reset to seed", () => {
-    const defaults = defaultPlacements();
-    expect(layoutBridgeTestApi.validCards({ version: 1, updated_at: "", cards: [] })).toEqual(defaults);
-    expect(
-      layoutBridgeTestApi.layoutFromPlacements(defaults).cards.map((placement) => placement.domain),
-    ).toEqual(WORLD_DOMAINS);
+  it("layout bridge uses the brain layout as the only node source (no hardcoded seed)", () => {
+    // v2: empty brain layout => empty map; brain-provided cards pass through unchanged.
+    expect(layoutBridgeTestApi.validCards({ version: 1, updated_at: "", cards: [] })).toEqual([]);
+    const sample = defaultPlacements().slice(0, 1);
+    expect(layoutBridgeTestApi.validCards({ version: 1, updated_at: "", cards: sample })).toEqual(
+      sample,
+    );
   });
 
   it("Home and Escape share the same overview target", () => {
