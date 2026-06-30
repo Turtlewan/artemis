@@ -3,6 +3,9 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AskRequest,
   AskResponse,
+  BuildPlanCard,
+  BuildStreamEvent,
+  InstalledCard,
   LayoutDTO,
   OkResponse,
   ReviewItem,
@@ -79,11 +82,12 @@ export const layoutGet = (): Promise<LayoutDTO> => call("app_layout_get");
 export const layoutPut = (layout: LayoutDTO): Promise<LayoutDTO> =>
   call("app_layout_put", { layout });
 
-async function* streamCommand(
+async function* streamCommand<E extends { type: string }>(
   command: string,
-  args: (channel: Channel<StreamEvent>) => Record<string, unknown>,
-): AsyncGenerator<StreamEvent> {
-  const queue: StreamEvent[] = [];
+  args: (channel: Channel<E>) => Record<string, unknown>,
+  isFinal: (event: E) => boolean,
+): AsyncGenerator<E> {
+  const queue: E[] = [];
   let resolveNext: (() => void) | null = null;
   let finished = false;
 
@@ -92,10 +96,10 @@ async function* streamCommand(
     resolveNext = null;
   };
 
-  const channel = new Channel<StreamEvent>();
+  const channel = new Channel<E>();
   channel.onmessage = (event) => {
     queue.push(event);
-    if (event.type === "done" || event.type === "vault_locked") {
+    if (isFinal(event)) {
       finished = true;
     }
     wake();
@@ -118,10 +122,32 @@ async function* streamCommand(
 
 /** Stream a text Ask request as typed SSE events yielded asynchronously. */
 export async function* askStream(request: AskRequest): AsyncGenerator<StreamEvent> {
-  yield* streamCommand("app_ask_stream", (channel) => ({ request, channel }));
+  yield* streamCommand<StreamEvent>(
+    "app_ask_stream",
+    (channel) => ({ request, channel }),
+    (event) => event.type === "done" || event.type === "vault_locked",
+  );
 }
 
 /** Trigger a push-to-talk voice Ask and stream the answer as typed SSE events. @param speak - whether the brain should also speak the answer aloud. */
 export async function* askVoice(speak: boolean): AsyncGenerator<StreamEvent> {
-  yield* streamCommand("app_ask_voice", (channel) => ({ speak, channel }));
+  yield* streamCommand<StreamEvent>(
+    "app_ask_voice",
+    (channel) => ({ speak, channel }),
+    (event) => event.type === "done" || event.type === "vault_locked",
+  );
+}
+
+export const capabilityPropose = (goal: string): Promise<BuildPlanCard> =>
+  call("app_capability_propose", { goal });
+
+export const capabilityPromote = (buildId: string): Promise<InstalledCard> =>
+  call("app_capability_promote", { buildId });
+
+export async function* capabilityBuild(buildId: string): AsyncGenerator<BuildStreamEvent> {
+  yield* streamCommand<BuildStreamEvent>(
+    "app_capability_build",
+    (channel) => ({ buildId, channel }),
+    (event) => event.type === "done" || event.type === "error",
+  );
 }

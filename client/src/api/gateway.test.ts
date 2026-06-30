@@ -75,6 +75,69 @@ describe("gateway facade", () => {
     });
   });
 
+  it("invokes app_capability_propose with the goal and returns the plan card", async () => {
+    const card = {
+      build_id: "b",
+      name: "Planner",
+      description: "Plan things",
+      summary: "Adds planning",
+      secrets: ["TOKEN"],
+      blocked: false,
+      block_reason: null,
+    };
+    mocks.invoke.mockResolvedValueOnce(card);
+
+    await expect(gateway.capabilityPropose("Build a planner…")).resolves.toEqual(card);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_capability_propose", {
+      goal: "Build a planner…",
+    });
+  });
+
+  it("invokes app_capability_promote with the build id", async () => {
+    const installed = { name: "Planner", version: 1, path: "/capabilities/planner" };
+    mocks.invoke.mockResolvedValueOnce(installed);
+
+    await expect(gateway.capabilityPromote("b")).resolves.toEqual(installed);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_capability_promote", { buildId: "b" });
+  });
+
+  it("streams capability build events until done", async () => {
+    mocks.invoke.mockImplementationOnce((_command: string, args?: Record<string, unknown>) => {
+      const channel = args?.channel as { onmessage: ((event: unknown) => void) | null };
+      channel.onmessage?.({ type: "build_status", text: "Testing in sandbox…" });
+      channel.onmessage?.({
+        type: "build_result",
+        build_id: "b",
+        passed: true,
+        blocked: false,
+        output: "ok",
+      });
+      channel.onmessage?.({ type: "done" });
+      return Promise.resolve();
+    });
+
+    const events = [];
+    for await (const event of gateway.capabilityBuild("b")) {
+      events.push(event);
+    }
+
+    expect(mocks.invoke).toHaveBeenCalledWith("app_capability_build", {
+      buildId: "b",
+      channel: expect.any(Object),
+    });
+    expect(events).toEqual([
+      { type: "build_status", text: "Testing in sandbox…" },
+      {
+        type: "build_result",
+        build_id: "b",
+        passed: true,
+        blocked: false,
+        output: "ok",
+      },
+      { type: "done" },
+    ]);
+  });
+
   it("layout store discards stale PUT responses by updated_at", async () => {
     const newer = {
       version: 1,

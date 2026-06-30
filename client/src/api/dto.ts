@@ -180,6 +180,28 @@ export type StreamEvent =
   | { type: "vault_locked" }
   | { type: "done"; path?: string; tool_used?: string; escalated?: boolean };
 
+export interface BuildPlanCard {
+  build_id: string;
+  name: string;
+  description: string;
+  summary: string;
+  secrets: string[];
+  blocked: boolean;
+  block_reason: string | null;
+}
+
+export interface InstalledCard {
+  name: string;
+  version: number;
+  path: string;
+}
+
+export type BuildStreamEvent =
+  | { type: "build_status"; text: string }
+  | { type: "build_result"; build_id: string; passed: boolean; blocked: boolean; output: string }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
 export interface OkResponse {
   ok: boolean;
 }

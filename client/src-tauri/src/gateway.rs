@@ -73,6 +73,34 @@ pub(crate) struct VoiceAskRequest {
     speak: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct CapabilityProposeRequest {
+    goal: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct PlanCard {
+    build_id: String,
+    name: String,
+    description: String,
+    summary: String,
+    secrets: Vec<String>,
+    blocked: bool,
+    block_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CapabilityPromoteRequest {
+    build_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct InstalledCard {
+    name: String,
+    version: i64,
+    path: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct AskResponse {
     text: String,
@@ -172,6 +200,32 @@ pub(crate) enum StreamEvent {
         tool_used: Option<String>,
         escalated: bool,
     },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub(crate) enum BuildStreamEvent {
+    #[serde(rename = "build_status")]
+    Status { text: String },
+    #[serde(rename = "build_result")]
+    Result {
+        build_id: String,
+        passed: bool,
+        blocked: bool,
+        output: String,
+    },
+    #[serde(rename = "done")]
+    Done,
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+#[derive(Debug, Deserialize)]
+struct BuildResultFrame {
+    build_id: String,
+    passed: bool,
+    blocked: bool,
+    output: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -424,6 +478,34 @@ pub(crate) async fn ask(
     request_json(state, Method::POST, "/app/ask", Some(&request), true).await
 }
 
+pub(crate) async fn capability_propose(
+    state: &AppState,
+    goal: String,
+) -> Result<PlanCard, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/capabilities/propose",
+        Some(&CapabilityProposeRequest { goal }),
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn capability_promote(
+    state: &AppState,
+    build_id: String,
+) -> Result<InstalledCard, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/capabilities/promote",
+        Some(&CapabilityPromoteRequest { build_id }),
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn lock(state: &AppState) -> Result<OkResponse, GatewayError> {
     let response =
         request_json::<LockResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
@@ -472,6 +554,39 @@ pub(crate) fn parse_stream_frame(frame: &str) -> Result<Option<StreamEvent>, Gat
     Ok(Some(StreamEvent::Text {
         text: data.to_string(),
     }))
+}
+
+/// Map one SSE `data:` payload, tagged by the preceding `event:` line, to a typed build event.
+pub(crate) fn parse_build_frame(
+    event: Option<&str>,
+    data: &str,
+) -> Result<Option<BuildStreamEvent>, GatewayError> {
+    let data = data.trim();
+    if data.is_empty() {
+        return Ok(None);
+    }
+    if data == "[DONE]" {
+        return Ok(Some(BuildStreamEvent::Done));
+    }
+    match event {
+        Some("status") => Ok(Some(BuildStreamEvent::Status {
+            text: data.to_string(),
+        })),
+        Some("result") => {
+            let frame: BuildResultFrame =
+                serde_json::from_str(data).map_err(|_| GatewayError::Network)?;
+            Ok(Some(BuildStreamEvent::Result {
+                build_id: frame.build_id,
+                passed: frame.passed,
+                blocked: frame.blocked,
+                output: frame.output,
+            }))
+        }
+        Some("error") => Ok(Some(BuildStreamEvent::Error {
+            message: data.to_string(),
+        })),
+        _ => Ok(None),
+    }
 }
 
 pub(crate) async fn ask_stream(
@@ -525,6 +640,35 @@ pub(crate) async fn ask_voice(
         };
         if let Some(event) = parse_stream_frame(data)? {
             channel.send(event).map_err(|_| GatewayError::Network)?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn capability_build(
+    state: &AppState,
+    build_id: String,
+    channel: Channel<BuildStreamEvent>,
+) -> Result<(), GatewayError> {
+    let url = format!("{}/app/capabilities/{}/build", base_url(state)?, build_id);
+    let response = client().post(url).bearer_auth(bearer(state)?).send().await?;
+    if !response.status().is_success() {
+        return Err(GatewayError::from_status(response.status()));
+    }
+    let body = response.text().await?;
+    let mut current_event: Option<&str> = None;
+    for line in body.lines() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            current_event = None;
+            continue;
+        }
+        if let Some(ev) = line.strip_prefix("event:") {
+            current_event = Some(ev.trim());
+        } else if let Some(data) = line.strip_prefix("data:") {
+            if let Some(event) = parse_build_frame(current_event, data)? {
+                channel.send(event).map_err(|_| GatewayError::Network)?;
+            }
         }
     }
     Ok(())
@@ -632,6 +776,31 @@ pub(crate) async fn app_ask_voice(
 }
 
 #[tauri::command]
+pub(crate) async fn app_capability_propose(
+    state: State<'_, AppState>,
+    goal: String,
+) -> Result<PlanCard, GatewayError> {
+    capability_propose(&state, goal).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_capability_build(
+    state: State<'_, AppState>,
+    build_id: String,
+    channel: Channel<BuildStreamEvent>,
+) -> Result<(), GatewayError> {
+    capability_build(&state, build_id, channel).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_capability_promote(
+    state: State<'_, AppState>,
+    build_id: String,
+) -> Result<InstalledCard, GatewayError> {
+    capability_promote(&state, build_id).await
+}
+
+#[tauri::command]
 pub(crate) async fn app_lock(state: State<'_, AppState>) -> Result<OkResponse, GatewayError> {
     lock(&state).await
 }
@@ -716,6 +885,27 @@ mod tests {
             parse_stream_frame(r#"{"error":"other"}"#),
             Err(GatewayError::Network)
         ));
+    }
+
+    #[test]
+    fn build_frame_parser_is_typed() {
+        assert!(matches!(
+            parse_build_frame(Some("status"), "Testing in sandbox…").unwrap(),
+            Some(BuildStreamEvent::Status { .. })
+        ));
+        assert!(matches!(
+            parse_build_frame(
+                Some("result"),
+                r#"{"build_id":"b","passed":true,"blocked":false,"output":"ok"}"#
+            )
+            .unwrap(),
+            Some(BuildStreamEvent::Result { passed: true, .. })
+        ));
+        assert!(matches!(
+            parse_build_frame(None, "[DONE]").unwrap(),
+            Some(BuildStreamEvent::Done)
+        ));
+        assert!(parse_build_frame(Some("status"), "").unwrap().is_none());
     }
 
     #[test]
@@ -993,6 +1183,47 @@ mod tests {
         let response = actions_approve(&state, "act-1".to_string()).await.unwrap();
 
         assert!(response.ok);
+    }
+
+    #[tokio::test]
+    async fn capability_propose_posts_goal_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/capabilities/propose"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({ "goal": "make a planner" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "build_id": "b",
+                "name": "Planner",
+                "description": "Plan things",
+                "summary": "Adds planning",
+                "secrets": ["TOKEN"],
+                "blocked": false,
+                "block_reason": null
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = capability_propose(&state, "make a planner".to_string())
+            .await
+            .unwrap();
+
+        let encoded = serde_json::to_value(&response).unwrap();
+        assert_eq!(
+            encoded,
+            json!({
+                "build_id": "b",
+                "name": "Planner",
+                "description": "Plan things",
+                "summary": "Adds planning",
+                "secrets": ["TOKEN"],
+                "blocked": false,
+                "block_reason": null
+            })
+        );
     }
 
     #[tokio::test]
