@@ -17,8 +17,7 @@ class VerifyResult(BaseModel):
 
 @runtime_checkable
 class SandboxRunner(Protocol):
-    async def run_tests(self, skill_dir: Path) -> VerifyResult:
-        ...
+    async def run_tests(self, skill_dir: Path) -> VerifyResult: ...
 
 
 class SubprocessSandbox:
