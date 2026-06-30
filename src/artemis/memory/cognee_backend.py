@@ -16,6 +16,7 @@ from artemis.memory.pipeline import (
     identity_reranker,
     run_pipeline,
 )
+from artemis.memory.ledger import MemoryLedger
 from artemis.ports.embedding import EmbeddingPort
 from artemis.types import MemoryItem, RetrievedContext
 
@@ -42,11 +43,13 @@ class CogneeMemory:
         cognee_module: ModuleType | None = None,
         embedder: EmbeddingPort | None = None,
         consolidator: Consolidator | None = None,
+        ledger: MemoryLedger | None = None,
     ) -> None:
         self._config = config or MemoryConfig()
         self._cognee = cognee_module
         self._embedder = embedder
         self._consolidator = consolidator
+        self._ledger = ledger
         self._superseded: set[str] = set()
         self._configured = cognee_module is not None
 
@@ -95,6 +98,11 @@ class CogneeMemory:
     async def _add(self, item: MemoryItem) -> None:
         add = cast(_CogneeAdd, getattr(self._engine(), "add"))
         await add(item.content, dataset_name=self._dataset(item.layer))
+        if self._ledger is not None:
+            self._ledger.record(
+                _normalize_fact(item.content),
+                salience=self._config.default_salience,
+            )
 
     async def _similar(self, content: str, layer: str) -> RetrievedContext:
         # Best-effort: the store may be empty/uninitialized (no add+cognify yet) or transiently
@@ -125,10 +133,12 @@ class CogneeMemory:
         search = cast(_CogneeSearch, getattr(cog, "search"))
         raw = await search(query_type=query_type, query_text=query)
         candidates = _as_items(raw, layers)
+        archived = self._ledger.archived_keys() if self._ledger is not None else set()
         candidates = [
             candidate
             for candidate in candidates
             if _normalize_fact(candidate.content) not in self._superseded
+            and _normalize_fact(candidate.content) not in archived
         ]
         ranked = identity_reranker(query, candidates)
         if self._embedder is not None and self._config.use_embedding_mmr:
@@ -139,8 +149,10 @@ class CogneeMemory:
                 k=self._config.retrieve_candidates,
                 mmr_lambda=self._config.mmr_lambda,
             )
-            return assemble(deduped, token_budget=token_budget)
-        return run_pipeline(
+            result = assemble(deduped, token_budget=token_budget)
+            self._touch_retrieved(result)
+            return result
+        result = run_pipeline(
             query,
             candidates,
             token_budget=token_budget,
@@ -148,6 +160,12 @@ class CogneeMemory:
             k=self._config.retrieve_candidates,
             reranker=identity_reranker,
         )
+        self._touch_retrieved(result)
+        return result
+
+    def _touch_retrieved(self, context: RetrievedContext) -> None:
+        if self._ledger is not None:
+            self._ledger.touch([_normalize_fact(item.content) for item in context.items])
 
     async def consolidate(self) -> None:
         cognify = cast(_CogneeCognify, getattr(self._engine(), "cognify"))
@@ -159,7 +177,9 @@ class CogneeMemory:
         max_age_days: int | None = None,
         min_salience: float | None = None,
     ) -> None:
-        raise NotImplementedError("forget() lands in v2-09 (decay/supersession policy)")
+        if self._ledger is None:
+            raise RuntimeError("forget() requires a MemoryLedger; none configured")
+        self._ledger.decay(max_age_days=max_age_days, min_salience=min_salience)
 
 
 def _normalize_fact(text: str) -> str:

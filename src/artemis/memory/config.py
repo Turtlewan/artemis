@@ -24,3 +24,5 @@ class MemoryConfig(BaseModel):
     search_type: str = "CHUNKS"
     consolidate_on_write: bool = False
     consolidation_similar_k: int = 5
+    decay_half_life_days: float = 30.0
+    default_salience: float = 1.0

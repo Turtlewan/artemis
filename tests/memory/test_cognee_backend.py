@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from types import ModuleType, SimpleNamespace
+from typing import cast
 
 import pytest
 
-from artemis.memory import CogneeMemory, ConsolidationDecision, MemoryConfig
+from artemis.memory import CogneeMemory, ConsolidationDecision, MemoryConfig, MemoryLedger
 from artemis.memory.cognee_backend import _as_items, _extract_text, _normalize_fact
 from artemis.memory.pipeline import assemble
 from artemis.ports.memory import MemoryPort
@@ -50,6 +51,19 @@ class FakeConsolidator:
     async def classify(self, new: str, existing: Sequence[str]) -> ConsolidationDecision:
         self.calls.append((new, list(existing)))
         return self._decision
+
+
+def _ledger_row(ledger: MemoryLedger, key: str) -> tuple[float, float, int, float, int]:
+    rows = cast(
+        list[tuple[float, float, int, float, int]],
+        ledger._conn.execute(
+            "SELECT first_seen, last_access, access_count, salience, archived "
+            "FROM facts WHERE key=?",
+            (key,),
+        ).fetchall(),
+    )
+    assert len(rows) == 1
+    return rows[0]
 
 
 def test_assemble_applies_token_budget() -> None:
@@ -111,6 +125,24 @@ async def test_write_routes_by_layer_to_dataset() -> None:
     )
     await configured.write(MemoryItem(content="rule", layer="rules"))
     assert fake.add_calls == [("x", "artemis"), ("rule", "rules_ds")]
+
+
+@pytest.mark.asyncio
+async def test_write_records_normalized_key_in_ledger() -> None:
+    fake = FakeCognee()
+    ledger = MemoryLedger()
+    mem = CogneeMemory(
+        MemoryConfig(default_salience=0.7),
+        cognee_module=fake,
+        ledger=ledger,
+    )
+
+    await mem.write(MemoryItem(content="  Ben works at Acme. ", layer="semantic"))
+
+    _, _, access_count, salience, archived = _ledger_row(
+        ledger, _normalize_fact("Ben works at Acme")
+    )
+    assert (access_count, salience, archived) == (0, 0.7, 0)
 
 
 @pytest.mark.parametrize(
@@ -229,6 +261,22 @@ async def test_retrieve_filters_superseded_content() -> None:
     assert [item.content for item in result.items] == ["new fact"]
 
 
+@pytest.mark.asyncio
+async def test_retrieve_filters_archived_content_and_touches_returned_items() -> None:
+    ledger = MemoryLedger()
+    ledger.record("archived fact")
+    ledger.record("live fact")
+    ledger.archive(["archived fact"])
+    fake = FakeCognee(["Archived Fact.", "Live Fact."])
+    mem = CogneeMemory(MemoryConfig(use_embedding_mmr=False), cognee_module=fake, ledger=ledger)
+
+    result = await mem.retrieve("q", token_budget=10000)
+
+    assert [item.content for item in result.items] == ["Live Fact."]
+    assert _ledger_row(ledger, "archived fact")[2] == 0
+    assert _ledger_row(ledger, "live fact")[2] == 1
+
+
 def test_normalize_fact_tolerates_case_and_trailing_punctuation() -> None:
     assert _normalize_fact("Ben works at Acme.") == _normalize_fact("ben works at acme")
     assert _normalize_fact("  Hi! ") == "hi"
@@ -315,11 +363,26 @@ async def test_retrieve_uses_embedding_mmr_when_embedder_is_injected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_forget_is_explicitly_deferred() -> None:
+async def test_forget_without_ledger_raises_clear_error() -> None:
     mem = CogneeMemory(cognee_module=FakeCognee())
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError, match="forget\\(\\) requires a MemoryLedger"):
         await mem.forget()
+
+
+@pytest.mark.asyncio
+async def test_forget_archives_by_age_and_salience_with_ledger() -> None:
+    ledger = MemoryLedger()
+    ledger.record("old")
+    ledger.record("low", salience=0.1)
+    ledger.record("live", salience=1.0)
+    ledger._conn.execute("UPDATE facts SET first_seen=? WHERE key=?", (-31.0 * 86400.0, "old"))
+    ledger._conn.commit()
+    mem = CogneeMemory(cognee_module=FakeCognee(), ledger=ledger)
+
+    await mem.forget(max_age_days=30, min_salience=0.5)
+
+    assert ledger.archived_keys() == {"old", "low"}
 
 
 def test_cognee_memory_satisfies_memory_port() -> None:
