@@ -14,8 +14,7 @@ def test_healthz() -> None:
     assert resp.json() == {"status": "ok"}
 
 
-def test_status_default_unconnected() -> None:
+def test_status_requires_session() -> None:
     client = TestClient(create_app())
     resp = client.get("/app/status")
-    assert resp.status_code == 200
-    assert resp.json() == {"connected": False, "vault_unlocked": False, "device_id": ""}
+    assert resp.status_code == 401

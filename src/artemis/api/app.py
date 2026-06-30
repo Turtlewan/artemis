@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI
 from pydantic import BaseModel
+
+from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, SessionStore
+from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
 
 
 class HealthResponse(BaseModel):
     status: str
-
-
-class StatusResponse(BaseModel):
-    """Authenticated app status (ported from v1; auth arrives in CR-2)."""
-
-    connected: bool
-    vault_unlocked: bool
-    device_id: str
 
 
 @asynccontextmanager
@@ -27,18 +24,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app() -> FastAPI:
+def create_app(*, data_dir: str | Path | None = None) -> FastAPI:
+    resolved_data_dir = (
+        Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
+    )
     app = FastAPI(title="Artemis brain", lifespan=_lifespan)
+    registry = DeviceRegistry(resolved_data_dir / "devices.json")
+    app.state.app_auth = AppAuth(registry, ChallengeStore(), SessionStore())
+    app.state.pairing_codes = PairingCodeStore()
+    app.state.rate_limiter = RateLimiter()
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
         return HealthResponse(status="ok")
-
-    app_router = APIRouter(prefix="/app")
-
-    @app_router.get("/status", response_model=StatusResponse)
-    async def status() -> StatusResponse:
-        return StatusResponse(connected=False, vault_unlocked=False, device_id="")
 
     app.include_router(app_router)
     return app
