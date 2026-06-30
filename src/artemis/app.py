@@ -11,7 +11,7 @@ from artemis.ports.model import ModelPort
 from artemis.ports.transport import TransportPort
 from artemis.proactivity import ProactiveWorker, build_proactive_worker
 from artemis.scheduler import DurableScheduler, build_scheduler
-from artemis.transport import ConsoleTransport
+from artemis.transport import ConsoleTransport, telegram_from_env
 
 
 @dataclass
@@ -41,7 +41,12 @@ def build_app(
 
 
 def main() -> None:
-    """Console-script entry: run the loop with a file-backed schedule + console transport."""
+    """Console-script entry: run the loop. Pushes to Telegram if configured, else the console."""
     db_path = os.environ.get("ARTEMIS_DB", "scheduler.db")
-    app = build_app(db_path=db_path)
+    telegram = telegram_from_env(os.environ)
+    if telegram is not None:
+        owner_identity = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
+        app = build_app(db_path=db_path, transport=telegram, owner_identity=owner_identity)
+    else:
+        app = build_app(db_path=db_path)
     asyncio.run(app.run())
