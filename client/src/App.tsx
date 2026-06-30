@@ -186,12 +186,28 @@ function WorldShell() {
             padding: "24px",
           }}
         >
-          <div style={{ maxWidth: 420, opacity: 0.9 }}>
+          <div style={{ maxWidth: 420, pointerEvents: "auto" }}>
             <p style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>Your map is empty</p>
-            <p style={{ fontSize: "14px", opacity: 0.7, margin: 0, lineHeight: 1.5 }}>
-              No capabilities built yet. Open <strong>Ask</strong> and tell Artemis what to build —
-              each new capability appears here as a node on the map.
+            <p style={{ fontSize: "14px", opacity: 0.72, margin: "0 0 18px", lineHeight: 1.5 }}>
+              No capabilities built yet. Tell Artemis what to build — each new capability appears
+              here as a node on the map.
             </p>
+            <button
+              type="button"
+              onClick={ask.open}
+              style={{
+                padding: "11px 22px",
+                borderRadius: "11px",
+                border: 0,
+                background: "#7aa2ff",
+                color: "#0b0c0f",
+                fontWeight: 700,
+                fontSize: "14px",
+                cursor: "pointer",
+              }}
+            >
+              Open Ask
+            </button>
           </div>
         </div>
       )}
