@@ -59,10 +59,9 @@ _(empty — Slice 2 committed; nothing in progress. One stray uncommitted file: 
 ## Pending Specs
 | Spec | Summary |
 |------|---------|
+| `enabler-wsl2-spike` | WSL2 isolation PoC — no-network + per-run egress allowlist + resource caps + text-only data path; 7 runnable acceptance checks. Enabler #1 of ADR-035; the gating step before the real `FetchSandbox`. **Coding task.** |
 
-_(none ready — Slice 3 specs not yet written.)_
-
-> ⚠️ The specs still sitting in `docs/changes/` (`M0-*`, `M2-*`, `M3-d`, `M5-a`, `CLIENT-*`, `BUILD-ORDER.md`) are **archived-stale v1** — do **not** build them. They survive the pivot only because the v1 cleanup is pending (see Open Questions). v2 specs live in `docs/changes/done/` (`v2-00`…`v2-12`).
+> The stale v1 `M*` / `CLIENT-*` / `BUILD-ORDER.md` specs were archived to `archive/v1/` (2026-07-01) — `docs/changes/` now holds only live v2 work. Completed v2 specs live in `docs/changes/done/` (`v2-00`…`v2-12`).
 
 ## Open Questions
 - **▶ DISCUSSION QUEUED (owner, for 2026-07-02): what modules/capabilities to build via build-mode** — e.g. a **"projects"** module (the things the owner is actively working on), surfaced in the **"Ask Artemis" screen**. This is a *functional design discussion* (memory `prefer-discussion-over-specs`), not spec-writing yet — explore what modules earn their place + how they show up in the Ask UI. Now that build mode works, this is the "what do we point it at" conversation.
