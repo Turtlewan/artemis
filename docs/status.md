@@ -52,9 +52,9 @@ All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| `enabler-wsl2-runner` | coding | ✅ done · 5/5 live green | docs/changes/done/enabler-wsl2-runner.md | complete — awaiting commit | 🟡 src/artemis/capabilities/sandbox_wsl2.py, src/artemis/api/app.py, tests/capabilities/* |
+| `enabler-sandbox-policy-wiring` | coding | ✅ done · cross-model reviewed | docs/changes/done/enabler-sandbox-policy-wiring.md | complete — awaiting commit | 🟡 src/artemis/types.py, src/artemis/capabilities/{store,forge}.py, tests/test_{forge,capability_store}.py |
 
-_(Runner **built + proven live** on the WSL2 box: 5/5 live isolation tests pass, host mypy/pytest/ruff green, zero leaked netns/veth/iptables/cgroup state. Next build: `enabler-sandbox-policy-wiring` + `enabler-fetch-sandbox` (both prereq the runner, now satisfied; file-disjoint → parallel). `client/src-tauri/Cargo.toml` remains a stray cosmetic no-op.)_
+_(`enabler-wsl2-runner` **built + proven live** and committed `5c5c601`. `enabler-sandbox-policy-wiring` built + host-verified (199 passed) + Opus cross-model review (guard confirmed fail-closed, no BLOCKs; closed a low shorthand-IP-SSRF FLAG). **Last pending build: `enabler-fetch-sandbox`.** `client/src-tauri/Cargo.toml` remains a stray cosmetic no-op.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->

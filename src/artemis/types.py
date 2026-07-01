@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 MemoryLayer = Literal[
@@ -16,6 +18,40 @@ MemoryLayer = Literal[
     "capability",
     "working",
 ]
+
+_HOSTNAME_RE = re.compile(
+    # final label MUST be an alphabetic TLD (2-63) — blocks all-numeric / hex-shorthand
+    # hosts like 127.1 / 0x7f.0.0.1 that ipaddress() won't parse but clients treat as IPs (SSRF)
+    r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
+_MAX_EGRESS = 20
+_INTERNAL_SUFFIXES = (".local", ".internal", ".localhost", ".test", ".invalid")
+
+
+def validate_egress_domains(v: list[str]) -> list[str]:
+    if len(v) > _MAX_EGRESS:
+        raise ValueError(f"egress_domains exceeds {_MAX_EGRESS} entries")
+    out: list[str] = []
+    for raw in v:
+        d = raw.strip().rstrip(".").lower()
+        if not d:
+            raise ValueError("egress_domains contains an empty entry")
+        if not d.isascii():
+            raise ValueError(f"egress_domains entry is not ASCII: {raw!r}")
+        if "*" in d or "?" in d or "/" in d or ":" in d:
+            raise ValueError(f"egress_domains entry is not a bare hostname: {raw!r}")
+        if not _HOSTNAME_RE.match(d):
+            raise ValueError(f"egress_domains entry is not a valid hostname: {raw!r}")
+        try:
+            ipaddress.ip_address(d)
+        except ValueError:
+            pass
+        else:
+            raise ValueError(f"egress_domains entry is an IP literal, not a domain (SSRF): {raw!r}")
+        if d == "localhost" or d.endswith(_INTERNAL_SUFFIXES):
+            raise ValueError(f"egress_domains entry is a special-use/internal name: {raw!r}")
+        out.append(d)
+    return out
 
 
 class Message(BaseModel):
@@ -71,7 +107,13 @@ class SkillDraft(BaseModel):
     tool_script: str | None
     uses: list[str] = Field(default_factory=list)
     secrets: list[str] = Field(default_factory=list)
+    egress_domains: list[str] = Field(default_factory=list)
     tests: str | None
+
+    @field_validator("egress_domains")
+    @classmethod
+    def _validate_egress_domains(cls, v: list[str]) -> list[str]:
+        return validate_egress_domains(v)
 
 
 class Skill(BaseModel):
@@ -82,6 +124,12 @@ class Skill(BaseModel):
     tags: list[str]
     uses: list[str]
     secrets: list[str]
+    egress_domains: list[str] = Field(default_factory=list)
+
+    @field_validator("egress_domains")
+    @classmethod
+    def _validate_egress_domains(cls, v: list[str]) -> list[str]:
+        return validate_egress_domains(v)
 
 
 class StagedSkill(BaseModel):

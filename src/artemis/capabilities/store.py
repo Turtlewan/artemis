@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 import shutil
 from collections.abc import Sequence
@@ -9,7 +11,9 @@ from pathlib import Path
 from uuid import uuid4
 
 from artemis.capabilities.skill_md import read_skill_md, write_skill_md
-from artemis.types import Skill, SkillDraft, StagedSkill
+from artemis.types import Skill, SkillDraft, StagedSkill, validate_egress_domains
+
+_log = logging.getLogger(__name__)
 
 
 class StagedSkillNotFound(FileNotFoundError):
@@ -17,7 +21,10 @@ class StagedSkillNotFound(FileNotFoundError):
 
 
 class FileCapabilityStore:
-    """Capability store backed by staging and library directories."""
+    """Capability store backed by staging and library directories.
+
+    `sandbox_policy.json` is the C1 sandbox artifact and the on-disk home for egress policy.
+    """
 
     def __init__(self, root: Path) -> None:
         self._staging = root / "staging"
@@ -46,6 +53,16 @@ class FileCapabilityStore:
             tests_dir = staged_dir / "tests"
             tests_dir.mkdir()
             (tests_dir / "test_skill.py").write_text(draft.tests, encoding="utf-8")
+        policy = {
+            "egress_domains": list(draft.egress_domains),
+            "memory_mb": 512,
+            "cpu_pct": 100,
+            "pids_max": 128,
+            "timeout_s": 60,
+        }
+        (staged_dir / "sandbox_policy.json").write_text(
+            json.dumps(policy, indent=2), encoding="utf-8"
+        )
 
         return StagedSkill(id=staged_id, draft=draft)
 
@@ -79,6 +96,9 @@ class FileCapabilityStore:
         tests_dir = staged_dir / "tests"
         if tests_dir.exists():
             shutil.copytree(tests_dir, library_dir / "tests")
+        policy_path = staged_dir / "sandbox_policy.json"
+        if policy_path.exists():
+            shutil.copy2(policy_path, library_dir / "sandbox_policy.json")
 
         return Skill(
             name=draft.name,
@@ -88,6 +108,7 @@ class FileCapabilityStore:
             tags=[],
             uses=draft.uses,
             secrets=draft.secrets,
+            egress_domains=_egress(staged_dir),
         )
 
     async def retrieve(
@@ -140,6 +161,7 @@ class FileCapabilityStore:
             tool_script=tool_path.read_text(encoding="utf-8") if tool_path.exists() else None,
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
+            egress_domains=_egress(staged_dir),
             tests=tests_path.read_text(encoding="utf-8") if tests_path.exists() else None,
         )
 
@@ -153,6 +175,7 @@ class FileCapabilityStore:
             tags=[str(item) for item in meta.get("tags", [])],
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
+            egress_domains=_egress(skill_path.parent),
         )
 
 
@@ -162,3 +185,17 @@ def slug(s: str) -> str:
 
 def _tokens(s: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", s.lower()))
+
+
+def _egress(dir_: Path) -> list[str]:
+    p = dir_ / "sandbox_policy.json"
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return []
+        return validate_egress_domains([str(d) for d in data.get("egress_domains", [])])
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        _log.warning("unusable sandbox_policy.json in %s: %s", dir_, exc)
+        return []

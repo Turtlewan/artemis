@@ -2,12 +2,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox, VerifyResult
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.ports.model import ModelPort
-from artemis.types import Message, ModelResponse, SkillDraft, Usage
+from artemis.types import Message, ModelResponse, Skill, SkillDraft, Usage
 
 
 NETWORK_TOOL = "import imaplib\n\n\ndef fetch() -> None:\n    pass\n"
@@ -45,10 +46,15 @@ class FakeSandbox:
         return self._result
 
 
+class FakeHardenedSandbox(FakeSandbox):
+    hardened = True
+
+
 def _draft(
     *,
     tests: str | None = "def test_skill() -> None:\n    assert True\n",
     tool_script: str | None = None,
+    egress_domains: list[str] | None = None,
 ) -> SkillDraft:
     return SkillDraft(
         name="Echo",
@@ -57,8 +63,66 @@ def _draft(
         tool_script=tool_script,
         uses=[],
         secrets=[],
+        egress_domains=egress_domains or [],
         tests=tests,
     )
+
+
+def _skill(*, egress_domains: list[str] | None = None) -> Skill:
+    return Skill(
+        name="Echo",
+        description="Echoes text.",
+        version=1,
+        path=".",
+        tags=[],
+        uses=[],
+        secrets=[],
+        egress_domains=egress_domains or [],
+    )
+
+
+@pytest.mark.parametrize(
+    "egress_domains",
+    [
+        ["*"],
+        ["*.evil.com"],
+        [""],
+        ["  "],
+        ["http://x.com"],
+        ["x.com:443"],
+        ["x.com/path"],
+        ["\u0435xample.com"],
+        [f"api{i}.example.com" for i in range(21)],
+        ["169.254.169.254"],
+        ["127.0.0.1"],
+        ["10.0.0.5"],
+        ["::1"],
+        ["127.1"],
+        ["0x7f.0.0.1"],
+        ["10.0"],
+        ["metadata.google.internal"],
+        ["foo.internal"],
+        ["localhost"],
+    ],
+)
+def test_egress_validation_rejects_hostile_inputs(egress_domains: list[str]) -> None:
+    with pytest.raises(ValidationError):
+        _draft(egress_domains=egress_domains)
+    with pytest.raises(ValidationError):
+        _skill(egress_domains=egress_domains)
+
+
+def test_egress_validation_accepts_empty_list() -> None:
+    assert _draft().egress_domains == []
+    assert _skill().egress_domains == []
+
+
+def test_egress_validation_accepts_and_normalizes_valid_domains() -> None:
+    assert _draft(egress_domains=["API.Example.COM.", "sub.good.io"]).egress_domains == [
+        "api.example.com",
+        "sub.good.io",
+    ]
+    assert _skill(egress_domains=["API.Example.COM."]).egress_domains == ["api.example.com"]
 
 
 @pytest.mark.asyncio
@@ -145,6 +209,7 @@ async def test_propose_blocks_network_capability(tmp_path: Path) -> None:
     assert proposal.blocked is True
     assert proposal.block_reason is not None
     assert "imaplib" in proposal.block_reason
+    assert "allowlist" in proposal.block_reason
 
 
 @pytest.mark.asyncio
@@ -158,6 +223,77 @@ async def test_propose_allows_pure_stdlib_capability(tmp_path: Path) -> None:
     proposal = await forge.propose("extract dates from text")
     assert proposal.blocked is False
     assert proposal.block_reason is None
+
+
+@pytest.mark.asyncio
+async def test_propose_allows_parseable_capability_without_network_imports(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(tool_script="import datetime\n\n\ndef now() -> str:\n    return 'ok'\n")),
+        store,
+        FakeSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("extract dates from text")
+    assert proposal.blocked is False
+    assert proposal.block_reason is None
+
+
+@pytest.mark.asyncio
+async def test_propose_blocks_network_capability_with_egress_without_hardened_sandbox(
+    tmp_path: Path,
+) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(tool_script=NETWORK_TOOL, egress_domains=["api.example.com"])),
+        store,
+        FakeSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("read my email")
+    assert proposal.blocked is True
+    assert proposal.block_reason is not None
+    assert "imaplib" in proposal.block_reason
+    assert "hardened sandbox unavailable" in proposal.block_reason
+
+
+@pytest.mark.asyncio
+async def test_propose_allows_network_capability_with_egress_and_hardened_sandbox(
+    tmp_path: Path,
+) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(tool_script=NETWORK_TOOL, egress_domains=["api.example.com"])),
+        store,
+        FakeHardenedSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("read my email")
+    assert proposal.blocked is False
+    assert proposal.block_reason is None
+
+
+@pytest.mark.asyncio
+async def test_propose_blocks_unparseable_tool_source(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(tool_script="def nope(:\n", egress_domains=["api.example.com"])),
+        store,
+        FakeHardenedSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("make a broken skill")
+    assert proposal.blocked is True
+    assert proposal.block_reason == "authored code could not be parsed for a safety scan"
+
+
+@pytest.mark.asyncio
+async def test_propose_blocks_no_test_before_import_scan(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(tests=None, tool_script=NETWORK_TOOL, egress_domains=["api.example.com"])),
+        store,
+        FakeHardenedSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("read my email")
+    assert proposal.blocked is True
+    assert proposal.block_reason == "capability has no test -- cannot verify"
 
 
 @pytest.mark.asyncio

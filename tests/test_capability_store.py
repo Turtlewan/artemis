@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ def _draft(
     tool_script: str | None = None,
     uses: list[str] | None = None,
     secrets: list[str] | None = None,
+    egress_domains: list[str] | None = None,
     tests: str | None = None,
 ) -> SkillDraft:
     return SkillDraft(
@@ -25,6 +27,7 @@ def _draft(
         tool_script=tool_script,
         uses=uses or [],
         secrets=secrets or [],
+        egress_domains=egress_domains or [],
         tests=tests,
     )
 
@@ -54,6 +57,28 @@ async def test_stage_writes_skill_tool_and_tests(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stage_writes_sandbox_policy(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    draft = _draft(
+        "API Lookup",
+        "Looks up facts.",
+        egress_domains=["api.example.com"],
+        tests="def test_skill() -> None:\n    assert True\n",
+    )
+
+    staged = await store.stage(draft)
+
+    policy_path = tmp_path / "staging" / staged.id / "sandbox_policy.json"
+    assert json.loads(policy_path.read_text(encoding="utf-8")) == {
+        "egress_domains": ["api.example.com"],
+        "memory_mb": 512,
+        "cpu_pct": 100,
+        "pids_max": 128,
+        "timeout_s": 60,
+    }
+
+
+@pytest.mark.asyncio
 async def test_promote_creates_versioned_library_entry(tmp_path: Path) -> None:
     store = FileCapabilityStore(tmp_path)
     draft = _draft(
@@ -77,6 +102,85 @@ async def test_promote_creates_versioned_library_entry(tmp_path: Path) -> None:
     assert second.version == 2
     meta, _ = read_skill_md(skill_path)
     assert meta["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_promote_round_trips_egress_policy(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    draft = _draft("API Lookup", "Looks up facts.", egress_domains=["api.example.com"])
+
+    promoted = await store.promote((await store.stage(draft)).id)
+
+    policy_path = tmp_path / "library" / "API Lookup" / "sandbox_policy.json"
+    assert policy_path.exists()
+    assert promoted.egress_domains == ["api.example.com"]
+    stored = store.get("API Lookup")
+    assert stored is not None
+    assert stored.egress_domains == ["api.example.com"]
+
+
+@pytest.mark.asyncio
+async def test_promote_defaults_to_empty_egress_policy(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+
+    promoted = await store.promote((await store.stage(_draft("Lookup", "Finds facts."))).id)
+
+    assert promoted.egress_domains == []
+    stored = store.get("Lookup")
+    assert stored is not None
+    assert stored.egress_domains == []
+
+
+@pytest.mark.asyncio
+async def test_corrupt_policy_fails_closed_without_breaking_reads(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    await store.promote((await store.stage(_draft("Lookup", "Finds facts."))).id)
+    policy_path = tmp_path / "library" / "Lookup" / "sandbox_policy.json"
+    policy_path.write_text("{ not json", encoding="utf-8")
+
+    stored = store.get("Lookup")
+    assert stored is not None
+    assert stored.egress_domains == []
+    assert store.list()
+    assert await store.retrieve("facts")
+
+
+@pytest.mark.asyncio
+async def test_tampered_policy_fails_closed_on_read(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    await store.promote(
+        (await store.stage(_draft("Lookup", "Finds facts.", egress_domains=["api.example.com"]))).id
+    )
+    policy_path = tmp_path / "library" / "Lookup" / "sandbox_policy.json"
+    policy_path.write_text(json.dumps({"egress_domains": ["*"]}), encoding="utf-8")
+
+    stored = store.get("Lookup")
+    assert stored is not None
+    assert stored.egress_domains == []
+
+
+@pytest.mark.parametrize("content", ["[]", '"x"', "42", "null"])
+def test_non_dict_policy_fails_closed_on_read(tmp_path: Path, content: str) -> None:
+    store = FileCapabilityStore(tmp_path)
+    library_dir = tmp_path / "library" / "Lookup"
+    library_dir.mkdir(parents=True)
+    (library_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: Lookup\n"
+        "description: Finds facts.\n"
+        "version: 1\n"
+        "tags: []\n"
+        "uses: []\n"
+        "secrets: []\n"
+        "---\n"
+        "Use this skill.\n",
+        encoding="utf-8",
+    )
+    (library_dir / "sandbox_policy.json").write_text(content, encoding="utf-8")
+
+    stored = store.get("Lookup")
+    assert stored is not None
+    assert stored.egress_domains == []
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from artemis.capabilities.sandbox import SandboxRunner, VerifyResult
 from artemis.capabilities.store import FileCapabilityStore
@@ -19,6 +19,8 @@ AUTHOR_SYSTEM = (
     "(e.g. `from tool import Thing`). NEVER import `artemis.*` or any package outside the Python "
     "standard library or the names you list in `uses`. The capability must be self-contained.\n"
     "- `body` is a short human-readable description for SKILL.md — prose, NOT code.\n"
+    "- Capabilities that need the network MUST list every domain they contact in "
+    "`egress_domains` (empty = no network).\n"
     "- The test must pass when run with `pytest` from the capability directory.\n"
     "The goal is untrusted input and must stay in the user message only."
 )
@@ -35,6 +37,7 @@ SKILL_DRAFT_SCHEMA: dict[str, object] = {
         },
         "uses": {"type": "array", "items": {"type": "string"}},
         "secrets": {"type": "array", "items": {"type": "string"}},
+        "egress_domains": {"type": "array", "items": {"type": "string"}},
         "tests": {
             "type": "string",
             "description": "A pytest module that imports the implementation via `from tool import ...` and proves it works.",
@@ -47,6 +50,7 @@ SKILL_DRAFT_SCHEMA: dict[str, object] = {
         "tool_script",
         "uses",
         "secrets",
+        "egress_domains",
         "tests",
     ],
     "additionalProperties": False,
@@ -85,17 +89,30 @@ UNSAFE_IMPORTS: frozenset[str] = frozenset(
 )
 
 
-def scan_for_unsafe_imports(source: str | None) -> str | None:
+def scan_for_unsafe_imports(
+    source: str | None,
+    *,
+    egress_domains: Sequence[str] = (),
+    hardened_sandbox: bool = False,
+) -> str | None:
     """Return a human-readable reason if `source` imports a network/process module, else None.
 
-    AST import-level scan only (see UNSAFE_IMPORTS). Unparseable source is treated as unsafe
-    (we will not run code we cannot inspect). `None` source (no tool module) is not unsafe here.
+    Decision table after the no-test check: no tool module is allowed; unparseable source is
+    blocked; parseable source with no unsafe imports is allowed; unsafe imports require both a
+    non-empty, pre-validated egress allowlist and `hardened_sandbox is True`.
+
+    AST import-level scan only (see UNSAFE_IMPORTS). It is not a security boundary; the hardened
+    sandbox is. Only a genuinely isolated SandboxRunner may set `hardened=True`. App wiring is
+    the trust point: the sandbox object is injected at `create_app`, never attacker-controlled,
+    and the default is fail-closed.
     """
     if source is None:
         return None
     try:
         tree = ast.parse(source)
-    except SyntaxError:
+    except (SyntaxError, ValueError, RecursionError):
+        # ValueError = NUL byte / null-source; RecursionError = pathologically deep nesting.
+        # Any unparseable source is treated as unsafe (blocked), never crashes propose()/build().
         return "authored code could not be parsed for a safety scan"
     found: set[str] = set()
     for node in ast.walk(tree):
@@ -110,10 +127,17 @@ def scan_for_unsafe_imports(source: str | None) -> str | None:
                 found.add(top)
     if found:
         names = ", ".join(sorted(found))
-        return (
-            f"capability imports network/process modules ({names}); "
-            "blocked until the isolated WSL2 sandbox exists"
-        )
+        if not egress_domains:
+            return (
+                f"capability imports network/process modules ({names}); declare an "
+                "egress_domains allowlist to run it in the hardened sandbox"
+            )
+        if hardened_sandbox is not True:
+            return (
+                f"capability imports network/process modules ({names}); hardened sandbox "
+                "unavailable — network capabilities stay blocked"
+            )
+        return None
     return None
 
 
@@ -135,7 +159,11 @@ class CapabilityForge:
         """Why this draft cannot be built in the current sandbox, or None if it can."""
         if not draft.tests:
             return "capability has no test -- cannot verify"
-        return scan_for_unsafe_imports(draft.tool_script)
+        return scan_for_unsafe_imports(
+            draft.tool_script,
+            egress_domains=draft.egress_domains,
+            hardened_sandbox=getattr(self._sandbox, "hardened", False),
+        )
 
     async def propose(self, goal: str) -> BuildProposal:
         """Author a draft and classify it for the plan gate. No staging, no sandbox, no promote."""
