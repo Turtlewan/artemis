@@ -53,8 +53,8 @@ Thumbs.db
 .cache/
 .pytest-tmp/
 
-# --- Codex build run logs (transient apex-code dispatch streams; not project docs) ---
-docs/progress/codex-*.log
+# --- Codex build run logs + local build-progress notes (transient apex-code dispatch streams; not project docs) ---
+docs/progress/
 
 # Playwright MCP scratch output
 .playwright-mcp/

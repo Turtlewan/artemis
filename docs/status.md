@@ -52,9 +52,9 @@ All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| `enabler-fetch-sandbox` | coding | ✅ done · live smoke green | docs/changes/done/enabler-fetch-sandbox.md | complete — awaiting commit | 🟡 src/artemis/capabilities/fetch_sandbox.py, tests/capabilities/test_fetch_sandbox.py |
+| _(none)_ | | | | | |
 
-_(**All three enabler-#2 specs built + committed/verified.** `enabler-wsl2-runner` `5c5c601` (5/5 live). `enabler-sandbox-policy-wiring` `6bffe93` (199 passed, Opus cross-model review — guard fail-closed). `enabler-fetch-sandbox` — 9/9 incl. live runtime-fetch smoke (allowlisted domain fetched through the cage at runtime; non-allowlisted blocked). The **sandbox substrate is complete**: build-time verify + runtime fetch both run in the hardened WSL2 isolate. `client/src-tauri/Cargo.toml` remains a stray cosmetic no-op.)_
+_(**All three enabler-#2 specs built + committed/verified.** `enabler-wsl2-runner` `5c5c601` (5/5 live). `enabler-sandbox-policy-wiring` `6bffe93` (199 passed, Opus cross-model review — guard fail-closed). `enabler-fetch-sandbox` `6261402` — 9/9 incl. live runtime-fetch smoke (allowlisted domain fetched through the cage at runtime; non-allowlisted blocked). The **sandbox substrate is complete**: build-time verify + runtime fetch both run in the hardened WSL2 isolate. `client/src-tauri/Cargo.toml` remains a stray cosmetic no-op.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
