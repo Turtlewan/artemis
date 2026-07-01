@@ -99,7 +99,7 @@ class WebTool:
         synth: ModelPort,
         top_n: int = 5,
         reader_models: tuple[str, str] = ("haiku", "sonnet"),
-        synth_model: str = "gpt-5.5",
+        synth_model: str | None = None,
     ) -> None:
         self._search = search
         self._fetcher = fetcher
@@ -237,6 +237,13 @@ class WebTool:
         _log.info("web_answer sources=%d escalations=%d", len(sources), self._escalations)
         return WebAnswer(answer=answer, sources=sources)
 
+    async def aclose(self) -> None:
+        """Close owned HTTP clients on the search + fetcher (if they expose ``aclose``)."""
+        for component in (self._search, self._fetcher):
+            closer = getattr(component, "aclose", None)
+            if closer is not None:
+                await closer()
+
 
 def build_web_tool(
     *,
@@ -246,6 +253,10 @@ def build_web_tool(
     """Wire real providers with one shared egress policy; single-flight per instance."""
     egress = EgressPolicy(allowlist)
     reader = ModelClient(ClaudeCodeProvider(), model_default="haiku")
+    # Heterogeneous synth router: each backend keeps its OWN model_default. WebTool leaves
+    # synth_model=None so failover uses per-backend defaults (codex→gpt-5.5, claude_code→sonnet).
+    # Never force a single model string here — the router forwards it to every backend, so a
+    # forced "gpt-5.5" would reach claude_code as an invalid model on failover.
     synth = QuotaAwareRouter(
         [
             ("codex", ModelClient(CodexProvider(), model_default="gpt-5.5")),

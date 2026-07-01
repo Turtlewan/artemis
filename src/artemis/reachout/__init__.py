@@ -3,7 +3,7 @@
 from artemis.reachout.egress import EgressDenied, EgressPolicy, registrable_domain
 from artemis.reachout.fetch import FetchedContent, Fetcher, TrafilaturaFetcher
 from artemis.reachout.search import SearchHit, SearchProvider, TavilySearch
-from artemis.reachout.web_tool import ReaderExtract, WebAnswer, WebTool
+from artemis.reachout.web_tool import ReaderExtract, WebAnswer, WebTool, build_web_tool
 
 __all__ = [
     "EgressDenied",
@@ -17,5 +17,6 @@ __all__ = [
     "TrafilaturaFetcher",
     "WebAnswer",
     "WebTool",
+    "build_web_tool",
     "registrable_domain",
 ]

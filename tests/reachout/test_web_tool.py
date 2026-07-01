@@ -8,7 +8,9 @@ from typing import Any
 
 import pytest
 
-from artemis.model.client import ModelOutputError
+from artemis.model.client import ModelClient, ModelOutputError
+from artemis.model.errors import QuotaExhaustedError
+from artemis.model.router import QuotaAwareRouter
 from artemis.reachout.egress import EgressDenied, EgressPolicy
 from artemis.reachout.fetch import FetchedContent
 from artemis.reachout.search import SearchHit
@@ -423,6 +425,70 @@ async def test_egress_reset_before_search_and_permit_per_hit_domain() -> None:
     assert events[:2] == ["reset", "search:world cup"]
     assert egress.reset_count == 1
     assert egress.permits == ["example.com", "example.org"]
+
+
+async def test_synth_router_failover_uses_per_backend_model() -> None:
+    # Regression: WebTool must NOT force one model onto a heterogeneous synth router. When codex
+    # quota-outs and the router fails over to claude_code, claude_code must get ITS default
+    # ("sonnet"), not "gpt-5.5" forwarded from a forced synth_model.
+    recorded: dict[str, str | None] = {}
+
+    class QuotaProvider:
+        async def generate(
+            self, *, messages: Sequence[Message], model: str, schema: dict[str, Any] | None
+        ) -> str:
+            del messages, model, schema
+            raise QuotaExhaustedError("codex", "out")
+
+    class RecordingProvider:
+        async def generate(
+            self, *, messages: Sequence[Message], model: str, schema: dict[str, Any] | None
+        ) -> str:
+            del messages, schema
+            recorded["model"] = model
+            return synth_json("ok", [])
+
+    synth = QuotaAwareRouter(
+        [
+            ("codex", ModelClient(QuotaProvider(), model_default="gpt-5.5")),
+            ("claude_code", ModelClient(RecordingProvider(), model_default="sonnet")),
+        ]
+    )
+    item = hit(1)
+    tool = WebTool(
+        search=FakeSearch([item]),
+        fetcher=FakeFetcher({item.url: "raw world cup page"}),
+        egress=SpyEgress(),
+        reader=FakeModel([reader_json("world cup extract")]),
+        synth=synth,
+    )
+
+    await tool.answer("world cup")
+
+    assert recorded["model"] == "sonnet"
+
+
+async def test_aclose_closes_owned_clients() -> None:
+    closed: list[str] = []
+
+    class ClosableSearch(FakeSearch):
+        async def aclose(self) -> None:
+            closed.append("search")
+
+    class ClosableFetcher(FakeFetcher):
+        async def aclose(self) -> None:
+            closed.append("fetcher")
+
+    tool = WebTool(
+        search=ClosableSearch([]),
+        fetcher=ClosableFetcher({}),
+        egress=SpyEgress(),
+        reader=FakeModel([]),
+        synth=FakeModel([]),
+    )
+    await tool.aclose()
+
+    assert closed == ["search", "fetcher"]
 
 
 async def test_search_failure_degrades_without_crashing() -> None:
