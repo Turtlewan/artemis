@@ -16,7 +16,8 @@ from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
 from artemis.api.layout_store import LayoutDTO, LayoutStore, default_layout
 from artemis.capabilities.forge import CapabilityForge
-from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox
+from artemis.capabilities.sandbox import SandboxRunner
+from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.model.compose import build_model_router
 from artemis.ports.model import ModelPort
@@ -48,7 +49,7 @@ def create_app(
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
-    resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else SubprocessSandbox()
+    resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
     capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
     app.state.capability_store = capability_store
     app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
