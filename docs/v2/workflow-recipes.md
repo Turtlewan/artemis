@@ -169,6 +169,17 @@ GPT-5.5, that with Sonnet 5"). Consistent with the existing `QuotaAwareRouter`.
   property (the R2 split), not available inside a single caged agent.
 - **Model choice is a cost AND safety lever:** cheap/local for the poison-reading tier; strong for
   trusted synthesis that never sees raw web.
+- **Deferred here (owner, 2026-07-01):** per-task model selection for the R2 web tool's reader/synth is
+  NOT built as a one-off on `build_web_tool` — it's delivered properly by this recipe model-switching
+  feature. Today the web tool runs fixed defaults (reader haiku→sonnet, synth codex→sonnet failover).
+- **Model-fit calibration phase (owner idea, 2026-07-01):** at first real use, run a shakedown — empirically
+  try model combos for each role (reader, synth, and later orchestrate/pull/build) and lock the best default
+  per recipe, rather than guessing. Rides on `reachout-webtool-eval` (the comparison/eval harness, already
+  queued) + recipe model-swappability; cheap to run once both exist.
+- **Coding roles (reaffirmed, owner 2026-07-01): Claude orchestrates, GPT (Codex) builds** — this is already
+  the ADR-027 dogfood setup in use today (Opus host plans/dispatches/verifies/reviews; Codex builds each
+  task). Opus-builds is only the quota-out fallback; drop it only if a Codex outage blocking builds is
+  acceptable (a `coder_models` config choice, not new work).
 
 ## Architecture SCOPED (2026-07-01) — earns its own ADR when built (post-R2/R3, w/ Pattern-B + capability system)
 Not needed for R2 (A-mode). Reverses ADR-035's "no tool-holding web reader" + adds the broker + the
