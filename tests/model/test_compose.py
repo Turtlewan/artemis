@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import anthropic
 import httpx
 import pytest
@@ -21,9 +23,19 @@ class FakeOllamaResponse:
 @pytest.mark.asyncio
 async def test_build_model_router_order_and_fallover(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    async def fake_run_cli(argv: list[str], *, stdin: bytes) -> tuple[int, bytes, bytes]:
-        del argv, stdin
+    # ClaudeCodeProvider now resolves a clean-context config dir from ~/.claude/.credentials.json;
+    # point home at a dummy so this test never touches the real subscription token.
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(parents=True)
+    (claude_dir / ".credentials.json").write_text('{"token":"dummy"}', encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: dict[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
+        del argv, stdin, env
         return (1, b"", b"quota exceeded")
 
     async def fake_anthropic_create(self: object, **kwargs: object) -> object:

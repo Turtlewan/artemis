@@ -1,11 +1,41 @@
 from __future__ import annotations
 
+import asyncio
+import os
+import tempfile
+from collections.abc import Mapping
+from pathlib import Path
+
 import pytest
 
 import artemis.model.cli_support as cli_support
 from artemis.model.claude_code_provider import ClaudeCodeProvider, _extract_result
-from artemis.model.errors import QuotaExhaustedError
+from artemis.model.errors import ProviderUnavailableError, QuotaExhaustedError
 from artemis.types import Message
+
+
+class _FakeProcess:
+    returncode = 0
+
+    async def communicate(self, stdin: bytes) -> tuple[bytes, bytes]:
+        assert stdin == b""
+        return (b"stdout", b"stderr")
+
+
+def _write_dummy_credentials(home: Path, content: str = '{"token":"dummy"}') -> Path:
+    claude_dir = home / ".claude"
+    claude_dir.mkdir(parents=True)
+    credentials = claude_dir / ".credentials.json"
+    credentials.write_text(content, encoding="utf-8")
+    return credentials
+
+
+def _patch_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+
+def _only_credentials(cfg_dir: Path) -> list[str]:
+    return sorted(entry.name for entry in cfg_dir.iterdir())
 
 
 def test_extract_result_reads_json_envelope() -> None:
@@ -17,12 +47,56 @@ def test_extract_result_falls_back_to_stripped_stdout() -> None:
 
 
 @pytest.mark.asyncio
-async def test_claude_provider_argv_and_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_cli_passes_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_run_cli(argv: list[str], *, stdin: bytes) -> tuple[int, bytes, bytes]:
+    async def fake_create_subprocess_exec(*argv: str, **kwargs: object) -> _FakeProcess:
+        captured["argv"] = list(argv)
+        captured["env"] = kwargs["env"]
+        return _FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": "/x"}
+
+    returncode, stdout, stderr = await cli_support.run_cli(["tool"], stdin=b"", env=env)
+
+    assert (returncode, stdout, stderr) == (0, b"stdout", b"stderr")
+    assert captured["argv"] == ["tool"]
+    assert captured["env"] == env
+    assert captured["env"] is not env
+
+
+@pytest.mark.asyncio
+async def test_run_cli_default_env_inherits(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_create_subprocess_exec(*argv: str, **kwargs: object) -> _FakeProcess:
+        del argv
+        captured["env"] = kwargs["env"]
+        return _FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await cli_support.run_cli(["tool"], stdin=b"")
+
+    assert captured["env"] is None
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_argv_json_output_and_clean_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+    captured: dict[str, object] = {}
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
         captured["argv"] = argv
         captured["stdin"] = stdin
+        captured["env"] = env
         return (0, b'{"result":"hi"}', b"")
 
     monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
@@ -40,13 +114,123 @@ async def test_claude_provider_argv_and_json_output(monkeypatch: pytest.MonkeyPa
     assert "-p" in argv
     assert "--output-format" in argv
     assert "json" in argv
+    assert "--exclude-dynamic-system-prompt-sections" in argv
     assert captured["stdin"] == b""
+    env = captured["env"]
+    assert isinstance(env, dict)
+    cfg_dir = Path(env["CLAUDE_CONFIG_DIR"])
+    assert cfg_dir.exists()
+    assert cfg_dir.parent == Path(tempfile.gettempdir())
+    assert cfg_dir.name.startswith("artemis-claude-clean-")
+    assert cfg_dir != home / ".claude"
+    assert _only_credentials(cfg_dir) == [".credentials.json"]
 
 
 @pytest.mark.asyncio
-async def test_claude_provider_detects_quota(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_run_cli(argv: list[str], *, stdin: bytes) -> tuple[int, bytes, bytes]:
+async def test_claude_provider_poison_guard_recleans_repeat_invocations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+    captured_dirs: list[Path] = []
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
         del argv, stdin
+        assert env is not None
+        captured_dirs.append(Path(env["CLAUDE_CONFIG_DIR"]))
+        return (0, b'{"result":"hi"}', b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    provider = ClaudeCodeProvider(binary="claude-test")
+
+    await provider.generate(messages=[Message(role="user", content="hello")], model="", schema=None)
+    cfg_dir = captured_dirs[0]
+    (cfg_dir / "CLAUDE.md").write_text("poison", encoding="utf-8")
+    (cfg_dir / "settings.json").write_text("{}", encoding="utf-8")
+
+    await provider.generate(messages=[Message(role="user", content="hello")], model="", schema=None)
+    assert _only_credentials(cfg_dir) == [".credentials.json"]
+    (cfg_dir / ".claude.json").write_text("{}", encoding="utf-8")
+
+    await provider.generate(messages=[Message(role="user", content="hello")], model="", schema=None)
+    assert captured_dirs == [cfg_dir, cfg_dir, cfg_dir]
+    assert _only_credentials(cfg_dir) == [".credentials.json"]
+
+
+def test_claude_provider_atomic_copy_and_mtime_guard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    source = _write_dummy_credentials(home, '{"token":"v1"}')
+    _patch_home(monkeypatch, home)
+    provider = ClaudeCodeProvider(binary="claude-test")
+    real_replace = os.replace
+    replacements: list[tuple[Path, Path]] = []
+
+    def fake_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        src_path = Path(src)
+        dst_path = Path(dst)
+        replacements.append((src_path, dst_path))
+        assert src_path.parent == dst_path.parent
+        assert src_path.name.startswith(".credentials.")
+        assert dst_path.name == ".credentials.json"
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fake_replace)
+
+    cfg_dir = provider._ensure_clean_config_dir()
+    dest = cfg_dir / ".credentials.json"
+    assert dest.read_text(encoding="utf-8") == '{"token":"v1"}'
+    assert len(replacements) == 1
+
+    provider._ensure_clean_config_dir()
+    assert len(replacements) == 1
+
+    source.write_text('{"token":"v2"}', encoding="utf-8")
+    newer_mtime = dest.stat().st_mtime_ns + 1_000_000_000
+    os.utime(source, ns=(newer_mtime, newer_mtime))
+    provider._ensure_clean_config_dir()
+
+    assert dest.read_text(encoding="utf-8") == '{"token":"v2"}'
+    assert len(replacements) == 2
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_missing_credentials_raise(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_home(monkeypatch, tmp_path / "home")
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
+        del argv, stdin, env
+        raise AssertionError("run_cli must not be called without credentials")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    provider = ClaudeCodeProvider(binary="claude-test")
+
+    with pytest.raises(ProviderUnavailableError, match="no credentials for clean-context read"):
+        await provider.generate(
+            messages=[Message(role="user", content="hello")], model="", schema=None
+        )
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_detects_quota(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
+        del argv, stdin, env
         return (1, b"", b"Claude usage limit reached")
 
     monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
@@ -56,3 +240,17 @@ async def test_claude_provider_detects_quota(monkeypatch: pytest.MonkeyPatch) ->
         await provider.generate(
             messages=[Message(role="user", content="hello")], model="", schema=None
         )
+
+
+@pytest.mark.skip(
+    reason=(
+        'Manual live-smoke: uv run python -c "import asyncio; '
+        "from artemis.model.claude_code_provider import ClaudeCodeProvider; "
+        "from artemis.types import Message; "
+        "print(asyncio.run(ClaudeCodeProvider().generate(messages=[Message(role='user', "
+        'content=\\"Extract only the capital city. TEXT: France\'s capital is Paris.\\")], '
+        'model=\'haiku\', schema=None)))"; then run: claude -p "say OK"'
+    )
+)
+def test_claude_provider_live_smoke_documented() -> None:
+    """The first command must print only Paris, and the second checks primary session auth."""

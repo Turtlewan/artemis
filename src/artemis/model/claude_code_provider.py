@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import atexit
 import json
+import os
 import shutil
+import tempfile
 from collections.abc import Sequence
+from pathlib import Path
 
 import artemis.model.cli_support as cli_support
 from artemis.model.errors import ProviderUnavailableError, QuotaExhaustedError
@@ -15,6 +19,7 @@ class ClaudeCodeProvider:
     def __init__(self, *, binary: str = "claude", model_default: str = "sonnet") -> None:
         self._binary = shutil.which(binary) or binary
         self._model_default = model_default
+        self._cfg_dir: Path | None = None
 
     async def generate(
         self,
@@ -37,8 +42,9 @@ class ClaudeCodeProvider:
             "json",
             "--model",
             model or self._model_default,
+            "--exclude-dynamic-system-prompt-sections",
         ]
-        returncode, stdout, stderr = await cli_support.run_cli(argv, stdin=b"")
+        returncode, stdout, stderr = await self._run_cli(argv)
         text = stdout.decode("utf-8", errors="replace")
         stderr_text = stderr.decode("utf-8", errors="replace")
         if returncode != 0:
@@ -47,6 +53,82 @@ class ClaudeCodeProvider:
                 raise QuotaExhaustedError("claude_code", _excerpt(stderr_text))
             raise ProviderUnavailableError("claude_code", _excerpt(stderr_text))
         return _extract_result(text)
+
+    async def _run_cli(self, argv: list[str]) -> tuple[int, bytes, bytes]:
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self._ensure_clean_config_dir())}
+        return await cli_support.run_cli(argv, stdin=b"", env=env)
+
+    def _ensure_clean_config_dir(self) -> Path:
+        """Return a private Claude config dir containing only a fresh credentials copy.
+
+        Claude CLI reads can be polluted by user-level CLAUDE.md or settings files. The per-call
+        guard removes anything except credentials before invocation, and the mtime check avoids
+        rewriting the live-token copy unless the source token changed.
+        """
+        source = Path.home() / ".claude" / ".credentials.json"
+        if not source.exists():
+            raise ProviderUnavailableError("claude_code", "no credentials for clean-context read")
+
+        if self._cfg_dir is None:
+            # mkdtemp gives an unpredictable, per-process path (closes CWE-377). The chmod bits are
+            # POSIX-only defense-in-depth; on Windows chmod only toggles read-only (no ACLs), so the
+            # unpredictable path — not the mode — is the load-bearing protection there.
+            self._cfg_dir = Path(tempfile.mkdtemp(prefix="artemis-claude-clean-"))
+            self._cfg_dir.chmod(0o700)
+            atexit.register(shutil.rmtree, self._cfg_dir, ignore_errors=True)
+
+        self._remove_config_poison(self._cfg_dir)
+        dest = self._cfg_dir / ".credentials.json"
+        if self._credentials_need_copy(source, dest):
+            self._copy_credentials_atomic(source, dest)
+        return self._cfg_dir
+
+    def _remove_config_poison(self, cfg_dir: Path) -> None:
+        for entry in cfg_dir.iterdir():
+            # Keep only the REAL creds file. A symlinked ".credentials.json" is poison (it could
+            # point at attacker-writable content the mtime guard would then trust) — fall through
+            # and remove it, forcing a fresh copy of the real token.
+            if entry.name == ".credentials.json" and not entry.is_symlink():
+                continue
+            try:
+                if entry.is_dir() and not entry.is_symlink():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+            except OSError as exc:
+                raise ProviderUnavailableError(
+                    "claude_code", "unable to clean Claude config dir"
+                ) from exc
+
+    def _credentials_need_copy(self, source: Path, dest: Path) -> bool:
+        if not dest.exists():
+            return True
+        return source.stat().st_mtime_ns > dest.stat().st_mtime_ns
+
+    def _copy_credentials_atomic(self, source: Path, dest: Path) -> None:
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "wb",
+                dir=dest.parent,
+                prefix=".credentials.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp_file:
+                tmp_path = Path(tmp_file.name)
+                with source.open("rb") as source_file:
+                    shutil.copyfileobj(source_file, tmp_file)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
+            tmp_path.chmod(0o600)
+            os.replace(tmp_path, dest)
+            dest.chmod(0o600)
+        except OSError as exc:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+            raise ProviderUnavailableError(
+                "claude_code", "unable to copy credentials for clean-context read"
+            ) from exc
 
 
 def _extract_result(stdout: str) -> str:
