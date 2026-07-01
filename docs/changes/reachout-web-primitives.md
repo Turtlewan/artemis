@@ -47,10 +47,10 @@ Simplicity check: Considered a single `web.py` module. Rejected — the SSRF gua
 | tests/reachout/test_fetch.py | create | fetcher over `httpx.MockTransport`; reject `follow_redirects=True` client; content-type gate; pinned-IP connect; bounded bytes; redirect-to-internal denied; degrade-to-empty |
 
 ## Tasks
-- [ ] Task 1: Add deps + scaffold — files: pyproject.toml, src/artemis/reachout/__init__.py, tests/reachout/__init__.py — done when: `uv sync` succeeds, `python -c "import artemis.reachout"` exits 0, and `uv run pip-audit` exits 0 over the new tree.
-- [ ] Task 2: SSRF guard + `EgressPolicy` (allowlist, port-lock, IP pinning, bounded dynamic set, eTLD+1) — files: src/artemis/reachout/egress.py, tests/reachout/test_egress.py — done when: `uv run pytest -q tests/reachout/test_egress.py` passes the full accept/reject matrix below (incl. eTLD+1 value, IPv4-mapped-IPv6, non-443 port, missed-reset cap).
-- [ ] Task 3: `SearchProvider` + `TavilySearch` — files: src/artemis/reachout/search.py, tests/reachout/test_search.py — done when: `uv run pytest -q tests/reachout/test_search.py` passes; test asserts the api_key appears in NO hook-visible snapshot of headers OR body.
-- [ ] Task 4: `Fetcher` clean-text fetcher — files: src/artemis/reachout/fetch.py, tests/reachout/test_fetch.py — done when: `uv run pytest -q tests/reachout/test_fetch.py` passes, including pinned-IP connect, rejection of an injected `follow_redirects=True` client, non-`text/html` short-circuit, bounded-bytes rejection, and degrade-to-empty on extraction failure.
+- [x] Task 1: Add deps + scaffold — files: pyproject.toml, src/artemis/reachout/__init__.py, tests/reachout/__init__.py — done when: `uv sync` succeeds, `python -c "import artemis.reachout"` exits 0, and `uv run pip-audit` exits 0 over the new tree.
+- [x] Task 2: SSRF guard + `EgressPolicy` (allowlist, port-lock, IP pinning, bounded dynamic set, eTLD+1) — files: src/artemis/reachout/egress.py, tests/reachout/test_egress.py — done when: `uv run pytest -q tests/reachout/test_egress.py` passes the full accept/reject matrix below (incl. eTLD+1 value, IPv4-mapped-IPv6, non-443 port, missed-reset cap).
+- [x] Task 3: `SearchProvider` + `TavilySearch` — files: src/artemis/reachout/search.py, tests/reachout/test_search.py — done when: `uv run pytest -q tests/reachout/test_search.py` passes; test asserts the api_key appears in NO hook-visible snapshot of headers OR body.
+- [x] Task 4: `Fetcher` clean-text fetcher — files: src/artemis/reachout/fetch.py, tests/reachout/test_fetch.py — done when: `uv run pytest -q tests/reachout/test_fetch.py` passes, including pinned-IP connect, rejection of an injected `follow_redirects=True` client, non-`text/html` short-circuit, bounded-bytes rejection, and degrade-to-empty on extraction failure.
 
 ## Wave plan
 Wave 1: [Task 1] | Wave 2: [Task 2] | Wave 3: [Task 3, Task 4]
@@ -288,3 +288,9 @@ The following actions will run autonomously during build. Approving this spec ap
 
 ## Progress
 _(Coding mode writes here — do not edit manually)_
+
+**COMPLETE (2026-07-01, built by Codex gpt-5.5 / host = Opus).** All 4 tasks done + all acceptance criteria met.
+- Full-project verify: `ruff check` clean · `ruff format --check` clean · `mypy` 101 files (strict) · `pytest` 243 passed/1 skipped · `pip-audit` 0 vulns.
+- Tests: 33 in `tests/reachout/` (19 egress + 5 search + 9 fetch).
+- Cross-model review (Codex-built → Opus reviewer): 1 BLOCK + 6 FLAGs → BLOCK + 4 FLAGs fixed, 1 deferred-with-rationale. See `docs/progress/reachout-web-primitives.md` decisions table.
+- Deviations (⚠️ for planning): (1) eTLD+1 uses `top_domain_under_public_suffix` not the deprecated `.registered_domain`; (2) **spec's own `pin()` pseudocode had an https-only gap** — fixed in code, planning should patch the spec's egress.py block; (3) FLAG-6 (search httpx-error wrapping) deferred to R2.
