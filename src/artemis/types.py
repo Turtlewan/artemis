@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import ipaddress
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 MemoryLayer = Literal[
@@ -100,11 +101,31 @@ class OutboundMessage(BaseModel):
     proactive: bool = False
 
 
+class SkillInputParam(BaseModel):
+    """Typed metadata for one capability input parameter."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    type: Literal["string", "number", "boolean"]
+    description: str
+    required: bool = True
+
+
+def build_invoke_argv(inputs: list[SkillInputParam], args: dict[str, object]) -> list[str]:
+    """Build the argv convention for invoking a skill tool with extracted args."""
+
+    if not inputs:
+        return []
+    return [json.dumps(args, separators=(",", ":"), sort_keys=True)]
+
+
 class SkillDraft(BaseModel):
     name: str
     description: str
     body: str
     tool_script: str | None
+    inputs: list[SkillInputParam] = Field(default_factory=list)
     uses: list[str] = Field(default_factory=list)
     secrets: list[str] = Field(default_factory=list)
     egress_domains: list[str] = Field(default_factory=list)
@@ -124,6 +145,7 @@ class Skill(BaseModel):
     tags: list[str]
     uses: list[str]
     secrets: list[str]
+    inputs: list[SkillInputParam] = Field(default_factory=list)
     egress_domains: list[str] = Field(default_factory=list)
 
     @field_validator("egress_domains")

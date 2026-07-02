@@ -6,7 +6,7 @@ import pytest
 from artemis.capabilities.skill_md import SkillFormatError, read_skill_md
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.ports.capabilities import CapabilityStore
-from artemis.types import SkillDraft, StagedSkill
+from artemis.types import SkillDraft, SkillInputParam, StagedSkill
 
 
 def _draft(
@@ -15,6 +15,7 @@ def _draft(
     *,
     body: str = "Use this skill.",
     tool_script: str | None = None,
+    inputs: list[SkillInputParam] | None = None,
     uses: list[str] | None = None,
     secrets: list[str] | None = None,
     egress_domains: list[str] | None = None,
@@ -25,6 +26,7 @@ def _draft(
         description=description,
         body=body,
         tool_script=tool_script,
+        inputs=inputs or [],
         uses=uses or [],
         secrets=secrets or [],
         egress_domains=egress_domains or [],
@@ -57,6 +59,18 @@ async def test_stage_writes_skill_tool_and_tests(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stage_writes_inputs_frontmatter(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    inputs = [SkillInputParam(name="topic", type="string", description="Planning topic")]
+    draft = _draft("Daily Planner", "Plans the day.", inputs=inputs)
+
+    staged = await store.stage(draft)
+
+    meta, _ = read_skill_md(tmp_path / "staging" / staged.id / "SKILL.md")
+    assert meta["inputs"] == [param.model_dump() for param in inputs]
+
+
+@pytest.mark.asyncio
 async def test_stage_writes_sandbox_policy(tmp_path: Path) -> None:
     store = FileCapabilityStore(tmp_path)
     draft = _draft(
@@ -81,9 +95,11 @@ async def test_stage_writes_sandbox_policy(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_promote_creates_versioned_library_entry(tmp_path: Path) -> None:
     store = FileCapabilityStore(tmp_path)
+    inputs = [SkillInputParam(name="date", type="string", description="Target date")]
     draft = _draft(
         "Daily Planner",
         "Plans the day.",
+        inputs=inputs,
         uses=["calendar"],
         secrets=["CALENDAR_TOKEN"],
     )
@@ -96,12 +112,30 @@ async def test_promote_creates_versioned_library_entry(tmp_path: Path) -> None:
     assert meta["version"] == 1
     assert meta["uses"] == ["calendar"]
     assert meta["secrets"] == ["CALENDAR_TOKEN"]
+    assert meta["inputs"] == [param.model_dump() for param in inputs]
+    assert first.inputs == inputs
+    stored = store.get("Daily Planner")
+    assert stored is not None
+    assert stored.inputs == inputs
 
     second = await store.promote((await store.stage(draft)).id)
 
     assert second.version == 2
     meta, _ = read_skill_md(skill_path)
     assert meta["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_read_draft_round_trips_inputs(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    inputs = [
+        SkillInputParam(name="count", type="number", description="Item count", required=False)
+    ]
+    draft = _draft("Counter", "Counts things.", inputs=inputs)
+
+    staged = await store.stage(draft)
+
+    assert store._read_draft(tmp_path / "staging" / staged.id).inputs == inputs
 
 
 @pytest.mark.asyncio
@@ -129,6 +163,44 @@ async def test_promote_defaults_to_empty_egress_policy(tmp_path: Path) -> None:
     stored = store.get("Lookup")
     assert stored is not None
     assert stored.egress_domains == []
+    assert stored.inputs == []
+
+
+def test_legacy_skill_without_inputs_defaults_to_empty_inputs(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    library_dir = tmp_path / "library" / "Lookup"
+    library_dir.mkdir(parents=True)
+    (library_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: Lookup\n"
+        "description: Finds facts.\n"
+        "version: 1\n"
+        "tags: []\n"
+        "uses: []\n"
+        "secrets: []\n"
+        "---\n"
+        "Use this skill.\n",
+        encoding="utf-8",
+    )
+    staging_dir = tmp_path / "staging" / "lookup-legacy"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: Lookup\n"
+        "description: Finds facts.\n"
+        "version: 0\n"
+        "tags: []\n"
+        "uses: []\n"
+        "secrets: []\n"
+        "---\n"
+        "Use this skill.\n",
+        encoding="utf-8",
+    )
+
+    stored = store.get("Lookup")
+    assert stored is not None
+    assert stored.inputs == []
+    assert store._read_draft(staging_dir).inputs == []
 
 
 @pytest.mark.asyncio

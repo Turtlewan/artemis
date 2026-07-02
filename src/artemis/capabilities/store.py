@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from artemis.capabilities.skill_md import read_skill_md, write_skill_md
-from artemis.types import Skill, SkillDraft, StagedSkill, validate_egress_domains
+from artemis.types import Skill, SkillDraft, SkillInputParam, StagedSkill, validate_egress_domains
 
 _log = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class FileCapabilityStore:
             tags=[],
             uses=draft.uses,
             secrets=draft.secrets,
+            inputs=[param.model_dump() for param in draft.inputs],
             body=draft.body,
         )
         if draft.tool_script is not None:
@@ -88,6 +89,7 @@ class FileCapabilityStore:
             tags=[],
             uses=draft.uses,
             secrets=draft.secrets,
+            inputs=[param.model_dump() for param in draft.inputs],
             body=draft.body,
         )
         tool_path = staged_dir / "tool.py"
@@ -108,6 +110,7 @@ class FileCapabilityStore:
             tags=[],
             uses=draft.uses,
             secrets=draft.secrets,
+            inputs=draft.inputs,
             egress_domains=_egress(staged_dir),
         )
 
@@ -159,6 +162,7 @@ class FileCapabilityStore:
             description=str(meta["description"]),
             body=body,
             tool_script=tool_path.read_text(encoding="utf-8") if tool_path.exists() else None,
+            inputs=[SkillInputParam(**item) for item in meta.get("inputs", [])],
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
             egress_domains=_egress(staged_dir),
@@ -175,6 +179,7 @@ class FileCapabilityStore:
             tags=[str(item) for item in meta.get("tags", [])],
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
+            inputs=[SkillInputParam(**item) for item in meta.get("inputs", [])],
             egress_domains=_egress(skill_path.parent),
         )
 

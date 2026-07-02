@@ -21,9 +21,14 @@ def write_skill_md(
     tags: list[str],
     uses: list[str],
     secrets: list[str],
+    inputs: list[dict[str, Any]],
     body: str,
 ) -> None:
-    """Write an Agent-Skills format SKILL.md file."""
+    """Write an Agent-Skills format SKILL.md file.
+
+    `inputs` is persisted as frontmatter metadata; legacy SKILL.md files may omit it and readers
+    must treat that as an empty list.
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
     meta = {
@@ -33,6 +38,7 @@ def write_skill_md(
         "tags": tags,
         "uses": uses,
         "secrets": secrets,
+        "inputs": inputs,
     }
     frontmatter = yaml.safe_dump(meta, sort_keys=False)
     path.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8")
