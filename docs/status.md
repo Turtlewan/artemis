@@ -54,7 +54,7 @@ All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff
 |------|------|-------|------|------------|-------------|
 | _(none)_ | | | | | |
 
-_(**All three enabler-#2 specs built + committed/verified.** `enabler-wsl2-runner` `5c5c601` (5/5 live). `enabler-sandbox-policy-wiring` `6bffe93` (199 passed, Opus cross-model review — guard fail-closed). `enabler-fetch-sandbox` `6261402` — 9/9 incl. live runtime-fetch smoke (allowlisted domain fetched through the cage at runtime; non-allowlisted blocked). The **sandbox substrate is complete**: build-time verify + runtime fetch both run in the hardened WSL2 isolate. `client/src-tauri/Cargo.toml` remains a stray cosmetic no-op.)_
+_(**Tree clean at HEAD, nothing in flight.** Latest session (2026-07-02, session 3): shipped the **full capability invoke/reuse arc** (7 commits `3ff63bf`→`2ad1396`, ADR-039) — build→promote→**reuse** now closes in the app; brain `mypy --strict` + 384 pytest, client tsc/eslint + 115 vitest + cargo, 2 apex-security BLOCKs caught+fixed. Also: web_q hedge fix (`da09d64`), packaged-exe CSP inline-style fix (`4f16b9c`), Chromium-in-cage spike committed (`poc/wsl2_browser/`, FEASIBLE). All on `v2-rebuild`, unmerged. **Resume → next candidates:** JS-rendering fetcher (a1, spec it), UI overhaul (folds in the invoke confirm-card), `app.state.invokes` TTL, migrate Telegram/Tavily tokens → keychain, R4 transport-ingress.)_
 <!-- CODING:END -->
 
 <!-- PLANNING:START -->
