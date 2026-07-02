@@ -43,6 +43,8 @@ class ClaudeCodeProvider:
             "--model",
             model or self._model_default,
             "--exclude-dynamic-system-prompt-sections",
+            "--tools",
+            "",
         ]
         returncode, stdout, stderr = await self._run_cli(argv)
         text = stdout.decode("utf-8", errors="replace")
