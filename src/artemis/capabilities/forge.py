@@ -19,6 +19,8 @@ AUTHOR_SYSTEM = (
     "(e.g. `from tool import Thing`). NEVER import `artemis.*` or any package outside the Python "
     "standard library or the names you list in `uses`. The capability must be self-contained.\n"
     "- `body` is a short human-readable description for SKILL.md — prose, NOT code.\n"
+    "- `inputs` is the parameters the capability needs at invoke time (empty list if none); "
+    "secrets NEVER go in `inputs`, only in the separate `secrets` field.\n"
     "- Capabilities that need the network MUST list every domain they contact in "
     "`egress_domains` (empty = no network).\n"
     "- The test must pass when run with `pytest` from the capability directory.\n"
@@ -38,6 +40,25 @@ SKILL_DRAFT_SCHEMA: dict[str, object] = {
         "uses": {"type": "array", "items": {"type": "string"}},
         "secrets": {"type": "array", "items": {"type": "string"}},
         "egress_domains": {"type": "array", "items": {"type": "string"}},
+        "inputs": {
+            "type": "array",
+            "description": (
+                "Parameters this capability needs at invoke time (empty array if the "
+                "capability takes no parameters). NEVER include secrets here -- secret names "
+                "go in `secrets`."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "type": {"type": "string", "enum": ["string", "number", "boolean"]},
+                    "description": {"type": "string"},
+                    "required": {"type": "boolean"},
+                },
+                "required": ["name", "type", "description", "required"],
+                "additionalProperties": False,
+            },
+        },
         "tests": {
             "type": "string",
             "description": "A pytest module that imports the implementation via `from tool import ...` and proves it works.",
@@ -52,6 +73,7 @@ SKILL_DRAFT_SCHEMA: dict[str, object] = {
         "secrets",
         "egress_domains",
         "tests",
+        "inputs",
     ],
     "additionalProperties": False,
 }

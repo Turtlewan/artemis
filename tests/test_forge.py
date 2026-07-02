@@ -8,7 +8,7 @@ from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox, VerifyResult
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.ports.model import ModelPort
-from artemis.types import Message, ModelResponse, Skill, SkillDraft, Usage
+from artemis.types import Message, ModelResponse, Skill, SkillDraft, SkillInputParam, Usage
 
 
 NETWORK_TOOL = "import imaplib\n\n\ndef fetch() -> None:\n    pass\n"
@@ -54,6 +54,7 @@ def _draft(
     *,
     tests: str | None = "def test_skill() -> None:\n    assert True\n",
     tool_script: str | None = None,
+    inputs: list[SkillInputParam] | None = None,
     egress_domains: list[str] | None = None,
 ) -> SkillDraft:
     return SkillDraft(
@@ -61,6 +62,7 @@ def _draft(
         description="Echoes text.",
         body="Use this skill to echo text.",
         tool_script=tool_script,
+        inputs=inputs or [],
         uses=[],
         secrets=[],
         egress_domains=egress_domains or [],
@@ -223,6 +225,38 @@ async def test_propose_allows_pure_stdlib_capability(tmp_path: Path) -> None:
     proposal = await forge.propose("extract dates from text")
     assert proposal.blocked is False
     assert proposal.block_reason is None
+
+
+@pytest.mark.asyncio
+async def test_propose_preserves_authored_inputs(tmp_path: Path) -> None:
+    inputs = [
+        SkillInputParam(
+            name="query",
+            type="string",
+            description="search text",
+            required=True,
+        )
+    ]
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft(inputs=inputs)),
+        store,
+        FakeSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("search notes")
+    assert proposal.draft.inputs == inputs
+
+
+@pytest.mark.asyncio
+async def test_propose_preserves_parameterless_authored_inputs(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path)
+    forge = CapabilityForge(
+        FakeModel(_draft()),
+        store,
+        FakeSandbox(VerifyResult(passed=True, output="ok")),
+    )
+    proposal = await forge.propose("extract dates from text")
+    assert proposal.draft.inputs == []
 
 
 @pytest.mark.asyncio
