@@ -7,14 +7,19 @@ only on write and are never logged, echoed, or included in error messages here.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from artemis.api.auth import Principal, require_session
 from artemis.ports.secrets import SecretStorePort
 
+# Env-var-style names only. Restricting the charset at the boundary keeps stored names — and thus
+# the DELETE /app/secrets/{name} URL the client interpolates — free of URL-significant characters
+# (#, ?, %, /) that would otherwise silently mangle or misroute a delete.
+_SECRET_NAME_PATTERN = r"^[A-Za-z0-9_.-]{1,128}$"
+
 
 class SecretWriteRequest(BaseModel):
-    name: str
+    name: str = Field(pattern=_SECRET_NAME_PATTERN)
     value: str
 
 

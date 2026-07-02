@@ -98,3 +98,15 @@ def test_secret_routes_require_session(tmp_path: Path) -> None:
     )
     assert client.get("/app/secrets").status_code == 401
     assert client.delete("/app/secrets/OPENAI_API_KEY").status_code == 401
+
+
+def test_set_secret_rejects_url_unsafe_name(tmp_path: Path) -> None:
+    """Names with URL-significant chars are rejected (422) so the DELETE {name} URL stays safe."""
+    store = FakeSecretStore()
+    client = _client(tmp_path, store)
+    for bad in ["api?v=2", "site/key", "with#frag", "per%cent", "has space"]:
+        resp = client.post("/app/secrets", json={"name": bad, "value": "v"})
+        assert resp.status_code == 422, bad
+    assert store.list_names() == []  # nothing stored
+    # a normal env-var-style name is accepted
+    assert client.post("/app/secrets", json={"name": "GITHUB_TOKEN", "value": "v"}).status_code == 204
