@@ -8,9 +8,10 @@ reader -> synthesizer quarantine before any owner-facing answer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from pathlib import Path
+import time
 from typing import Literal, cast
 from uuid import uuid4
 
@@ -22,6 +23,7 @@ from artemis.capabilities.fetch_sandbox import (
     resolve_secret_values,
 )
 from artemis.capabilities.select import SelectionResult
+from artemis.expiry import evict_expired
 from artemis.ports.capabilities import CapabilityStore
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
@@ -46,11 +48,18 @@ _SYNTH_SYSTEM = (
 )
 
 
+# Server-held invoke proposals fill fast (every confident /app/ask match), so they get a
+# shorter TTL and smaller cap than builds. Eviction is lazy at proposal creation (see expiry.py).
+_INVOKE_TTL_SECONDS = 1800.0
+_INVOKE_MAX_ENTRIES = 128
+
+
 @dataclass
 class InvokeState:
     capability: str
     args: dict[str, object]
     request_text: str
+    created_at: float = field(default_factory=time.monotonic)
 
 
 class InvokeProposal(BaseModel):
@@ -98,6 +107,7 @@ def build_invoke_proposal(
     if selection.capability is None:
         raise ValueError("selection capability is required")
 
+    evict_expired(invokes, ttl_seconds=_INVOKE_TTL_SECONDS, max_entries=_INVOKE_MAX_ENTRIES)
     invoke_id = uuid4().hex
     invokes[invoke_id] = InvokeState(
         capability=selection.capability,

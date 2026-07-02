@@ -7,6 +7,8 @@ from collections.abc import AsyncIterator, Mapping
 
 import httpx
 
+from artemis.ports.secrets import SecretStorePort
+from artemis.secrets_store import resolve_secret
 from artemis.types import InboundMessage, OutboundMessage
 
 _API_BASE = "https://api.telegram.org"
@@ -61,13 +63,18 @@ class TelegramTransport:
         return _gen()
 
 
-def telegram_from_env(env: Mapping[str, str] = os.environ) -> TelegramTransport | None:
-    """Build a TelegramTransport from env, or None if TELEGRAM_BOT_TOKEN is unset.
+def telegram_from_env(
+    env: Mapping[str, str] = os.environ,
+    *,
+    secrets: SecretStorePort | None = None,
+) -> TelegramTransport | None:
+    """Build a TelegramTransport, or None if no bot token is configured.
 
-    TELEGRAM_BOT_TOKEN  - bot token (stopgap for a future keychain secret)
-    TELEGRAM_CHAT_IDS   - comma-separated allowlist of chat IDs for ingress
+    TELEGRAM_BOT_TOKEN  - bot token: resolved keychain-first (when `secrets` is
+                          given), then env fallback (migration path off the env stopgap).
+    TELEGRAM_CHAT_IDS   - comma-separated allowlist of chat IDs (config, stays env).
     """
-    token = env.get("TELEGRAM_BOT_TOKEN")
+    token = resolve_secret("TELEGRAM_BOT_TOKEN", secrets=secrets, env=env)
     if not token:
         return None
     allowed = {c.strip() for c in env.get("TELEGRAM_CHAT_IDS", "").split(",") if c.strip()}

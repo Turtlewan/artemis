@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,9 +14,16 @@ from pydantic import BaseModel
 
 from artemis.api.auth import Principal, require_session
 from artemis.capabilities.forge import CapabilityForge
+from artemis.expiry import evict_expired
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.ports.secrets import SecretStorePort
 from artemis.types import BuildProposal
+
+
+# Server-held builds are created deliberately (one per "Build it"), so a longer TTL / larger cap
+# than invokes suffices. Eviction is lazy at proposal creation (see expiry.py).
+_BUILD_TTL_SECONDS = 3600.0
+_BUILD_MAX_ENTRIES = 64
 
 
 @dataclass
@@ -24,6 +32,7 @@ class BuildState:
 
     proposal: BuildProposal
     staged_id: str | None = None
+    created_at: float = field(default_factory=time.monotonic)
 
 
 class ProposeRequest(BaseModel):
@@ -119,8 +128,10 @@ async def propose(
     _principal: Principal = Depends(require_session),
 ) -> PlanCard:
     proposal = await _forge(request).propose(req.goal)
+    builds = _builds(request)
+    evict_expired(builds, ttl_seconds=_BUILD_TTL_SECONDS, max_entries=_BUILD_MAX_ENTRIES)
     build_id = uuid4().hex
-    _builds(request)[build_id] = BuildState(proposal=proposal)
+    builds[build_id] = BuildState(proposal=proposal)
     draft = proposal.draft
     secrets_store: SecretStorePort = request.app.state.secrets
     stored = set(secrets_store.list_names())

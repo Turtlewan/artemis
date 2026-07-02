@@ -164,8 +164,10 @@ class MutableSecretStore:
         return sorted(self.values)
 
 
-def client_for(model: FakeModel, route: Route) -> TestClient:
-    app = create_app(model=model)
+def client_for(
+    model: FakeModel, route: Route, *, secrets: MutableSecretStore | None = None
+) -> TestClient:
+    app = create_app(model=model, secrets=secrets or MutableSecretStore())
     app.dependency_overrides[require_session] = lambda: Principal(
         device_id="dev", person_id="owner"
     )
@@ -235,6 +237,28 @@ def test_web_q_executes_web_tool(
     assert response.json()["tool_used"] == "web"
     assert tool.queries == ["current question"]
     assert tool.closed is True
+
+
+def test_web_q_resolves_tavily_key_keychain_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    tool = FakeWebTool()
+
+    def build_fake_web_tool(*, tavily_api_key: str) -> FakeWebTool:
+        assert tavily_api_key == "from-keychain"
+        return tool
+
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.setattr(ask_routes, "build_web_tool", build_fake_web_tool)
+    client = client_for(
+        FakeModel("local answer"),
+        "web_q",
+        secrets=MutableSecretStore({"TAVILY_API_KEY": "from-keychain"}),
+    )
+
+    response = client.post("/app/ask", json={"text": "current question"})
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "web"
+    assert tool.queries == ["current question"]
 
 
 def test_web_q_without_key_degrades_to_local_answer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -560,6 +584,37 @@ def test_confirm_route_drops_state_on_error(tmp_path: Path) -> None:
     assert first.json()["status"] == "error"
     assert invoke_id not in app.state.invokes
     assert second.json()["status"] == "not_found"
+
+
+def test_new_proposal_evicts_expired_invoke(tmp_path: Path) -> None:
+    from artemis.capabilities import invoke as invoke_mod
+
+    app = create_app(data_dir=tmp_path, model=FakeModel())
+    _promote_echo(app, inputs=[SkillInputParam(name="topic", type="string", description="Topic")])
+    app.dependency_overrides[require_session] = lambda: Principal(
+        device_id="dev", person_id="owner"
+    )
+    app.dependency_overrides[ask_routes._selector] = lambda: FixedSelector(
+        SelectionResult(
+            matched=True,
+            capability="Echo",
+            args={"topic": "x"},
+            confidence=0.9,
+            missing_required=[],
+        )
+    )
+    app.dependency_overrides[ask_routes._intent] = lambda: RaisingIntentRouter()
+    client = TestClient(app)
+
+    # A stale proposal older than the TTL should be gone once the next proposal is created.
+    stale = InvokeState(capability="Echo", args={}, request_text="old")
+    stale.created_at -= invoke_mod._INVOKE_TTL_SECONDS + 1
+    app.state.invokes["stale"] = stale
+
+    fresh_id = client.post("/app/ask", json={"text": "echo x"}).json()["invoke_id"]
+
+    assert "stale" not in app.state.invokes
+    assert fresh_id in app.state.invokes
 
 
 def test_confirm_route_returns_not_found_for_unknown_invoke_id(tmp_path: Path) -> None:

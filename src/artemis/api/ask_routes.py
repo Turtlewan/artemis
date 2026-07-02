@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -21,6 +20,7 @@ from artemis.model.client import ModelClient
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
 from artemis.reachout.web_tool import build_web_tool
+from artemis.secrets_store import resolve_secret
 from artemis.types import Message
 
 _SYSTEM = "You are Artemis, the owner's personal assistant. Answer concisely and helpfully."
@@ -119,7 +119,12 @@ async def _answer(model: ModelPort, text: str) -> tuple[str, str]:
     return resp.text, _engine_tag(resp.model_id)
 
 
-async def _routed_answer(model: ModelPort, intent_router: IntentRouter, text: str) -> AskResponse:
+async def _routed_answer(
+    model: ModelPort,
+    intent_router: IntentRouter,
+    text: str,
+    secrets: SecretStorePort,
+) -> AskResponse:
     intent = await intent_router.classify(text)
     if intent.route == "plain_ask":
         answer, path = await _answer(model, text)
@@ -133,7 +138,7 @@ async def _routed_answer(model: ModelPort, intent_router: IntentRouter, text: st
             text=_AGGREGATE_SIGNAL, path="aggregate", tool_used=None, escalated=False
         )
 
-    tavily_api_key = os.environ.get("TAVILY_API_KEY", "").strip()
+    tavily_api_key = (resolve_secret("TAVILY_API_KEY", secrets=secrets) or "").strip()
     if not tavily_api_key:
         answer, _path = await _answer(model, text)
         return AskResponse(
@@ -158,13 +163,14 @@ async def _invoke_or_routed_answer(
     invokes: dict[str, InvokeState],
     model: ModelPort,
     intent_router: IntentRouter,
+    secrets: SecretStorePort,
     text: str,
 ) -> AskResponse:
     selection = await selector.select(text)
     if selection.matched and selection.capability and not selection.missing_required:
         skill = capability_store.get(selection.capability)
         if skill is None:
-            return await _routed_answer(model, intent_router, text)
+            return await _routed_answer(model, intent_router, text, secrets)
 
         proposal = build_invoke_proposal(selection, skill, invokes, text)
         return AskResponse(
@@ -186,7 +192,7 @@ async def _invoke_or_routed_answer(
             missing=selection.missing_required,
         )
 
-    return await _routed_answer(model, intent_router, text)
+    return await _routed_answer(model, intent_router, text, secrets)
 
 
 router = APIRouter(prefix="/app")
@@ -201,6 +207,7 @@ async def ask(
     selector: CapabilitySelector = Depends(_selector),
     capability_store: FileCapabilityStore = Depends(_capability_store),
     invokes: dict[str, InvokeState] = Depends(_invokes),
+    secrets: SecretStorePort = Depends(_secrets),
 ) -> AskResponse:
     return await _invoke_or_routed_answer(
         selector=selector,
@@ -208,6 +215,7 @@ async def ask(
         invokes=invokes,
         model=model,
         intent_router=intent_router,
+        secrets=secrets,
         text=req.text,
     )
 
@@ -221,6 +229,7 @@ async def ask_stream(
     selector: CapabilitySelector = Depends(_selector),
     capability_store: FileCapabilityStore = Depends(_capability_store),
     invokes: dict[str, InvokeState] = Depends(_invokes),
+    secrets: SecretStorePort = Depends(_secrets),
 ) -> StreamingResponse:
     async def event_stream() -> AsyncIterator[str]:
         response = await _invoke_or_routed_answer(
@@ -229,6 +238,7 @@ async def ask_stream(
             invokes=invokes,
             model=model,
             intent_router=intent_router,
+            secrets=secrets,
             text=req.text,
         )
         yield _sse_event(response.text)

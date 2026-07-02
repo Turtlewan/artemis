@@ -10,14 +10,38 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from importlib import import_module
 from pathlib import Path
 from typing import Protocol, cast
 
+from artemis.ports.secrets import SecretStorePort
+
 
 SERVICE_NAME = "artemis"
 _INDEX_MODE = 0o600
+
+
+def resolve_secret(
+    name: str,
+    *,
+    secrets: SecretStorePort | None,
+    env: Mapping[str, str] = os.environ,
+) -> str | None:
+    """Resolve a secret keychain-first, then environment fallback.
+
+    This is the migration path off env-var stopgaps (Telegram bot token, Tavily
+    key): once the owner stores a secret in the keychain it wins, but an existing
+    env var still works until then. Returns None when neither source has a value.
+    Never logs the resolved value.
+    """
+    if secrets is not None:
+        stored = secrets.get(name)
+        if stored:
+            return stored
+    env_value = env.get(name)
+    return env_value or None
 
 
 class KeyringBackend(Protocol):

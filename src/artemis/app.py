@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import uuid4
 
 from artemis.model.compose import build_model_router
@@ -13,6 +14,7 @@ from artemis.ports.model import ModelPort
 from artemis.ports.transport import TransportPort
 from artemis.proactivity import ProactiveWorker, build_proactive_worker
 from artemis.scheduler import DurableScheduler, ScheduleLedger, build_scheduler
+from artemis.secrets_store import KeyringSecretStore
 from artemis.transport import ConsoleTransport, telegram_from_env
 from artemis.types import ScheduledJob
 
@@ -49,7 +51,12 @@ async def _noop_dispatch(payload: dict) -> None:  # type: ignore[type-arg]
 
 def cmd_run(args: argparse.Namespace) -> None:
     """Start the always-on heartbeat. Pushes to Telegram if configured, else the console."""
-    telegram = telegram_from_env(os.environ)
+    # Same keychain the brain + keys panel use (keyring lookups are by service+name, so the
+    # index path only affects listing) — the bot token resolves keychain-first, env as fallback.
+    secrets = KeyringSecretStore(
+        Path(os.environ.get("ARTEMIS_DATA_DIR", ".")) / "secrets_index.json"
+    )
+    telegram = telegram_from_env(os.environ, secrets=secrets)
     if telegram is not None:
         owner_identity = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
         app = build_app(db_path=args.db, transport=telegram, owner_identity=owner_identity)
