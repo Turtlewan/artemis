@@ -19,6 +19,38 @@ guest/multi-person wall drops in later without reworking the brain.
 
 ---
 
+## Capabilities (current truth)
+
+_This section tracks what is actually built and live on the **`v2-rebuild`** branch — a different codebase from
+the v1 design map below (see `docs/status.md` §"Project: Artemis (v2)" for the full slice-by-slice ledger and
+`git log` for file-level diffs). It is seeded from the 2026-07-02 pre-R3 gate session; earlier v2 work (Slices
+0–3, the reach-out R1/R2 stack, the capability-build CB-1…5a slice, the WSL2 sandbox enablers) is not yet
+backfilled here — consult `docs/status.md` for that history until a fuller fold happens._
+
+**Pre-R3 web-tool safety gate (2026-07-02, all 4 specs `docs/changes/done/`):**
+- **Reader no-tools quarantine** (`reader-no-tools`, `1b2b720`) — `ClaudeCodeProvider` structurally disables tool
+  availability (`--tools ""`) so the quarantined web reader cannot be induced into a tool call via prompt
+  injection; proven with a live injection smoke (zero `tool_use` emitted). Required before any live web-reader
+  traffic.
+- **Web-tool eval corpus** (`webtool-eval-corpus`, `7fe0813`) — a frozen golden corpus under `evals/webtool/`:
+  104 pages (62 real-captured via Tavily discovery + the project's own `TrafilaturaFetcher`, 42 hand-authored —
+  22 adversarial injection variants A–G, 5 benign twins, 8 contradictory pairs, 7 stale) + 50 query records +
+  a SHA-256 loader/schema/capture tool.
+- **Web-tool eval harness** (`webtool-eval-harness`, `73cffed`, fence fix `8023bbd`) — an offline scoring runner
+  that replays the reader and synthesizer against the corpus, scored separately by an Opus LLM-judge
+  (groundedness + injection-resistance), with safety-redundancy min-for-`must_not`, retry-then-`judge_error`
+  handling, and per-stage tracing; ships the synth's report-and-attribute conflict-handling policy.
+- **Web-tool eval calibration** (`webtool-eval-calibration`, `a8030dc`) — a model-fit sweep over configurable
+  reader/synth model line-ups with a judge-collision guard and a comparison-table report; the substrate for
+  choosing the actual R3 model line-up.
+
+**Fix affecting existing capabilities:** `8023bbd` strips a markdown code fence Claude CLI models wrap around
+structured JSON output — this was silently breaking schema-validated calls (web-tool reader/synth, spine
+planning, memory consolidation, capability forge, eval judge) whenever they routed through the `claude`
+provider instead of `codex`.
+
+---
+
 ## Architecture shape — hub-and-spoke behind a security wall
 
 The **brain is the hub** (not a peer module). Everything else is a ring around it: **interaction surfaces** the

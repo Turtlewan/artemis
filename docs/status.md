@@ -61,16 +61,9 @@ _(**All three enabler-#2 specs built + committed/verified.** `enabler-wsl2-runne
 ## Pending Specs
 | Spec | Summary |
 |------|---------|
-| reader-no-tools | **READY** (Light). Structurally disable tools on `ClaudeCodeProvider` (global no-tools flag + `--max-turns 1`) so the quarantined web reader can't be induced into a tool call; exact flag pinned live (Task 1 — `--allowedTools ""` is WRONG; use `--tools ""`/`--disallowedTools "*"`). The security gate before the web reader goes live. Build FIRST (also arms the eval's Opus judge). |
-| webtool-eval-corpus | **READY** (Deep, ADR-038). Frozen golden corpus (~50q/~100pg, ~22% adversarial) + typed label schema + SHA-256 loader + one-shot capture tool. New `evals/webtool/` home. Prereq: none. |
-| webtool-eval-harness | **READY** (Deep, `cross_model_review`). Replay providers + Opus LLM-judge (temp=0, rubric set, safety redundancy, failure path) + tracing + scoring runner/report + the report-and-attribute synth prompt change. Prereq: corpus. |
-| webtool-eval-calibration | **READY** (Deep). Model-fit sweep over configurable line-ups (judge-collision guard) → comparison table. Prereq: harness. |
+| _(none)_ | — |
 
-> **Build order:** `reader-no-tools` (independent, first) · then the eval chain `webtool-eval-corpus → -harness → -calibration` (prereq-chained). All 4 gate R3. ADR-038 = Accepted.
-
-> **Reach-out-router arc (ADR-035 #3, owner chose full shared-ingress scope + build-fresh):** R1 `reachout-web-primitives` ✅ **built + committed** (`7d2f14b`) → **R2 built + committed** (`reachout-clean-context-provider` `5228bd3`, `reachout-web-tool` `c9b0de4`; ADR-037, full-live end-to-end) → R3 intent-router + Ask wiring (Haiku classifier) → R4 transport-ingress (consume `TransportPort.receive()` for Telegram+Console). Web-search provider = **Tavily** default (`TAVILY_API_KEY` stopgap until secret-capture), Brave = future protocol swap.
->
-> **▶ NEXT — the pre-R3 gate set is SPECCED + READY + gated (2026-07-02):** all 4 specs in `docs/changes/` — `reader-no-tools` (build first) + the `webtool-eval-{corpus→harness→calibration}` chain (ADR-038 Accepted; report-and-attribute conflict policy). **Next action = BUILD them** (coding). Then R3 (intent-router + Ask wiring), then ADR-035 #4 (aggregation-pipeline) + #5 (secret-capture). Other fast-follow: `plangate-egress` (granted egress in the Build-it card).
+> **Reach-out-router arc (ADR-035 #3, owner chose full shared-ingress scope + build-fresh):** R1 `reachout-web-primitives` ✅ **built + committed** (`7d2f14b`) → **R2 built + committed** (`reachout-clean-context-provider` `5228bd3`, `reachout-web-tool` `c9b0de4`; ADR-037, full-live end-to-end) → **pre-R3 gate set built + committed (2026-07-02):** `reader-no-tools` (`1b2b720`), `webtool-eval-corpus` (`7fe0813`), `webtool-eval-harness` (`73cffed` + fence fix `8023bbd`), `webtool-eval-calibration` (`a8030dc`) — all archived to `done/`. **▶ NEXT = R3** intent-router + Ask wiring (Haiku classifier) → R4 transport-ingress (consume `TransportPort.receive()` for Telegram+Console). Then ADR-035 #4 (aggregation-pipeline) + #5 (secret-capture). Other fast-follow: `plangate-egress` (granted egress in the Build-it card). Web-search provider = **Tavily** default (`TAVILY_API_KEY` stopgap until secret-capture), Brave = future protocol swap.
 >
 > _All three enabler-#2 sandbox specs are built + committed (`5c5c601`, `6bffe93`, `6261402`) — the hardened WSL2 substrate is complete; specs archived to `done/`._
 
