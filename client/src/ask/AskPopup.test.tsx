@@ -15,6 +15,10 @@ const gatewayMocks = vi.hoisted(() => ({
   capabilityPromote: vi.fn(),
 }));
 
+const keysMocks = vi.hoisted(() => ({
+  openKeys: vi.fn(),
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((_event: string, callback: () => void) => {
     eventMocks.askSummon = callback;
@@ -29,6 +33,10 @@ vi.mock("../api/gateway", () => ({
   capabilityPropose: gatewayMocks.capabilityPropose,
   capabilityBuild: gatewayMocks.capabilityBuild,
   capabilityPromote: gatewayMocks.capabilityPromote,
+}));
+
+vi.mock("../settings/keysStore", () => ({
+  openKeys: keysMocks.openKeys,
 }));
 
 import type { BuildPlanCard } from "../api/dto";
@@ -81,6 +89,8 @@ const planCard = (patch: Partial<BuildPlanCard> = {}): BuildPlanCard => ({
   description: "Creates a local date helper.",
   summary: "Add a date utility module.",
   secrets: [],
+  egress_domains: [],
+  missing_secrets: [],
   blocked: false,
   block_reason: null,
   ...patch,
@@ -103,6 +113,7 @@ describe("AskPopup", () => {
     gatewayMocks.capabilityPropose.mockReset();
     gatewayMocks.capabilityBuild.mockReset();
     gatewayMocks.capabilityPromote.mockReset();
+    keysMocks.openKeys.mockReset();
     connectionStore.resetForTest();
     askStore.resetForTest();
     eventMocks.askSummon = undefined;
@@ -224,7 +235,94 @@ describe("AskPopup", () => {
 
     expect(container.textContent).toContain("Building capability");
     expect(container.textContent).toContain("Date Utility");
+    expect(container.textContent).toContain("No network access");
     expect(getByRole(container, "button", /build it/i)).toBeTruthy();
+  });
+
+  it("renders plan egress domains and flags missing secrets", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({
+        secrets: ["GMAIL_TOKEN", "SLACK_TOKEN"],
+        egress_domains: ["gmail.googleapis.com", "oauth2.googleapis.com"],
+        missing_secrets: ["GMAIL_TOKEN"],
+      }),
+    );
+
+    await act(async () => {
+      await askStore.startBuild("build me a gmail capability");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    expect(container.textContent).toContain("Network access");
+    expect(container.textContent).toContain("gmail.googleapis.com");
+    expect(container.textContent).toContain("oauth2.googleapis.com");
+    expect(container.textContent).toContain("GMAIL_TOKEN (missing)");
+    expect(container.textContent).toContain("SLACK_TOKEN");
+    expect(container.textContent).toContain("Missing secrets: GMAIL_TOKEN");
+  });
+
+  it("shows pending credentials after a passing build and deep-links each key", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({
+        secrets: ["GMAIL_TOKEN"],
+        egress_domains: ["gmail.googleapis.com"],
+        missing_secrets: ["GMAIL_TOKEN"],
+      }),
+    );
+    gatewayMocks.capabilityBuild.mockImplementationOnce(async function* () {
+      yield { type: "build_result", build_id: "build-1", passed: true, blocked: false, output: "ok" };
+      yield { type: "done" };
+    });
+
+    await act(async () => {
+      await askStore.startBuild("build me a gmail capability");
+      await askStore.confirmBuild("build-1");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    expect(container.textContent).toContain("Pending credentials");
+    expect(container.textContent).toContain("Add these keys when you are ready");
+    expect(getByRole(container, "button", /add to my capabilities/i)).toBeTruthy();
+
+    const addKey = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add key GMAIL_TOKEN"]',
+    );
+    expect(addKey).toBeTruthy();
+
+    act(() => {
+      addKey?.click();
+    });
+
+    expect(keysMocks.openKeys).toHaveBeenCalledWith("GMAIL_TOKEN");
+  });
+
+  it("does not show pending credentials when no secrets are missing", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({
+        secrets: ["GMAIL_TOKEN"],
+        egress_domains: ["gmail.googleapis.com"],
+        missing_secrets: [],
+      }),
+    );
+    gatewayMocks.capabilityBuild.mockImplementationOnce(async function* () {
+      yield { type: "build_result", build_id: "build-1", passed: true, blocked: false, output: "ok" };
+      yield { type: "done" };
+    });
+
+    await act(async () => {
+      await askStore.startBuild("build me a gmail capability");
+      await askStore.confirmBuild("build-1");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    expect(container.textContent).not.toContain("Pending credentials");
+    expect(container.querySelector('button[aria-label^="Add key"]')).toBeNull();
   });
 
   it("wires Adjust to cancelBuild with the plan message id and removes the plan card", async () => {

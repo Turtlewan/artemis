@@ -186,6 +186,8 @@ export interface BuildPlanCard {
   description: string;
   summary: string;
   secrets: string[];
+  egress_domains: string[];
+  missing_secrets: string[];
   blocked: boolean;
   block_reason: string | null;
 }

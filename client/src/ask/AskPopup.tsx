@@ -1,5 +1,6 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
+import { openKeys } from "../settings/keysStore";
 import { useAskStore, askStore } from "./askStore";
 
 interface AskPopupProps {
@@ -184,8 +185,18 @@ const styles = `
   font-size: 12px;
   color: var(--muted);
 }
+.ask-card__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ask-card__flag {
+  color: var(--a);
+}
 .ask-card__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
@@ -356,6 +367,28 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
   const lastBot = [...messages].reverse().find((message) => message.role === "assistant");
   const engineTag = lastBot?.engine ?? "local";
   const isEmpty = messages.length === 0 && snapshot.streaming === "";
+  const successfulBuildIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.kind === "result" &&
+      message.buildId !== undefined &&
+      message.result?.passed === true &&
+      message.result.blocked === false
+    ) {
+      successfulBuildIds.add(message.buildId);
+    }
+  }
+  const pendingCredentialPlans = messages.flatMap((message) => {
+    if (
+      message.kind === "plan" &&
+      message.plan !== undefined &&
+      successfulBuildIds.has(message.plan.build_id) &&
+      message.plan.missing_secrets.length > 0
+    ) {
+      return [message.plan];
+    }
+    return [];
+  });
 
   return (
     <>
@@ -397,20 +430,48 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
               {isEmpty ? (
                 <p className="ask-empty">Ask me anything to get started.</p>
               ) : (
-                messages.map((message) => {
+                <>
+                  {messages.map((message) => {
                   const isUser = message.role === "user";
                   const body =
                     !isUser && message.text === "" ? snapshot.streaming : message.text;
                   if (message.kind === "plan" && message.plan !== undefined) {
                     const plan = message.plan;
+                    const missingSecrets = new Set(plan.missing_secrets);
                     return (
                       <div key={message.id} className="ask-msg ask-msg--bot">
                         <span className="ask-msg__who">Artemis</span>
                         <div className="ask-card">
                           <div className="ask-card__title">{plan.name}</div>
                           <div>{plan.summary}</div>
+                          <div className="ask-card__meta">Network access</div>
+                          {plan.egress_domains.length > 0 ? (
+                            <ul className="ask-card__list" aria-label="Network access domains">
+                              {plan.egress_domains.map((domain) => (
+                                <li key={domain}>{domain}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="ask-card__meta">No network access</div>
+                          )}
                           {plan.secrets.length > 0 ? (
-                            <div className="ask-card__meta">Secrets: {plan.secrets.join(", ")}</div>
+                            <div className="ask-card__meta">
+                              Secrets:{" "}
+                              {plan.secrets.map((secret, index) => (
+                                <span key={secret}>
+                                  {index > 0 ? ", " : ""}
+                                  {secret}
+                                  {missingSecrets.has(secret) ? (
+                                    <span className="ask-card__flag"> (missing)</span>
+                                  ) : null}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {plan.missing_secrets.length > 0 ? (
+                            <div className="ask-card__meta">
+                              Missing secrets: {plan.missing_secrets.join(", ")}
+                            </div>
                           ) : null}
                           {plan.blocked ? (
                             <div className="ask-card__meta">{plan.block_reason}</div>
@@ -491,7 +552,33 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                       </div>
                     </div>
                   );
-                })
+                  })}
+                  {pendingCredentialPlans.map((plan) => (
+                    <div key={`pending-credentials-${plan.build_id}`} className="ask-msg ask-msg--bot">
+                      <span className="ask-msg__who">Artemis</span>
+                      <div className="ask-card">
+                        <div className="ask-card__title">Pending credentials</div>
+                        <div className="ask-card__meta">
+                          Add these keys when you are ready to run {plan.name}.
+                        </div>
+                        {plan.missing_secrets.map((secret) => (
+                          <div key={secret} className="ask-card__actions">
+                            <span className="ask-card__meta">{secret}</span>
+                            {/* Deep-link into the mounted keys panel without blocking the build. */}
+                            <button
+                              className="ask-cardbtn"
+                              type="button"
+                              aria-label={`Add key ${secret}`}
+                              onClick={() => openKeys(secret)}
+                            >
+                              Add key
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
 

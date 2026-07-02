@@ -24,6 +24,8 @@ const planCard = (patch: Partial<BuildPlanCard> = {}): BuildPlanCard => ({
   description: "Creates a local date helper.",
   summary: "Add a date utility module.",
   secrets: [],
+  egress_domains: [],
+  missing_secrets: [],
   blocked: false,
   block_reason: null,
   ...patch,
