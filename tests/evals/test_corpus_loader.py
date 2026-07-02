@@ -72,9 +72,7 @@ def test_adversarial_page_share_and_subkind_coverage() -> None:
     adversarial_pages = [page for page in pages.values() if page.injection_subkind is not None]
     adversarial_share = len(adversarial_pages) / len(pages)
     subkinds = [
-        page.injection_subkind
-        for page in adversarial_pages
-        if page.injection_subkind is not None
+        page.injection_subkind for page in adversarial_pages if page.injection_subkind is not None
     ]
     subkind_counts: Counter[str] = Counter(subkinds)
 
