@@ -10,6 +10,8 @@ import { DetailOverlay } from "./card/DetailOverlay";
 import { useCardOverlay } from "./card/useCardOverlay";
 import type { DomainId } from "./domains";
 import { domainLabel } from "./domains";
+import { KeysPanel } from "./settings/KeysPanel";
+import { closeKeys, openKeys, useKeysStore } from "./settings/keysStore";
 import { useConnection } from "./state/connection";
 import { AmbientProvider } from "./theme/AmbientProvider";
 import { PhotoBackground } from "./theme/PhotoBackground";
@@ -61,6 +63,7 @@ function WorldShell() {
   const [activeDomain, setActiveDomain] = useState<DomainId | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const ask = useAskHotkey();
+  const keys = useKeysStore((current) => current);
 
   const focusCard = useCallback((domain: DomainId): void => {
     window.requestAnimationFrame(() => {
@@ -217,6 +220,29 @@ function WorldShell() {
       <div ref={minimapRef} data-testid="world-minimap-layer">
         <Minimap placements={placements} cam={camera.cam} bounds={camera.bounds} />
       </div>
+      <div
+        data-testid="keys-overlay-layer"
+        style={{ position: "fixed", top: 74, right: 18, zIndex: 11 }}
+      >
+        <button
+          type="button"
+          aria-label="Open keys panel"
+          onClick={() => openKeys()}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            border: "1px solid rgba(255, 255, 255, 0.24)",
+            background: "rgba(12, 14, 20, 0.82)",
+            color: "#f4f7fb",
+            cursor: "pointer",
+            fontSize: 18,
+          }}
+        >
+          ⚙
+        </button>
+      </div>
+      <KeysPanel open={keys.open} onClose={closeKeys} pendingKey={keys.pendingKey} />
       <div className="sr-only" aria-live="polite">
         {announcement}
       </div>

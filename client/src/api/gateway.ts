@@ -9,6 +9,7 @@ import type {
   LayoutDTO,
   OkResponse,
   ReviewItem,
+  SecretNamesResponse,
   StatusResponse,
   StreamEvent,
 } from "./dto";
@@ -143,6 +144,17 @@ export const capabilityPropose = (goal: string): Promise<BuildPlanCard> =>
 
 export const capabilityPromote = (buildId: string): Promise<InstalledCard> =>
   call("app_capability_promote", { buildId });
+
+export const secretSet = (name: string, value: string): Promise<void> =>
+  call("app_secret_set", { name, value });
+
+export const secretList = async (): Promise<string[]> => {
+  const response = await call<string[] | SecretNamesResponse>("app_secret_list");
+  return Array.isArray(response) ? response : response.names;
+};
+
+export const secretDelete = (name: string): Promise<void> =>
+  call("app_secret_delete", { name });
 
 export async function* capabilityBuild(buildId: string): AsyncGenerator<BuildStreamEvent> {
   yield* streamCommand<BuildStreamEvent>(

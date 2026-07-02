@@ -94,6 +94,17 @@ struct CapabilityPromoteRequest {
     build_id: String,
 }
 
+#[derive(Debug, Serialize)]
+struct SecretSetRequest {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct SecretNamesResponse {
+    names: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct InstalledCard {
     name: String,
@@ -270,6 +281,32 @@ where
         return Err(GatewayError::from_status(response.status()));
     }
     Ok(response.json::<T>().await?)
+}
+
+async fn request_empty<B>(
+    state: &AppState,
+    method: Method,
+    path: &str,
+    body: Option<&B>,
+    authed: bool,
+) -> Result<(), GatewayError>
+where
+    B: Serialize + ?Sized,
+{
+    let url = format!("{}{}", base_url(state)?, path);
+    let mut request = client().request(method, url);
+    if authed {
+        request = request.bearer_auth(bearer(state)?);
+    }
+    if let Some(payload) = body {
+        request = request.json(payload);
+    }
+
+    let response = request.send().await?;
+    if !response.status().is_success() {
+        return Err(GatewayError::from_status(response.status()));
+    }
+    Ok(())
 }
 
 pub(crate) async fn pair(
@@ -506,6 +543,39 @@ pub(crate) async fn capability_promote(
     .await
 }
 
+pub(crate) async fn secret_set(
+    state: &AppState,
+    name: String,
+    value: String,
+) -> Result<(), GatewayError> {
+    request_empty(
+        state,
+        Method::POST,
+        "/app/secrets",
+        Some(&SecretSetRequest { name, value }),
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn secret_list(state: &AppState) -> Result<Vec<String>, GatewayError> {
+    let response: SecretNamesResponse =
+        request_json::<SecretNamesResponse, ()>(state, Method::GET, "/app/secrets", None, true)
+            .await?;
+    Ok(response.names)
+}
+
+pub(crate) async fn secret_delete(state: &AppState, name: String) -> Result<(), GatewayError> {
+    request_empty::<()>(
+        state,
+        Method::DELETE,
+        &format!("/app/secrets/{name}"),
+        None,
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn lock(state: &AppState) -> Result<OkResponse, GatewayError> {
     let response =
         request_json::<LockResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
@@ -651,7 +721,11 @@ pub(crate) async fn capability_build(
     channel: Channel<BuildStreamEvent>,
 ) -> Result<(), GatewayError> {
     let url = format!("{}/app/capabilities/{}/build", base_url(state)?, build_id);
-    let response = client().post(url).bearer_auth(bearer(state)?).send().await?;
+    let response = client()
+        .post(url)
+        .bearer_auth(bearer(state)?)
+        .send()
+        .await?;
     if !response.status().is_success() {
         return Err(GatewayError::from_status(response.status()));
     }
@@ -798,6 +872,30 @@ pub(crate) async fn app_capability_promote(
     build_id: String,
 ) -> Result<InstalledCard, GatewayError> {
     capability_promote(&state, build_id).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_secret_set(
+    state: State<'_, AppState>,
+    name: String,
+    value: String,
+) -> Result<(), GatewayError> {
+    secret_set(&state, name, value).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_secret_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, GatewayError> {
+    secret_list(&state).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_secret_delete(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), GatewayError> {
+    secret_delete(&state, name).await
 }
 
 #[tauri::command]
@@ -1268,13 +1366,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let response = accept_task_suggestion(
-            &state,
-            "sug-1".to_string(),
-            Some("2026-07-02".to_string()),
-        )
-        .await
-        .unwrap();
+        let response =
+            accept_task_suggestion(&state, "sug-1".to_string(), Some("2026-07-02".to_string()))
+                .await
+                .unwrap();
 
         assert_eq!(response.task["id"], "task-1");
         assert_eq!(response.task["due_at"], "2026-07-02");

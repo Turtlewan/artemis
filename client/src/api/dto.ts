@@ -196,6 +196,10 @@ export interface InstalledCard {
   path: string;
 }
 
+export interface SecretNamesResponse {
+  names: string[];
+}
+
 export type BuildStreamEvent =
   | { type: "build_status"; text: string }
   | { type: "build_result"; build_id: string; passed: boolean; blocked: boolean; output: string }
