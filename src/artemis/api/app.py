@@ -15,9 +15,11 @@ from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal,
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
 from artemis.api.layout_store import LayoutDTO, LayoutStore, default_layout
+from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.sandbox import SandboxRunner
 from artemis.capabilities.sandbox_wsl2 import default_sandbox
+from artemis.capabilities.select import build_capability_selector
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.model.compose import build_model_router
 from artemis.ports.model import ModelPort
@@ -62,6 +64,9 @@ def create_app(
     app.state.capability_store = capability_store
     app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
     app.state.builds = {}  # build_id -> capability_routes.BuildState (in-memory, interim)
+    app.state.capability_selector = build_capability_selector(capability_store)
+    app.state.fetch_sandbox = FetchSandbox()
+    app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
