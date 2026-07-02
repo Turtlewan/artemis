@@ -54,7 +54,11 @@ class ClaudeCodeProvider:
             if cli_support.is_quota_signal(combined):
                 raise QuotaExhaustedError("claude_code", _excerpt(stderr_text))
             raise ProviderUnavailableError("claude_code", _excerpt(stderr_text))
-        return _extract_result(text)
+        result = _extract_result(text)
+        # CLI models wrap structured output in a whole-output ```json fence; strip it so the
+        # caller's json.loads / model_validate_json sees clean JSON. Only for schema calls, and
+        # only when the ENTIRE output is one fenced block (leaves prose / inline code untouched).
+        return _strip_code_fence(result) if schema is not None else result
 
     async def _run_cli(self, argv: list[str]) -> tuple[int, bytes, bytes]:
         env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self._ensure_clean_config_dir())}
@@ -143,6 +147,25 @@ def _extract_result(stdout: str) -> str:
         if isinstance(result, str):
             return result
     return stdout.strip()
+
+
+def _strip_code_fence(text: str) -> str:
+    """Return the inner content if the whole output is a single ```-fenced block, else unchanged.
+
+    CLI models often wrap a structured JSON reply in a ```json ... ``` fence, which breaks a
+    downstream json.loads. Only strips when the ENTIRE trimmed text is one fenced block, so a
+    prose answer containing an inline code block is left intact.
+    """
+    stripped = text.strip()
+    if len(stripped) < 6 or not stripped.startswith("```") or not stripped.endswith("```"):
+        return text
+    inner = stripped[3:-3]
+    newline = inner.find("\n")
+    if newline != -1:
+        first_line = inner[:newline].strip()
+        if first_line == "" or first_line.isalnum():  # optional language tag (e.g. "json")
+            inner = inner[newline + 1 :]
+    return inner.strip()
 
 
 def _excerpt(text: str) -> str:

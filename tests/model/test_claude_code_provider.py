@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 import artemis.model.cli_support as cli_support
-from artemis.model.claude_code_provider import ClaudeCodeProvider, _extract_result
+from artemis.model.claude_code_provider import (
+    ClaudeCodeProvider,
+    _extract_result,
+    _strip_code_fence,
+)
 from artemis.model.errors import ProviderUnavailableError, QuotaExhaustedError
 from artemis.types import Message
 
@@ -44,6 +48,50 @@ def test_extract_result_reads_json_envelope() -> None:
 
 def test_extract_result_falls_back_to_stripped_stdout() -> None:
     assert _extract_result("  not json\n") == "not json"
+
+
+def test_strip_code_fence_unwraps_whole_output_json_block() -> None:
+    assert _strip_code_fence('```json\n{"a": 1}\n```') == '{"a": 1}'
+    assert _strip_code_fence('```\n{"a": 1}\n```') == '{"a": 1}'
+
+
+def test_strip_code_fence_leaves_non_fenced_and_inline_code_untouched() -> None:
+    assert _strip_code_fence('{"a": 1}') == '{"a": 1}'
+    prose = "Here is the code:\n```py\nx = 1\n```\nDone."
+    assert _strip_code_fence(prose) == prose
+
+
+@pytest.mark.asyncio
+async def test_generate_defences_structured_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import json
+
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+
+    async def fake_run_cli(
+        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+    ) -> tuple[int, bytes, bytes]:
+        return (0, b'{"result":"```json\\n{\\"answer\\": \\"ok\\"}\\n```"}', b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    provider = ClaudeCodeProvider(binary="claude-test", model_default="sonnet")
+
+    with_schema = await provider.generate(
+        messages=[Message(role="user", content="q")],
+        model="opus",
+        schema={"type": "object"},
+    )
+    assert json.loads(with_schema) == {"answer": "ok"}  # clean JSON, fence stripped
+
+    without_schema = await provider.generate(
+        messages=[Message(role="user", content="q")],
+        model="opus",
+        schema=None,
+    )
+    assert without_schema.startswith("```json")  # text path untouched
 
 
 @pytest.mark.asyncio
