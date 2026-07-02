@@ -19,9 +19,11 @@ See docs/technical/adr/ADR-036-hardened-wsl2-sandbox.md for the security boundar
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import math
 import os
+import re
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -33,6 +35,30 @@ from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox, Verif
 
 _OUTPUT_LIMIT = 4000
 _CGROUP_PERIOD_US = 100_000
+_SAFE_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_RESERVED_ENV_NAMES = frozenset(
+    {
+        "PATH",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "LD_AUDIT",
+        "GLIBC_TUNABLES",
+        "IFS",
+        "BASH_ENV",
+        "ENV",
+        "SHELL",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "MEM_MAX",
+        "CPU_MAX",
+        "PIDS_MAX",
+        "ULIMIT_T",
+        "ULIMIT_V",
+        "WSLENV",
+        "ARTEMIS_SECRETS_B64",
+        "_",
+    }
+)
 _PROBE_COMMAND = (
     "command -v ip iptables nginx dnsmasq setpriv unshare >/dev/null && "
     "nginx -V 2>&1 | grep -q ssl_preread && "
@@ -165,6 +191,17 @@ fi
 # NOTE the inner `set -euo pipefail` (mount/proc/cgroup setup) still fails closed INSIDE the ns —
 # any setup failure there makes the inner bash exit non-zero, which surfaces as STATUS!=0 here.
 set +e
+# Decode secrets only after nginx/dnsmasq/firewall setup so only the final capability chain
+# inherits them via admin-only /proc environ, not already-running sandbox services.
+ARTEMIS_SECRETS_B64='__ARTEMIS_SECRETS_B64__'
+if [ -n "$ARTEMIS_SECRETS_B64" ]; then
+  eval "$(printf '%s' "$ARTEMIS_SECRETS_B64" | base64 -d 2>/dev/null | python3 -c '
+import json, shlex, sys
+for k, v in json.load(sys.stdin).items():
+    print("export " + k + "=" + shlex.quote(v))
+' 2>/dev/null)" || abort secrets-decode
+fi
+unset ARTEMIS_SECRETS_B64
 OUT=$(ip netns exec "$NS" unshare --mount --pid --fork bash -c '
   set -euo pipefail
   mount --make-rprivate /                                     # fail-closed: if this fails, abort (set -e) —
@@ -279,6 +316,19 @@ def _wsl_env(existing: str | None) -> str:
     return f"{existing}:{cap_names}" if existing else cap_names
 
 
+def _validate_secret_name(name: str) -> None:
+    if _SAFE_ENV_NAME_RE.fullmatch(name) is None or name in _RESERVED_ENV_NAMES:
+        raise ValueError(f"unsafe secret environment variable name: {name!r}")
+
+
+def _secrets_b64(secrets: dict[str, str] | None) -> str:
+    if not secrets:
+        return ""
+    for name in secrets:
+        _validate_secret_name(name)
+    return base64.b64encode(json.dumps(secrets, separators=(",", ":")).encode()).decode()
+
+
 def _parse_isolate_output(stdout: bytes, stderr: bytes) -> tuple[str, bool]:
     stdout_text = stdout.decode(errors="replace")
     stderr_text = stderr.decode(errors="replace")
@@ -297,6 +347,7 @@ async def run_isolated(
     caps: SandboxCaps,
     command: list[str],
     timeout_s: float,
+    secrets: dict[str, str] | None = None,
 ) -> tuple[int, str, bool]:
     """Run a command in the hardened WSL2 guest sandbox.
 
@@ -306,6 +357,8 @@ async def run_isolated(
 
     run_id = uuid.uuid4().hex
     skill_wsl_path = _to_wsl_path(skill_dir)
+    blob = _secrets_b64(secrets)
+    script = _ISOLATE_SCRIPT.replace("__ARTEMIS_SECRETS_B64__", blob)
     env = os.environ.copy()
     env.update(_caps_env(caps))
     env["WSLENV"] = _wsl_env(env.get("WSLENV"))
@@ -329,7 +382,7 @@ async def run_isolated(
     )
     try:
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(_ISOLATE_SCRIPT.encode()), timeout=timeout_s
+            proc.communicate(script.encode()), timeout=timeout_s
         )
     except TimeoutError:
         proc.kill()

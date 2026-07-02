@@ -11,6 +11,8 @@ an arbitrary allowlisted domain and attacker-influenceable (prompt injection).
 Downstream consumers (AggregationPipeline / router, specs 4/5) MUST treat it as data,
 not instructions, and apply prompt-injection defenses (ADR-009 dual-LLM quarantine:
 no-tools reader, structured output, spotlighting) before any model reasoning over it.
+Secret values passed via `secrets` are injected as isolate-scoped env vars for the
+capability process only, never included in `FetchResult.output`.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel
 
 from artemis.capabilities.sandbox_wsl2 import SandboxCaps, run_isolated
+from artemis.ports.secrets import SecretStorePort
 
 _MAX_TIMEOUT_S = 300.0
 
@@ -28,6 +31,23 @@ class FetchResult(BaseModel):
     output: str
     exit_code: int
     truncated: bool
+
+
+def missing_required_secrets(required: list[str], store: SecretStorePort) -> list[str]:
+    """Return missing secret names using the presence-only list operation."""
+    present = set(store.list_names())
+    return [name for name in required if name not in present]
+
+
+def resolve_secret_values(names: list[str], store: SecretStorePort) -> dict[str, str]:
+    """Read secret values for injection, failing closed on the first missing/empty value."""
+    out: dict[str, str] = {}
+    for name in names:
+        value = store.get(name)
+        if not value:
+            raise ValueError(f"secret not available for injection: {name}")
+        out[name] = value
+    return out
 
 
 class FetchSandbox:
@@ -46,6 +66,7 @@ class FetchSandbox:
         argv: list[str],
         egress_domains: list[str],
         timeout_s: float = 60.0,
+        secrets: dict[str, str] | None = None,
     ) -> FetchResult:
         """Run `entrypoint` inside the isolate and return its raw output.
 
@@ -67,5 +88,6 @@ class FetchSandbox:
             caps=SandboxCaps(),
             command=["python3", entrypoint, *argv],
             timeout_s=min(timeout_s, _MAX_TIMEOUT_S),
+            secrets=secrets,
         )
         return FetchResult(output=output, exit_code=exit_code, truncated=truncated)
