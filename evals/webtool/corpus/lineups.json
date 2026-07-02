@@ -1,0 +1,20 @@
+[
+  {
+    "label": "haiku-sonnet-codex",
+    "reader_primary": "haiku",
+    "reader_escalate": "sonnet",
+    "synth_model": "codex"
+  },
+  {
+    "label": "haiku-haiku-sonnet",
+    "reader_primary": "haiku",
+    "reader_escalate": "haiku",
+    "synth_model": "sonnet"
+  },
+  {
+    "label": "sonnet-sonnet-codex",
+    "reader_primary": "sonnet",
+    "reader_escalate": "sonnet",
+    "synth_model": "codex"
+  }
+]

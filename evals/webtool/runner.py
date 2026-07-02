@@ -29,8 +29,12 @@ async def run_eval(
     corpus: Path,
     out: Path,
     limit: int | None = None,
+    reader_models: tuple[str, str] | None = None,
+    synth_model: str | None = None,
 ) -> tuple[Path, Path]:
     """Replay corpus queries through WebTool, judge both stages, and write reports."""
+    effective_reader_models = reader_models or ("haiku", "sonnet")
+    effective_synth_model = synth_model or "sonnet"
     records, fixtures = load_corpus(corpus)
     verify_integrity(fixtures)
     if limit is not None:
@@ -60,8 +64,8 @@ async def run_eval(
         egress=EgressPolicy(frozenset()),
         reader=reader,
         synth=synth,
-        reader_models=("haiku", "sonnet"),
-        synth_model="sonnet",
+        reader_models=effective_reader_models,
+        synth_model=effective_synth_model,
         top_n=top_n,
     )
 
@@ -72,8 +76,12 @@ async def run_eval(
         before_judge = len(judge.calls)
         answer = _normalize_answer(await tool.answer(record.query), replay_fetcher)
         reader_calls = reader.calls[before_reader:]
-        observations = _reader_observations(record, fixtures, [call.response_text for call in reader_calls])
-        extracts = [(item.url or "", item.extract) for item in observations if item.relevant is True]
+        observations = _reader_observations(
+            record, fixtures, [call.response_text for call in reader_calls]
+        )
+        extracts = [
+            (item.url or "", item.extract) for item in observations if item.relevant is True
+        ]
         reader_judgment = await judge_reader(
             judge=judge,
             record=record,
@@ -164,7 +172,7 @@ def _reader_observation(
         relevant=parsed.relevant,
         extract=parsed.extract,
         confidence=parsed.confidence,
-            )
+    )
 
 
 def _normalize_answer(answer: WebAnswer, fetcher: ReplayFetcher) -> WebAnswer:
@@ -180,7 +188,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the frozen web-tool eval harness.")
     parser.add_argument("--corpus", required=True, type=Path, help="Path to evals/webtool/corpus")
     parser.add_argument("--out", required=True, type=Path, help="Output directory for reports")
-    parser.add_argument("--limit", type=int, default=None, help="Optional query limit for shakedowns")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Optional query limit for shakedowns"
+    )
     return parser
 
 
