@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  ask: vi.fn(),
   askStream: vi.fn(),
+  invokeConfirm: vi.fn(),
   capabilityPropose: vi.fn(),
   capabilityBuild: vi.fn(),
   capabilityPromote: vi.fn(),
 }));
 
 vi.mock("../api/gateway", () => ({
+  ask: mocks.ask,
   askStream: mocks.askStream,
+  invokeConfirm: mocks.invokeConfirm,
   capabilityPropose: mocks.capabilityPropose,
   capabilityBuild: mocks.capabilityBuild,
   capabilityPromote: mocks.capabilityPromote,
@@ -40,7 +44,9 @@ const installedCard = (patch: Partial<InstalledCard> = {}): InstalledCard => ({
 
 describe("askStore", () => {
   beforeEach(() => {
+    mocks.ask.mockReset();
     mocks.askStream.mockReset();
+    mocks.invokeConfirm.mockReset();
     mocks.capabilityPropose.mockReset();
     mocks.capabilityBuild.mockReset();
     mocks.capabilityPromote.mockReset();
@@ -48,19 +54,20 @@ describe("askStore", () => {
     askStore.resetForTest();
   });
 
-  it("streams text into one assistant message and finalizes engine metadata from done", async () => {
+  it("adds one assistant message and finalizes engine metadata from ask", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();
-    mocks.askStream.mockImplementationOnce(async function* () {
-      yield { type: "text", text: "Hello " };
-      yield { type: "text", text: "there." };
-      yield { type: "done", path: "cloud", tool_used: undefined, escalated: false };
+    mocks.ask.mockResolvedValueOnce({
+      text: "Hello there.",
+      path: "cloud",
+      tool_used: undefined,
+      escalated: false,
     });
 
     await askStore.send("status");
 
     const snapshot = askStore.getSnapshot();
-    expect(mocks.askStream).toHaveBeenCalledWith({ text: "status", speak: true });
+    expect(mocks.ask).toHaveBeenCalledWith({ text: "status", speak: true });
     expect(snapshot.messages).toMatchObject([
       { role: "user", text: "status" },
       { role: "assistant", text: "Hello there.", engine: "codex", path: "cloud" },
@@ -73,8 +80,11 @@ describe("askStore", () => {
   it("sends speak false after mute is toggled and remembers the toggle state", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();
-    mocks.askStream.mockImplementation(async function* () {
-      yield { type: "done", path: "local", escalated: false };
+    mocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "local",
+      tool_used: undefined,
+      escalated: false,
     });
 
     expect(askStore.getSnapshot().muted).toBe(false);
@@ -83,7 +93,7 @@ describe("askStore", () => {
 
     await askStore.send("quiet");
 
-    expect(mocks.askStream).toHaveBeenCalledWith({ text: "quiet", speak: false });
+    expect(mocks.ask).toHaveBeenCalledWith({ text: "quiet", speak: false });
     expect(askStore.getSnapshot().muted).toBe(true);
   });
 
@@ -94,20 +104,17 @@ describe("askStore", () => {
 
     await askStore.send("disconnected question");
 
-    expect(mocks.askStream).not.toHaveBeenCalled();
+    expect(mocks.ask).not.toHaveBeenCalled();
     expect(raiseUnlock).toHaveBeenCalledTimes(1);
     expect(askStore.getSnapshot().assertiveAnnouncement).toContain("Not connected");
   });
 
-  it("marks a streaming vault lock as failed and assertive without finalizing", async () => {
+  it("marks a vault lock as failed and assertive without finalizing", async () => {
     const raiseUnlock = vi.fn();
     connectionStore.onPaired();
     connectionStore.onConnected();
     askStore.setUnlockPromptForTest(raiseUnlock);
-    mocks.askStream.mockImplementationOnce(async function* () {
-      yield { type: "text", text: "partial" };
-      yield { type: "vault_locked" };
-    });
+    mocks.ask.mockRejectedValueOnce({ kind: "vaultLocked" });
 
     await askStore.send("secret");
 
@@ -127,7 +134,7 @@ describe("askStore", () => {
 
     const snapshot = askStore.getSnapshot();
     expect(mocks.capabilityPropose).toHaveBeenCalledWith("build me a date utility module");
-    expect(mocks.askStream).not.toHaveBeenCalled();
+    expect(mocks.ask).not.toHaveBeenCalled();
     expect(snapshot.buildMode).toBe(true);
     expect(snapshot.messages).toMatchObject([
       { role: "user", text: "build me a date utility module" },
@@ -152,18 +159,198 @@ describe("askStore", () => {
     expect(snapshot.messages).toMatchObject([{ role: "user", text: "build a date utility module" }]);
   });
 
-  it("keeps normal non-build messages on askStream", async () => {
+  it("keeps normal non-build messages on ask", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();
-    mocks.askStream.mockImplementationOnce(async function* () {
-      yield { type: "text", text: "Normal answer." };
-      yield { type: "done", path: "local", escalated: false };
+    mocks.ask.mockResolvedValueOnce({
+      text: "Normal answer.",
+      path: "local",
+      tool_used: undefined,
+      escalated: false,
     });
 
     await askStore.send("what is my status");
 
-    expect(mocks.askStream).toHaveBeenCalledWith({ text: "what is my status", speak: true });
+    expect(mocks.ask).toHaveBeenCalledWith({ text: "what is my status", speak: true });
     expect(mocks.capabilityPropose).not.toHaveBeenCalled();
+  });
+
+  it("adds an invoke confirm card from an invoke_confirm response", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      tool_used: undefined,
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+      egress_domains: ["gmail.googleapis.com"],
+      secrets: ["GMAIL_TOKEN"],
+      args: { to: "owner@example.com" },
+    });
+
+    await askStore.send("send the email");
+
+    const card = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm");
+    expect(card).toMatchObject({
+      role: "assistant",
+      text: "",
+      kind: "invoke_confirm",
+      invoke: {
+        invokeId: "inv-1",
+        capability: "gmail.send",
+        egressDomains: ["gmail.googleapis.com"],
+        secrets: ["GMAIL_TOKEN"],
+        args: { to: "owner@example.com" },
+        missingSecrets: [],
+      },
+    });
+  });
+
+  it("adds a plain clarify message from an invoke_clarify response", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "ignored",
+      path: "invoke_clarify",
+      tool_used: undefined,
+      escalated: false,
+      capability: "gmail.send",
+      missing: ["recipient", "body"],
+    });
+
+    await askStore.send("send it");
+
+    const snapshot = askStore.getSnapshot();
+    expect(snapshot.messages.some((message) => message.kind === "invoke_confirm")).toBe(false);
+    expect(snapshot.messages[snapshot.messages.length - 1]).toMatchObject({
+      role: "assistant",
+      text: "I need more detail to run 'gmail.send': recipient, body",
+    });
+  });
+
+  it("confirmInvoke replaces an ok card with plain result text", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+    });
+    mocks.invokeConfirm.mockResolvedValueOnce({
+      status: "ok",
+      text: "Ran it.",
+      invoke_id: "inv-1",
+      missing_secrets: [],
+    });
+
+    await askStore.send("send it");
+    const messageId = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm")?.id;
+    await askStore.confirmInvoke(messageId!);
+
+    expect(mocks.invokeConfirm).toHaveBeenCalledWith("inv-1");
+    expect(askStore.getSnapshot().messages.find((message) => message.id === messageId)).toMatchObject({
+      role: "assistant",
+      text: "Ran it.",
+    });
+    expect(askStore.getSnapshot().messages.find((message) => message.id === messageId)?.kind).toBeUndefined();
+  });
+
+  it("confirmInvoke keeps the card and records missing secrets", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+    });
+    mocks.invokeConfirm.mockResolvedValueOnce({
+      status: "missing_secrets",
+      text: null,
+      invoke_id: "inv-1",
+      missing_secrets: ["TAVILY_API_KEY"],
+    });
+
+    await askStore.send("search");
+    const messageId = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm")?.id;
+    await askStore.confirmInvoke(messageId!);
+
+    expect(askStore.getSnapshot().messages.find((message) => message.id === messageId)).toMatchObject({
+      kind: "invoke_confirm",
+      invoke: { missingSecrets: ["TAVILY_API_KEY"] },
+    });
+  });
+
+  it("confirmInvoke replaces not_found and error responses with plain error text", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask
+      .mockResolvedValueOnce({
+        text: "",
+        path: "invoke_confirm",
+        escalated: false,
+        invoke_id: "inv-1",
+        capability: "gmail.send",
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        path: "invoke_confirm",
+        escalated: false,
+        invoke_id: "inv-2",
+        capability: "gmail.send",
+      });
+    mocks.invokeConfirm
+      .mockResolvedValueOnce({
+        status: "not_found",
+        text: null,
+        invoke_id: "inv-1",
+        missing_secrets: [],
+      })
+      .mockResolvedValueOnce({
+        status: "error",
+        text: null,
+        invoke_id: "inv-2",
+        missing_secrets: [],
+      });
+
+    await askStore.send("send it");
+    const expiredId = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm")?.id;
+    await askStore.confirmInvoke(expiredId!);
+    await askStore.send("send it again");
+    const errorId = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm")?.id;
+    await askStore.confirmInvoke(errorId!);
+
+    expect(askStore.getSnapshot().messages.find((message) => message.id === expiredId)).toMatchObject({
+      text: "That request has expired — ask again.",
+    });
+    expect(askStore.getSnapshot().messages.find((message) => message.id === errorId)).toMatchObject({
+      text: "Something went wrong running that.",
+    });
+  });
+
+  it("cancelInvoke removes the confirm card message", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+    });
+
+    await askStore.send("send it");
+    const messageId = askStore.getSnapshot().messages.find((message) => message.kind === "invoke_confirm")?.id;
+    expect(messageId).toBeDefined();
+
+    askStore.cancelInvoke(messageId!);
+
+    expect(askStore.getSnapshot().messages.some((message) => message.id === messageId)).toBe(false);
   });
 
   it("confirmBuild streams status and appends a passing result message", async () => {

@@ -9,7 +9,9 @@ const eventMocks = vi.hoisted(() => ({
 }));
 
 const gatewayMocks = vi.hoisted(() => ({
+  ask: vi.fn(),
   askStream: vi.fn(),
+  invokeConfirm: vi.fn(),
   capabilityPropose: vi.fn(),
   capabilityBuild: vi.fn(),
   capabilityPromote: vi.fn(),
@@ -29,7 +31,9 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("../api/gateway", () => ({
+  ask: gatewayMocks.ask,
   askStream: gatewayMocks.askStream,
+  invokeConfirm: gatewayMocks.invokeConfirm,
   capabilityPropose: gatewayMocks.capabilityPropose,
   capabilityBuild: gatewayMocks.capabilityBuild,
   capabilityPromote: gatewayMocks.capabilityPromote,
@@ -83,6 +87,18 @@ const render = (node: ReactNode): { container: HTMLDivElement; root: Root } => {
   return { container, root };
 };
 
+const submitAsk = async (container: HTMLElement, text: string): Promise<void> => {
+  const input = getByRole(container, "textbox", /ask/i) as HTMLInputElement;
+  const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    valueSetter?.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    getByRole(container, "button", /send/i).click();
+  });
+};
+
 const planCard = (patch: Partial<BuildPlanCard> = {}): BuildPlanCard => ({
   build_id: "build-1",
   name: "Date Utility",
@@ -109,7 +125,9 @@ function Harness() {
 describe("AskPopup", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    gatewayMocks.ask.mockReset();
     gatewayMocks.askStream.mockReset();
+    gatewayMocks.invokeConfirm.mockReset();
     gatewayMocks.capabilityPropose.mockReset();
     gatewayMocks.capabilityBuild.mockReset();
     gatewayMocks.capabilityPromote.mockReset();
@@ -261,6 +279,122 @@ describe("AskPopup", () => {
     expect(container.textContent).toContain("GMAIL_TOKEN (missing)");
     expect(container.textContent).toContain("SLACK_TOKEN");
     expect(container.textContent).toContain("Missing secrets: GMAIL_TOKEN");
+  });
+
+  it("submits ask text and renders an invoke confirm card without auto-running", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      tool_used: undefined,
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+      egress_domains: ["gmail.googleapis.com"],
+      secrets: ["GMAIL_TOKEN"],
+      args: { to: "owner@example.com" },
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "send the email");
+
+    expect(container.textContent).toContain("gmail.send");
+    expect(container.textContent).toContain("gmail.googleapis.com");
+    expect(container.textContent).toContain("GMAIL_TOKEN");
+    expect(container.textContent).toContain("to: owner@example.com");
+    expect(gatewayMocks.invokeConfirm).not.toHaveBeenCalled();
+  });
+
+  it("clicking Run confirms the invoke id", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+    });
+    gatewayMocks.invokeConfirm.mockResolvedValueOnce({
+      status: "ok",
+      text: "Ran it.",
+      invoke_id: "inv-1",
+      missing_secrets: [],
+    });
+    await act(async () => {
+      await askStore.send("send it");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await act(async () => {
+      getByRole(container, "button", /run/i).click();
+    });
+
+    expect(gatewayMocks.invokeConfirm).toHaveBeenCalledWith("inv-1");
+    expect(container.textContent).toContain("Ran it.");
+  });
+
+  it("keeps the invoke card on missing secrets and deep-links Add key", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "web.search",
+    });
+    gatewayMocks.invokeConfirm.mockResolvedValueOnce({
+      status: "missing_secrets",
+      text: null,
+      invoke_id: "inv-1",
+      missing_secrets: ["TAVILY_API_KEY"],
+    });
+    await act(async () => {
+      await askStore.send("search");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await act(async () => {
+      getByRole(container, "button", /run/i).click();
+    });
+
+    expect(container.textContent).toContain("web.search");
+    expect(container.textContent).toContain("Missing secrets: TAVILY_API_KEY");
+    expect(getByRole(container, "button", /run/i)).toBeTruthy();
+    const addKey = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add key TAVILY_API_KEY"]',
+    );
+    expect(addKey).toBeTruthy();
+
+    act(() => {
+      addKey?.click();
+    });
+
+    expect(keysMocks.openKeys).toHaveBeenCalledWith("TAVILY_API_KEY");
+  });
+
+  it("clicking Cancel removes the invoke confirm card", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "",
+      path: "invoke_confirm",
+      escalated: false,
+      invoke_id: "inv-1",
+      capability: "gmail.send",
+    });
+    await act(async () => {
+      await askStore.send("send it");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    act(() => {
+      getByRole(container, "button", /cancel/i).click();
+    });
+
+    expect(container.textContent).not.toContain("gmail.send");
   });
 
   it("shows pending credentials after a passing build and deep-links each key", async () => {

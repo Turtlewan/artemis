@@ -7,12 +7,21 @@ import type { AskEngine } from "./EngineTag";
 
 export type AskRole = "user" | "assistant";
 export type AskModeHint = "TASK" | "DIGEST" | "WIND-DOWN";
-export type AskMessageKind = "text" | "plan" | "status" | "result" | "installed";
+export type AskMessageKind = "text" | "plan" | "status" | "result" | "installed" | "invoke_confirm";
 
 export interface AskBuildResult {
   passed: boolean;
   blocked: boolean;
   output: string;
+}
+
+export interface AskInvokeConfirm {
+  invokeId: string;
+  capability: string;
+  egressDomains: string[];
+  secrets: string[];
+  args: Record<string, unknown>;
+  missingSecrets: string[];
 }
 
 export interface AskMessage {
@@ -21,6 +30,7 @@ export interface AskMessage {
   text: string;
   kind?: AskMessageKind;
   plan?: BuildPlanCard;
+  invoke?: AskInvokeConfirm;
   result?: AskBuildResult;
   buildId?: string;
   engine?: AskEngine;
@@ -180,63 +190,58 @@ export const askStore = {
       return;
     }
 
-    const assistantId = id();
     appendMessage({ id: id(), role: "user", text: trimmed });
-    appendMessage({ id: assistantId, role: "assistant", text: "", engine: "local" });
     update({ streaming: "", sending: true, assertiveAnnouncement: "" });
 
     try {
-      let streamed = "";
-      let finalized = false;
       const requestMuted = snapshot.muted;
+      const response = await gateway.ask({ text: trimmed, speak: !requestMuted });
 
-      for await (const event of gateway.askStream({ text: trimmed, speak: !requestMuted })) {
-        if (event.type === "text") {
-          streamed += event.text;
-          appendTextToMessage(assistantId, streamed);
-          update({ streaming: streamed });
-          publishPolite(streamed);
-          continue;
-        }
-
-        if (event.type === "vault_locked") {
-          unlockPrompt();
-          replaceMessage(assistantId, {
-            id: assistantId,
-            role: "assistant",
-            text: "",
-            engine: "local",
-            failedLocked: true,
-          });
-          update({
-            streaming: "",
-            sending: false,
-            assertiveAnnouncement: "Vault locked - re-authentication required",
-          });
-          return;
-        }
-
-        const engine = deriveEngine(event.path, event.escalated);
-        markEngine(engine);
-        replaceMessage(assistantId, {
-          id: assistantId,
+      if (response.path === "invoke_confirm" && response.invoke_id !== undefined) {
+        appendMessage({
+          id: id(),
           role: "assistant",
-          text: streamed,
-          engine,
-          path: event.path,
-          tool: event.tool_used,
+          text: "",
+          kind: "invoke_confirm",
+          invoke: {
+            invokeId: response.invoke_id,
+            capability: response.capability ?? "",
+            egressDomains: response.egress_domains ?? [],
+            secrets: response.secrets ?? [],
+            args: response.args ?? {},
+            missingSecrets: [],
+          },
         });
-        update({ streaming: "", sending: false });
-        publishPolite(streamed, true);
-        finalized = true;
+        return;
       }
 
-      if (!finalized) update({ streaming: "", sending: false });
+      if (response.path === "invoke_clarify") {
+        const missing = response.missing?.join(", ") ?? "";
+        appendMessage({
+          id: id(),
+          role: "assistant",
+          text: `I need more detail to run '${response.capability ?? ""}': ${missing}`,
+        });
+        return;
+      }
+
+      const engine = deriveEngine(response.path, response.escalated);
+      markEngine(engine);
+      appendMessage({
+        id: id(),
+        role: "assistant",
+        text: response.text,
+        engine,
+        path: response.path,
+        tool: response.tool_used ?? undefined,
+      });
+      update({ streaming: "" });
+      publishPolite(response.text, true);
     } catch (error: unknown) {
       if (isVaultLockedError(error)) {
         unlockPrompt();
-        replaceMessage(assistantId, {
-          id: assistantId,
+        appendMessage({
+          id: id(),
           role: "assistant",
           text: "",
           engine: "local",
@@ -325,6 +330,47 @@ export const askStore = {
     update({
       messages: snapshot.messages.filter((message) => message.id !== messageId),
       buildMode: false,
+    });
+  },
+  async confirmInvoke(messageId: string): Promise<void> {
+    const message = snapshot.messages.find((candidate) => candidate.id === messageId);
+    if (message?.invoke === undefined) return;
+
+    update({ sending: true });
+    try {
+      const result = await gateway.invokeConfirm(message.invoke.invokeId);
+      if (result.status === "ok") {
+        replaceMessage(messageId, {
+          id: messageId,
+          role: "assistant",
+          text: result.text ?? "",
+        });
+        return;
+      }
+
+      if (result.status === "missing_secrets") {
+        replaceMessage(messageId, {
+          ...message,
+          invoke: { ...message.invoke, missingSecrets: result.missing_secrets },
+        });
+        return;
+      }
+
+      replaceMessage(messageId, {
+        id: messageId,
+        role: "assistant",
+        text:
+          result.status === "not_found"
+            ? "That request has expired — ask again."
+            : "Something went wrong running that.",
+      });
+    } finally {
+      update({ sending: false });
+    }
+  },
+  cancelInvoke(messageId: string): void {
+    update({
+      messages: snapshot.messages.filter((message) => message.id !== messageId),
     });
   },
 };

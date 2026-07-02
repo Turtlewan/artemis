@@ -294,6 +294,13 @@ const styles = `
 }
 `;
 
+const formatArgValue = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null) return "null";
+  return JSON.stringify(value) ?? String(value);
+};
+
 /** Floating Ask Artemis chat with manual focus trap and streaming status regions. */
 export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
   const titleId = useId();
@@ -491,6 +498,81 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                               onClick={() => dismissBuildCard(message.id)}
                             >
                               Adjust
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (message.kind === "invoke_confirm" && message.invoke !== undefined) {
+                    const invoke = message.invoke;
+                    const argEntries = Object.entries(invoke.args);
+                    return (
+                      <div key={message.id} className="ask-msg ask-msg--bot">
+                        <span className="ask-msg__who">Artemis</span>
+                        <div className="ask-card">
+                          <div className="ask-card__title">{invoke.capability}</div>
+                          <div className="ask-card__meta">Network access</div>
+                          {invoke.egressDomains.length > 0 ? (
+                            <ul className="ask-card__list" aria-label="Network access domains">
+                              {invoke.egressDomains.map((domain) => (
+                                <li key={domain}>{domain}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="ask-card__meta">No network access</div>
+                          )}
+                          {invoke.secrets.length > 0 ? (
+                            <div className="ask-card__meta">
+                              Secrets: {invoke.secrets.join(", ")}
+                            </div>
+                          ) : null}
+                          {argEntries.length > 0 ? (
+                            <div className="ask-card__meta">
+                              Args:{" "}
+                              {argEntries.map(([key, value], index) => (
+                                <span key={key}>
+                                  {index > 0 ? ", " : ""}
+                                  {key}: {formatArgValue(value)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {invoke.missingSecrets.length > 0 ? (
+                            <>
+                              <div className="ask-card__meta">
+                                Missing secrets: {invoke.missingSecrets.join(", ")}
+                              </div>
+                              {invoke.missingSecrets.map((secret) => (
+                                <div key={secret} className="ask-card__actions">
+                                  <span className="ask-card__meta">{secret}</span>
+                                  <button
+                                    className="ask-cardbtn"
+                                    type="button"
+                                    aria-label={`Add key ${secret}`}
+                                    onClick={() => openKeys(secret)}
+                                  >
+                                    Add key
+                                  </button>
+                                </div>
+                              ))}
+                            </>
+                          ) : null}
+                          <div className="ask-card__actions">
+                            <button
+                              className="ask-cardbtn"
+                              type="button"
+                              disabled={snapshot.sending}
+                              onClick={() => void askStore.confirmInvoke(message.id)}
+                            >
+                              Run
+                            </button>
+                            <button
+                              className="ask-cardbtn ask-cardbtn--ghost"
+                              type="button"
+                              onClick={() => askStore.cancelInvoke(message.id)}
+                            >
+                              Cancel
                             </button>
                           </div>
                         </div>
