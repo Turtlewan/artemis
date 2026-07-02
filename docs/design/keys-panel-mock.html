@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- Cheap static mockup of the Keys & Secrets settings overlay (clean-sequence step 4b).
+     Liquid-glass, Jarvis-adjacent per docs/technical/architecture/design-brief.md.
+     Not the real component — a visual reference for the owner's visual pass. Palette: Autumn morning. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Keys & Secrets — mock</title>
+<style>
+  :root { --bg:#0f0c08; --p:#e3b572; --a:#93b39c; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    min-height:100vh; color:#f4ede2;
+    background:
+      radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--p) 8%, var(--bg)) 0%, var(--bg) 55%),
+      var(--bg);
+    display:grid; place-items:center;
+  }
+  /* faint tactical grid masked into the void */
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.25;
+    background-image:linear-gradient(color-mix(in srgb,var(--p) 12%,transparent) 1px,transparent 1px),
+                     linear-gradient(90deg,color-mix(in srgb,var(--p) 12%,transparent) 1px,transparent 1px);
+    background-size:44px 44px;
+    -webkit-mask-image:radial-gradient(80% 80% at 50% 40%, #000 30%, transparent 75%);
+            mask-image:radial-gradient(80% 80% at 50% 40%, #000 30%, transparent 75%);
+  }
+  /* dim scrim the panel floats over */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.42); backdrop-filter:blur(1px); }
+
+  .panel {
+    position:relative; width:min(440px,92vw);
+    background:color-mix(in srgb, var(--bg) 62%, rgba(20,18,14,.5));
+    backdrop-filter:blur(22px) saturate(1.1);
+    border:1px solid color-mix(in srgb, var(--p) 30%, transparent);
+    border-radius:18px;
+    box-shadow:0 0 0 1px rgba(255,255,255,.03), 0 24px 70px rgba(0,0,0,.55),
+               0 0 40px color-mix(in srgb, var(--p) 14%, transparent);
+    padding:22px 22px 20px;
+  }
+  .head { display:flex; align-items:center; justify-content:space-between;
+    letter-spacing:.14em; font-size:13px; color:var(--p); text-transform:uppercase; }
+  .head .x { color:#f4ede2; opacity:.5; cursor:pointer; font-size:16px; }
+  .rule { height:1px; margin:14px 0 16px;
+    background:linear-gradient(90deg, color-mix(in srgb,var(--p) 40%,transparent), transparent); }
+
+  .label { font-size:10px; letter-spacing:.18em; color:#a89b86; text-transform:uppercase; margin-bottom:8px; }
+
+  .key { display:flex; align-items:center; gap:10px; padding:11px 13px; margin-bottom:8px;
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:11px; }
+  .key .dot { color:var(--p); font-size:12px; }
+  .key .name { flex:1; font-size:13.5px; letter-spacing:.02em; }
+  .key .mask { color:#6f6656; letter-spacing:.18em; font-size:12px; }
+  .key .del { color:#c98b8b; opacity:.65; cursor:pointer; }
+
+  .add { margin-top:12px; color:var(--p); font-size:12.5px; cursor:pointer; letter-spacing:.03em; }
+  .form { margin-top:12px; padding:14px; border:1px dashed color-mix(in srgb,var(--p) 22%,transparent);
+    border-radius:12px; display:grid; gap:10px; }
+  .field { display:flex; align-items:center; gap:10px; }
+  .field span { width:44px; font-size:10px; letter-spacing:.14em; color:#a89b86; text-transform:uppercase; }
+  .field input { flex:1; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.08);
+    border-radius:8px; color:#f4ede2; padding:9px 11px; font-family:inherit; font-size:13px; letter-spacing:.06em; }
+  .field input:focus { outline:none; border-color:var(--p); box-shadow:0 0 0 3px color-mix(in srgb,var(--p) 18%,transparent); }
+  .eye { color:#a89b86; cursor:pointer; }
+  .save { justify-self:end; background:color-mix(in srgb,var(--p) 20%,transparent);
+    border:1px solid var(--p); color:#f4ede2; padding:8px 18px; border-radius:9px; cursor:pointer;
+    font-family:inherit; font-size:12.5px; letter-spacing:.06em; }
+
+  /* gate deep-link state — accent (approval-pending) */
+  .pending { margin-top:18px; padding:14px; border-radius:12px;
+    border:1px solid color-mix(in srgb,var(--a) 46%,transparent);
+    background:color-mix(in srgb,var(--a) 9%, transparent); }
+  .pending .warn { color:var(--a); font-size:12px; letter-spacing:.04em; margin-bottom:10px; }
+  .pending .warn b { font-weight:600; }
+  .caret { display:inline-block; width:7px; height:14px; margin-left:2px; vertical-align:-2px;
+    background:var(--p); animation:blink 1.1s step-end infinite; }
+  @keyframes blink { 50%{opacity:0} }
+</style>
+</head>
+<body>
+  <div class="scrim"></div>
+  <div class="panel">
+    <div class="head"><span>⛛ Keys &amp; Secrets</span><span class="x">✕</span></div>
+    <div class="rule"></div>
+
+    <div class="label">Stored — names only, values never shown</div>
+    <div class="key"><span class="dot">◈</span><span class="name">TAVILY_API_KEY</span><span class="mask">••••••</span><span class="del">🗑</span></div>
+    <div class="key"><span class="dot">◈</span><span class="name">TELEGRAM_BOT_TOKEN</span><span class="mask">••••••</span><span class="del">🗑</span></div>
+
+    <div class="add">+ Add a key</div>
+    <div class="form">
+      <div class="field"><span>name</span><input value="GITHUB_TOKEN" /></div>
+      <div class="field"><span>value</span><input type="password" value="ghp_superSecretValueHidden" /><span class="eye">👁</span></div>
+      <button class="save">Save</button>
+    </div>
+
+    <div class="pending">
+      <div class="warn">⚠ Needed to run <b>“gmail-triage”</b> — captured here to finish the build<span class="caret"></span></div>
+      <div class="form" style="margin-top:0;border-style:solid;border-color:color-mix(in srgb,var(--a) 34%,transparent)">
+        <div class="field"><span>key</span><input value="GMAIL_APP_PASSWORD" disabled style="opacity:.75" /></div>
+        <div class="field"><span>value</span><input type="password" placeholder="paste value" /><span class="eye">👁</span></div>
+        <button class="save" style="border-color:var(--a);background:color-mix(in srgb,var(--a) 20%,transparent)">Save &amp; run</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
