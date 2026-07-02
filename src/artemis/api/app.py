@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
-from artemis.api import ask_routes, capability_routes, domain_routes
+from artemis.api import ask_routes, capability_routes, domain_routes, secret_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
@@ -21,6 +21,8 @@ from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.model.compose import build_model_router
 from artemis.ports.model import ModelPort
+from artemis.ports.secrets import SecretStorePort
+from artemis.secrets_store import KeyringSecretStore
 
 
 class HealthResponse(BaseModel):
@@ -38,6 +40,7 @@ def create_app(
     data_dir: str | Path | None = None,
     model: ModelPort | None = None,
     sandbox: SandboxRunner | None = None,
+    secrets: SecretStorePort | None = None,
 ) -> FastAPI:
     resolved_data_dir = (
         Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
@@ -49,6 +52,11 @@ def create_app(
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
+    app.state.secrets = (
+        secrets
+        if secrets is not None
+        else KeyringSecretStore(resolved_data_dir / "secrets_index.json")
+    )
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
     capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
     app.state.capability_store = capability_store
@@ -63,6 +71,7 @@ def create_app(
     app.include_router(ask_routes.router)
     app.include_router(capability_routes.router)
     app.include_router(domain_routes.router)
+    app.include_router(secret_routes.router)
     return app
 
 
