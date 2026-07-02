@@ -33,5 +33,7 @@ line-length = 100
 extend-exclude = [".forge-test", "capabilities"]
 
 [tool.pytest.ini_options]
+addopts = '-m "not live"'
 asyncio_mode = "auto"
+markers = ["live: requires real model credentials and may spend model credits"]
 testpaths = ["tests"]

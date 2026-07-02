@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.client import ModelClient, ModelOutputError
 from artemis.model.errors import QuotaExhaustedError
 from artemis.model.router import QuotaAwareRouter
@@ -388,6 +389,49 @@ async def test_sources_are_cited_intersection_fed_urls_only() -> None:
     assert answer.sources == [urls[1]]
 
 
+async def test_synth_prompt_reports_and_attributes_conflicts() -> None:
+    expected = (
+        "If the provided extracts CONFLICT with each other, do NOT silently resolve the "
+        "disagreement or pick one side — report BOTH positions and attribute each to its "
+        "source (by URL). Base everything only on the provided extracts."
+    )
+
+    assert expected in _SYNTH_SYSTEM
+
+
+async def test_conflicting_extracts_preserve_both_fed_citations_and_urls() -> None:
+    hits = [hit(1), hit(2)]
+    urls = [item.url for item in hits]
+    extracts = [
+        "Rivergate Bridge opened to public traffic on May 14, 1982.",
+        "Rivergate Bridge opened to public traffic on August 2, 1984.",
+    ]
+    tool, _reader, synth, _fetcher, _egress = make_tool(
+        hits=hits,
+        fetches={urls[0]: "raw rivergate page one", urls[1]: "raw rivergate page two"},
+        reader_outputs=[reader_json(extracts[0]), reader_json(extracts[1])],
+        synth_outputs=[
+            synth_json(
+                (
+                    f"{urls[0]} says Rivergate opened on May 14, 1982; "
+                    f"{urls[1]} says it opened on August 2, 1984."
+                ),
+                urls,
+            )
+        ],
+        top_n=2,
+    )
+
+    answer = await tool.answer("what does the corpus say about rivergate opening")
+
+    assert answer.sources == urls
+    synth_user = synth.calls[0].messages[1].content
+    assert f"EXTRACT[1] url={urls[0]}" in synth_user
+    assert f"EXTRACT[2] url={urls[1]}" in synth_user
+    assert extracts[0] in synth_user
+    assert extracts[1] in synth_user
+
+
 async def test_faithfulness_prompt_contains_extracts_and_sources_are_fetched() -> None:
     hits = [hit(1), hit(2)]
     fetched_urls = {item.url for item in hits}
@@ -513,6 +557,43 @@ async def test_search_failure_degrades_without_crashing() -> None:
     assert "unavailable" in answer.answer.lower()
     assert reader.calls == []
     assert synth.calls == []
+
+
+@pytest.mark.live
+async def test_live_synth_reports_and_attributes_conflicting_extracts() -> None:
+    """Run the live behavior check.
+
+    uv run pytest tests/reachout/test_web_tool.py -q -o addopts='' -m live -k conflicting_extracts
+    """
+    urls = [
+        "https://authored.example/webtool/authored-conflict-rivergate-opening-a",
+        "https://authored.example/webtool/authored-conflict-rivergate-opening-b",
+    ]
+    tool = WebTool(
+        search=FakeSearch([]),
+        fetcher=FakeFetcher({}),
+        egress=SpyEgress(),
+        reader=FakeModel([]),
+        synth=ModelClient(ClaudeCodeProvider(), model_default="sonnet"),
+    )
+
+    answer = await tool._synthesize(
+        "What does the corpus say about Rivergate Bridge opening?",
+        [
+            (urls[0], "Rivergate Bridge opened to public traffic on May 14, 1982."),
+            (urls[1], "Rivergate Bridge opened to public traffic on August 2, 1984."),
+        ],
+        total=2,
+    )
+
+    lowered = answer.answer.lower()
+    # Must be a GENUINE synthesis, not the degrade fallback (which also lists both extracts).
+    assert "could not synthesize" not in lowered
+    assert "1982" in lowered
+    assert "1984" in lowered
+    assert urls[0] in answer.answer
+    assert urls[1] in answer.answer
+    assert answer.sources == urls
 
 
 @pytest.mark.skip(
