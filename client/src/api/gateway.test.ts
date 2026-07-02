@@ -101,6 +101,19 @@ describe("gateway facade", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("app_capability_promote", { buildId: "b" });
   });
 
+  it("invokes app_invoke_confirm with the invoke id", async () => {
+    const response = {
+      invoke_id: "inv-1",
+      status: "ok",
+      text: "done",
+      missing_secrets: [],
+    };
+    mocks.invoke.mockResolvedValueOnce(response);
+
+    await expect(gateway.invokeConfirm("inv-1")).resolves.toEqual(response);
+    expect(mocks.invoke).toHaveBeenCalledWith("app_invoke_confirm", { invokeId: "inv-1" });
+  });
+
   it("streams capability build events until done", async () => {
     mocks.invoke.mockImplementationOnce((_command: string, args?: Record<string, unknown>) => {
       const channel = args?.channel as { onmessage: ((event: unknown) => void) | null };

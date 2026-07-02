@@ -6,6 +6,7 @@ import type {
   BuildPlanCard,
   BuildStreamEvent,
   InstalledCard,
+  InvokeConfirmResponse,
   LayoutDTO,
   OkResponse,
   ReviewItem,
@@ -144,6 +145,9 @@ export const capabilityPropose = (goal: string): Promise<BuildPlanCard> =>
 
 export const capabilityPromote = (buildId: string): Promise<InstalledCard> =>
   call("app_capability_promote", { buildId });
+
+export const invokeConfirm = (invokeId: string): Promise<InvokeConfirmResponse> =>
+  call("app_invoke_confirm", { invokeId });
 
 export const secretSet = (name: string, value: string): Promise<void> =>
   call("app_secret_set", { name, value });

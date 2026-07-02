@@ -61,6 +61,7 @@ pub fn run() {
             gateway::app_capability_propose,
             gateway::app_capability_build,
             gateway::app_capability_promote,
+            gateway::app_invoke_confirm,
             gateway::app_secret_set,
             gateway::app_secret_list,
             gateway::app_secret_delete,

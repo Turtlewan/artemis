@@ -55,6 +55,12 @@ export interface AskResponse {
   path: string;
   tool_used?: string | null;
   escalated: boolean;
+  invoke_id?: string;
+  capability?: string;
+  egress_domains?: string[];
+  secrets?: string[];
+  args?: Record<string, unknown>;
+  missing?: string[];
 }
 
 export interface ReviewItem {
@@ -190,6 +196,13 @@ export interface BuildPlanCard {
   missing_secrets: string[];
   blocked: boolean;
   block_reason: string | null;
+}
+
+export interface InvokeConfirmResponse {
+  invoke_id: string;
+  status: "ok" | "missing_secrets" | "not_found" | "error";
+  text: string | null;
+  missing_secrets: string[];
 }
 
 export interface InstalledCard {

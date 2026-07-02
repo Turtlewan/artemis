@@ -113,11 +113,25 @@ pub(crate) struct InstalledCard {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct InvokeConfirmResponse {
+    invoke_id: String,
+    status: String,
+    text: Option<String>,
+    missing_secrets: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct AskResponse {
     text: String,
     path: String,
     tool_used: Option<String>,
     escalated: bool,
+    invoke_id: Option<String>,
+    capability: Option<String>,
+    egress_domains: Option<Vec<String>>,
+    secrets: Option<Vec<String>>,
+    args: Option<serde_json::Value>,
+    missing: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -543,6 +557,20 @@ pub(crate) async fn capability_promote(
     .await
 }
 
+pub(crate) async fn invoke_confirm(
+    state: &AppState,
+    invoke_id: String,
+) -> Result<InvokeConfirmResponse, GatewayError> {
+    request_json::<InvokeConfirmResponse, ()>(
+        state,
+        Method::POST,
+        &format!("/app/ask/invoke/{invoke_id}/confirm"),
+        None,
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn secret_set(
     state: &AppState,
     name: String,
@@ -875,6 +903,14 @@ pub(crate) async fn app_capability_promote(
 }
 
 #[tauri::command]
+pub(crate) async fn app_invoke_confirm(
+    state: State<'_, AppState>,
+    invoke_id: String,
+) -> Result<InvokeConfirmResponse, GatewayError> {
+    invoke_confirm(&state, invoke_id).await
+}
+
+#[tauri::command]
 pub(crate) async fn app_secret_set(
     state: State<'_, AppState>,
     name: String,
@@ -1177,7 +1213,13 @@ mod tests {
                 "text": "answer",
                 "path": "direct",
                 "tool_used": null,
-                "escalated": false
+                "escalated": false,
+                "invoke_id": null,
+                "capability": null,
+                "egress_domains": null,
+                "secrets": null,
+                "args": null,
+                "missing": null
             })
         );
     }
@@ -1320,6 +1362,38 @@ mod tests {
                 "secrets": ["TOKEN"],
                 "blocked": false,
                 "block_reason": null
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn invoke_confirm_posts_to_confirm_route_with_bearer() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/ask/invoke/inv-1/confirm"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "invoke_id": "inv-1",
+                "status": "ok",
+                "text": "done",
+                "missing_secrets": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = invoke_confirm(&state, "inv-1".to_string()).await.unwrap();
+
+        let encoded = serde_json::to_value(&response).unwrap();
+        assert_eq!(
+            encoded,
+            json!({
+                "invoke_id": "inv-1",
+                "status": "ok",
+                "text": "done",
+                "missing_secrets": []
             })
         );
     }
