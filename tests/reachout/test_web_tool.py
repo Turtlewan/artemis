@@ -389,14 +389,15 @@ async def test_sources_are_cited_intersection_fed_urls_only() -> None:
     assert answer.sources == [urls[1]]
 
 
-async def test_synth_prompt_reports_and_attributes_conflicts() -> None:
-    expected = (
-        "If the provided extracts CONFLICT with each other, do NOT silently resolve the "
-        "disagreement or pick one side — report BOTH positions and attribute each to its "
-        "source (by URL). Base everything only on the provided extracts."
-    )
-
-    assert expected in _SYNTH_SYSTEM
+async def test_synth_prompt_answers_clearly_but_reports_genuine_conflicts() -> None:
+    # Reconcile false conflicts (precision/staleness) into one clear answer...
+    assert "Give a CLEAR, DIRECT answer" in _SYNTH_SYSTEM
+    assert "must be RECONCILED into a single" in _SYNTH_SYSTEM
+    # ...but still report-and-attribute GENUINELY incompatible claims.
+    assert "genuinely INCOMPATIBLE claims" in _SYNTH_SYSTEM
+    assert "report BOTH positions and attribute each to its source (by URL)" in _SYNTH_SYSTEM
+    # Authority/recency judged only from the source URL/domain, never from in-extract claims.
+    assert "use only the source URL/domain" in _SYNTH_SYSTEM
 
 
 async def test_conflicting_extracts_preserve_both_fed_citations_and_urls() -> None:
