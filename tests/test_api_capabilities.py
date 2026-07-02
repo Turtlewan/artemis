@@ -55,6 +55,7 @@ def _draft(
     tool_script: str | None = None,
     uses: list[str] | None = None,
     secrets: list[str] | None = None,
+    egress_domains: list[str] | None = None,
 ) -> SkillDraft:
     return SkillDraft(
         name="Echo",
@@ -63,8 +64,28 @@ def _draft(
         tool_script=tool_script,
         uses=uses or [],
         secrets=secrets or [],
+        egress_domains=egress_domains or [],
         tests=tests,
     )
+
+
+class _FakeSecretStore:
+    def __init__(self, names: list[str]) -> None:
+        self._names = list(names)
+
+    def get(self, name: str) -> str | None:
+        return "v" if name in self._names else None
+
+    def set(self, name: str, value: str) -> None:
+        if name not in self._names:
+            self._names.append(name)
+
+    def delete(self, name: str) -> None:
+        if name in self._names:
+            self._names.remove(name)
+
+    def list_names(self) -> list[str]:
+        return sorted(self._names)
 
 
 def _client(tmp_path: Path, draft: SkillDraft, sandbox: FakeSandbox | None = None) -> TestClient:
@@ -223,3 +244,23 @@ def test_capability_routes_require_session(tmp_path: Path) -> None:
     assert client.get("/app/capabilities").status_code == 401
     assert client.post("/app/capabilities/unknown/build").status_code == 401
     assert client.post("/app/capabilities/promote", json={"build_id": "unknown"}).status_code == 401
+
+
+def test_propose_plan_card_reports_egress_and_missing_secrets(tmp_path: Path) -> None:
+    """PlanCard surfaces egress_domains + which declared secrets are NOT yet stored."""
+    app = create_app(
+        data_dir=tmp_path,
+        model=FakeModel(_draft(secrets=["STORED_KEY", "NEEDED_KEY"])),
+        sandbox=FakeSandbox(VerifyResult(passed=True, output="ok")),
+        secrets=_FakeSecretStore(["STORED_KEY"]),  # one of the two already stored
+    )
+    app.dependency_overrides[require_session] = lambda: Principal(
+        device_id="dev", person_id="owner"
+    )
+    client = TestClient(app)
+
+    body = client.post("/app/capabilities/propose", json={"goal": "make an echo skill"}).json()
+
+    assert body["secrets"] == ["STORED_KEY", "NEEDED_KEY"]
+    assert body["missing_secrets"] == ["NEEDED_KEY"]  # STORED_KEY excluded (already in the store)
+    assert body["egress_domains"] == []

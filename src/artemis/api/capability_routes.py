@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from artemis.api.auth import Principal, require_session
 from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.store import FileCapabilityStore
+from artemis.ports.secrets import SecretStorePort
 from artemis.types import BuildProposal
 
 
@@ -35,6 +36,12 @@ class PlanCard(BaseModel):
     description: str
     summary: str
     secrets: list[str]
+    # Network domains the capability is granted (empty = no network) — shown at the gate so the
+    # owner consents to network scope before the build/verify runs.
+    egress_domains: list[str]
+    # Subset of `secrets` NOT yet in the credential store — surfaced so the client can prompt for
+    # them (the end-of-build pending item deep-links into the keys panel to capture each).
+    missing_secrets: list[str]
     blocked: bool
     block_reason: str | None = None
 
@@ -115,12 +122,17 @@ async def propose(
     build_id = uuid4().hex
     _builds(request)[build_id] = BuildState(proposal=proposal)
     draft = proposal.draft
+    secrets_store: SecretStorePort = request.app.state.secrets
+    stored = set(secrets_store.list_names())
+    missing_secrets = [name for name in draft.secrets if name not in stored]
     return PlanCard(
         build_id=build_id,
         name=draft.name,
         description=draft.description,
         summary=draft.body,
         secrets=draft.secrets,
+        egress_domains=draft.egress_domains,
+        missing_secrets=missing_secrets,
         blocked=proposal.blocked,
         block_reason=proposal.block_reason,
     )
