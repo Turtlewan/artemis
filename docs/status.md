@@ -13,7 +13,7 @@ stack_skills: [apex-python, apex-tauri]   # v2 Python harness + kept Tauri clien
 coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Dogfood: Opus plans/specs/reviews, Codex builds; host re-verifies full mypy --strict + pytest.
 max_parallel_codex: 3
 
-_Last updated by planning mode:_ 2026-07-02
+_Last updated by planning mode:_ 2026-07-03
 
 ## Current state — Slices 0–2 complete
 
@@ -61,7 +61,10 @@ _(**Tree clean at HEAD, nothing in flight.** Latest session (2026-07-02, session
 ## Pending Specs
 | Spec | Summary |
 |------|---------|
-| _(none)_ | — |
+| js-fetch-output-limit | Parametrize the WSL2 isolate's hardcoded 4000-char output cap (`run_isolated`/`FetchSandbox.run`) so a fetch capability can return full page text. Prerequisite for js-rendering-fetcher. Security-reviewed (no BLOCKs). |
+| js-rendering-fetcher | Headless-Chromium `Fetcher` (chrome-headless-shell in the WSL2 isolate) wired as a fallback the web tool uses only when trafilatura returns empty. Depends on js-fetch-output-limit. ADR-040. Security+testing reviewed; 3 BLOCKs resolved (incl. userns-sandbox spike → Chrome sandbox RETAINED, no `--no-sandbox`). |
+
+> **JS-rendering fetcher (a1) — SPECCED + review-clean (2026-07-03).** Owner directive "spec the JS-rendering fetcher" → 2 file-disjoint Deep specs in `docs/changes/` (above) + **ADR-040** (Accepted). Fork resolved: **fallback-on-empty** (not replace). 3 dispatched domain reviews (security ×2, testing ×1) → all BLOCKs resolved: (1) egress must pass exact SNI hostname not eTLD+1; (2) live-smoke skip-gate polarity; (3) `--no-sandbox` residual risk → owner chose to spike first, **userns spike PASSED** (`poc/wsl2_browser_userns/`, findings `docs/findings/js-fetcher-userns-spike-2026-07-03.md`): Chrome's seccomp-bpf renderer sandbox engages nested in the isolate (`Seccomp: 2`) with zero isolate change → fetcher drops `--no-sandbox` for defense-in-depth. **Build order: js-fetch-output-limit → js-rendering-fetcher.** Build-time live smoke (render + egress-negative) required on the provisioned WSL2 host.
 
 > **Reach-out-router arc (ADR-035 #3, owner chose full shared-ingress scope + build-fresh):** R1 `reachout-web-primitives` ✅ **built + committed** (`7d2f14b`) → **R2 built + committed** (`reachout-clean-context-provider` `5228bd3`, `reachout-web-tool` `c9b0de4`; ADR-037, full-live end-to-end) → **pre-R3 gate set built + committed (2026-07-02):** `reader-no-tools` (`1b2b720`), `webtool-eval-corpus` (`7fe0813`), `webtool-eval-harness` (`73cffed` + fence fix `8023bbd`), `webtool-eval-calibration` (`a8030dc`) — all archived to `done/`. **R3 built + committed (2026-07-02, session 2):** `reachout-intent-router` (`ed3783e`) — brain-side Haiku intent classifier + `/app/ask` wiring (build/web_q/aggregate/plain_ask); cross-model-review BLOCK fixed (dedicated claude_code haiku port, not the shared router). **Also built: `cred-store` (`a1626ff`)** — keyring-backed `SecretStorePort` (credential kernel foundation). Both archived to `done/`, unmerged-for-review.
 > **✅ "Clean sequence to a usable Artemis" — COMPLETE (2026-07-02, live scope):** 1. intent-router ✅ (`ed3783e`) → 2. Telegram live ✅ (proven both ways) → 3. cred store ✅ (`a1626ff`) → 4. secret-capture: 4a routes ✅ (`1444168`) + 4b keys-panel UI ✅ (`ac83299`) → 5. build-gate consent: 5a plan-card egress+missing-secrets ✅ (`7a28b6f`) + 5b consent UI + pending-credential item ✅ (`eb74a6a`). All committed on `v2-rebuild`, UNMERGED (owner review). Baseline UI styling (full UI overhaul is a separate owner track).
