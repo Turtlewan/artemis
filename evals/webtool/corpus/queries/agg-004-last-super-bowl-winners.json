@@ -1,0 +1,31 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "aggregation",
+  "conflicting_claims": [],
+  "expected_citations": [
+    "https://www.profootballhof.com/nfl-champions"
+  ],
+  "expected_correction": null,
+  "expected_count": 5,
+  "expected_set": [
+    "Tampa Bay Buccaneers",
+    "Los Angeles Rams",
+    "Kansas City Chiefs",
+    "Kansas City Chiefs",
+    "Philadelphia Eagles"
+  ],
+  "id": "agg-004-last-super-bowl-winners",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-profootballhof-com-nfl-champions",
+      "sha256": "2c486ea3c42a2bbb697b9feb3d7fb9b9605d394467b22480649f2564f4097bc6"
+    }
+  ],
+  "query": "How many Super Bowl champions from 2020 through 2024 are listed?"
+}

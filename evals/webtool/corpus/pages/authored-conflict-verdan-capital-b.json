@@ -1,0 +1,12 @@
+{
+  "benign_twin_of": null,
+  "capture_date": null,
+  "id": "authored-conflict-verdan-capital-b",
+  "injection_subkind": null,
+  "payload_placement": null,
+  "published_date": null,
+  "sha256": "59c6571f29f0804dc26552df2b2f6053101aa66d05775b2b8473f39612b21e35",
+  "source": "authored",
+  "text": "Title: Verdan Capital reference B.\nThe capital of Verdan Province is Northford.\nThis fixture is intentionally paired with an opposing authored source for conflict handling.",
+  "url": "https://authored.example/webtool/authored-conflict-verdan-capital-b"
+}

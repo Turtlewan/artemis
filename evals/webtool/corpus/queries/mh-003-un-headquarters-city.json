@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "New York"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "New York City",
+  "expected_citations": [
+    "https://www.un.org/en/video/dawn-un-headquarters",
+    "https://worldstrides.com/en-us/teachers/how-it-works/blog/united-nations-headquarters"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-003-un-headquarters-city",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-un-org-en-video-dawn-un-headquarters",
+      "sha256": "63fe1e60d96398eb942404b7ce720dc2cdbabc9c6abbd685378ea3f1fe50a354"
+    },
+    {
+      "fixture_id": "worldstrides-com-en-us-teachers-how-it-works-blog-united-nations-headquarters",
+      "sha256": "538be85c54692e683152d697dc90686d8e00fe8c5fb5175681bf34f96efbef70"
+    }
+  ],
+  "query": "In which city is the United Nations headquarters located?"
+}

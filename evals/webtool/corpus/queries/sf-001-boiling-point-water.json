@@ -1,0 +1,29 @@
+{
+  "accepted_variants": [
+    "100 C",
+    "100?C"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "100 degrees Celsius",
+  "expected_citations": [
+    "https://www.ebsco.com/research-starters/science/boiling-points"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-001-boiling-point-water",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-ebsco-com-research-starters-science-boiling-points",
+      "sha256": "5ffa36ca62417d332def7a7fb9c0f1cb23465c7b4436e42a10bdedc8299d0d2c"
+    }
+  ],
+  "query": "At sea level, what is the boiling point of water in Celsius?"
+}

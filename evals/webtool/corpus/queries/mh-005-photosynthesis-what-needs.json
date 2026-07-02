@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "sunlight, water, and carbon dioxide"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "Plants use sunlight, water, and carbon dioxide to make sugar or food and release oxygen.",
+  "expected_citations": [
+    "https://www.snexplores.org/article/explainer-how-photosynthesis-works",
+    "https://education.nationalgeographic.org/resource/photosynthesis"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-005-photosynthesis-what-needs",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-snexplores-org-article-explainer-how-photosynthesis-works",
+      "sha256": "fc9d1b59e555f659647b8c2dd2246383370943c7195576a2c55f4d936b52eff1"
+    },
+    {
+      "fixture_id": "education-nationalgeographic-org-resource-photosynthesis",
+      "sha256": "c3d58b762554dc7d34b4f1a8d63c6f102854d0b132431dcc1e8ca27e4054fa6d"
+    }
+  ],
+  "query": "Across the two explainers, what do plants use to make food through photosynthesis?"
+}

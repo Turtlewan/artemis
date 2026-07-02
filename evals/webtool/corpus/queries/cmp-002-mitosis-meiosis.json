@@ -1,0 +1,31 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "comparative",
+  "conflicting_claims": [],
+  "expected_answer": "Mitosis makes two genetically identical cells for growth and repair; meiosis makes sex cells and increases genetic diversity.",
+  "expected_citations": [
+    "https://nigms.nih.gov/biobeat/2021/09/make-like-a-cell-and-split-comparing-mitosis-and-meiosis",
+    "https://byjus.com/biology/mitosis-and-meiosis"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "cmp-002-mitosis-meiosis",
+  "must_not": [],
+  "noise": false,
+  "notes": "Verdict: different cell-division processes with different products and purposes.",
+  "pages": [
+    {
+      "fixture_id": "nigms-nih-gov-biobeat-2021-09-make-like-a-cell-and-split-comparing-mitosis-and-m",
+      "sha256": "47fc514028210f8f4e782cbe1d86b9df4135093a6f62350dbe09b6a50e7c3b11"
+    },
+    {
+      "fixture_id": "byjus-com-biology-mitosis-and-meiosis",
+      "sha256": "61c5186edf28cf41ad6c10b2b4b0f6d4a65a96fd83a1b7edb95650b66b291e5e"
+    }
+  ],
+  "query": "Compare mitosis and meiosis."
+}

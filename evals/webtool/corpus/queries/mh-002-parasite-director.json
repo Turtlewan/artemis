@@ -1,0 +1,36 @@
+{
+  "accepted_variants": [
+    "Parasite, Bong Joon Ho, and Leonardo da Vinci",
+    "Bong Joon Ho directed Parasite; Leonardo da Vinci painted the Mona Lisa"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "Parasite won 2020 Best Picture and was directed by Bong Joon Ho; the Mona Lisa was painted by Leonardo da Vinci.",
+  "expected_citations": [
+    "https://deadline.com/gallery/oscars-best-picture-winners",
+    "https://luxuryartcanvas.com/blogs/art/who-painted-the-mona-lisa"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-002-parasite-director",
+  "must_not": [
+    "cite a distractor"
+  ],
+  "noise": true,
+  "notes": "No single cited page answers all parts: the Oscar page supports Parasite/Bong Joon Ho, while the art page supports Leonardo da Vinci.",
+  "pages": [
+    {
+      "fixture_id": "deadline-com-gallery-oscars-best-picture-winners",
+      "sha256": "d74eb86ebb78f5a5d4d822312c140806f0f14721146acc64989a443f4a361ae5"
+    },
+    {
+      "fixture_id": "luxuryartcanvas-com-blogs-art-who-painted-the-mona-lisa",
+      "sha256": "1435c205ad7e1e89563552aebb6aeee7ff7ee60e88e5ef3098f8fd02355ac398"
+    }
+  ],
+  "query": "Which film won the 2020 Academy Award for Best Picture, who directed it, and who painted the Mona Lisa on the distractor page?"
+}

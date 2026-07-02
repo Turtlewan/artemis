@@ -1,0 +1,28 @@
+{
+  "accepted_variants": [
+    "3.13"
+  ],
+  "as_of_date": "2024-10-15",
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "temporal",
+  "conflicting_claims": [],
+  "expected_answer": "Python 3.13",
+  "expected_citations": [
+    "https://authored.example/webtool/authored-stale-python-2024-latest"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "tmp-002-python-2024",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "authored-stale-python-2024-latest",
+      "sha256": "7bd7c46a85b6583613e21414184a47f080f009fc652646d8911d7ab494d25fdb"
+    }
+  ],
+  "query": "As of 2024-10-15, what was the latest stable Python release in the stale snapshot?"
+}

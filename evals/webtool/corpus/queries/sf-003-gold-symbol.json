@@ -1,0 +1,28 @@
+{
+  "accepted_variants": [
+    "Gold is Au"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "Au",
+  "expected_citations": [
+    "https://goldsell.co.uk/what-is-the-chemical-symbol-for-gold"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-003-gold-symbol",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "goldsell-co-uk-what-is-the-chemical-symbol-for-gold",
+      "sha256": "3554114f2358fd3fdccaebea30655a3685b1b3a170b38cd96fa21c0be9656a64"
+    }
+  ],
+  "query": "What is the chemical symbol for gold?"
+}

@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "TCP is reliable; UDP is faster but less reliable"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "comparative",
+  "conflicting_claims": [],
+  "expected_answer": "TCP is connection-oriented and emphasizes reliable ordered delivery; UDP is connectionless and emphasizes speed with less delivery assurance.",
+  "expected_citations": [
+    "https://www.avast.com/c-tcp-vs-udp-difference",
+    "https://www.avg.com/en/signal/tcp-vs-udp"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "cmp-001-tcp-udp",
+  "must_not": [],
+  "noise": false,
+  "notes": "Verdict: use TCP when reliability and order matter; use UDP when low latency matters.",
+  "pages": [
+    {
+      "fixture_id": "www-avast-com-c-tcp-vs-udp-difference",
+      "sha256": "aa0e8ff80f8efc77de6c4931c0192f59c4c1a40a22ed4761216585613e6e1ab2"
+    },
+    {
+      "fixture_id": "www-avg-com-en-signal-tcp-vs-udp",
+      "sha256": "0cc44c3c8d84af39cb38164b9fced0734edb4d0c5a8d012f7c6a75a783c4a07b"
+    }
+  ],
+  "query": "Compare TCP and UDP at a high level."
+}

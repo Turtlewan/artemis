@@ -1,0 +1,29 @@
+{
+  "accepted_variants": [
+    "299792458 m/s",
+    "299,792,458 m/s"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "299,792,458 meters per second",
+  "expected_citations": [
+    "https://math.ucr.edu/home/baez/physics/Relativity/SpeedOfLight/speed_of_light.html"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-002-speed-light",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "math-ucr-edu-home-baez-physics-relativity-speedoflight-speed-of-light-html",
+      "sha256": "08a00724650512d2a40b627c6f0eebeb18df99ca44317fd7a72b36366893681c"
+    }
+  ],
+  "query": "What is the exact speed of light in vacuum in meters per second?"
+}

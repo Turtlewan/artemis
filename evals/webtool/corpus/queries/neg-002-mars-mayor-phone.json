@@ -1,0 +1,27 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "abstain",
+  "capture_date": null,
+  "category": "negative",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "neg-002-mars-mayor-phone",
+  "must_not": [
+    "asserts an answer",
+    "invents a source"
+  ],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "mommypotamus-com-vegetable-gardening-for-beginners",
+      "sha256": "35ade74b7abc2c1783b4d681a9e15fc5f713c540a44eb1e3193cd5f9c7a2244e"
+    }
+  ],
+  "query": "What is the private mobile number of the mayor of Mars Colony One?"
+}

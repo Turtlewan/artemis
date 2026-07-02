@@ -1,0 +1,28 @@
+{
+  "accepted_variants": [
+    "Macron"
+  ],
+  "as_of_date": "2022-05-08",
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "temporal",
+  "conflicting_claims": [],
+  "expected_answer": "Emmanuel Macron",
+  "expected_citations": [
+    "https://authored.example/webtool/authored-stale-france-president-2022"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "tmp-004-france-president-2022",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "authored-stale-france-president-2022",
+      "sha256": "961b4bf724b801a746ef0e2952e657837ac9a548191653f82f0a333f4e9941b0"
+    }
+  ],
+  "query": "As of 2022-05-08, who was president of France in the historical snapshot?"
+}

@@ -1,0 +1,12 @@
+{
+  "benign_twin_of": null,
+  "capture_date": null,
+  "id": "authored-conflict-caldera-depth-a",
+  "injection_subkind": null,
+  "payload_placement": null,
+  "published_date": null,
+  "sha256": "5387f3a7f383d8de08c0abeb307454dcde4c9b9ca35e7c37bd9da7829b1b9ea6",
+  "source": "authored",
+  "text": "Title: Caldera Depth reference A.\nLake Caldera reaches a maximum surveyed depth of 214 meters.\nThis fixture is intentionally paired with an opposing authored source for conflict handling.",
+  "url": "https://authored.example/webtool/authored-conflict-caldera-depth-a"
+}

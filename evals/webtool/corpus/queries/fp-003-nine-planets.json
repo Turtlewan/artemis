@@ -1,0 +1,26 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "correct_premise",
+  "capture_date": null,
+  "category": "false_premise",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://science.nasa.gov/solar-system/planets"
+  ],
+  "expected_correction": "The source says eight planets orbit the Sun, so there is no ninth planet in that list.",
+  "expected_count": null,
+  "expected_set": null,
+  "id": "fp-003-nine-planets",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "science-nasa-gov-solar-system-planets",
+      "sha256": "653a7dda4820e17ed1ca45404da886b14ecea1cfe0c1e6a8d38a394da1a167ef"
+    }
+  ],
+  "query": "The source says there are nine planets orbiting the Sun; name the ninth."
+}

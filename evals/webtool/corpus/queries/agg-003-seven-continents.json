@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "aggregation",
+  "conflicting_claims": [],
+  "expected_citations": [
+    "https://www.worldometers.info/geography/7-continents"
+  ],
+  "expected_correction": null,
+  "expected_count": 7,
+  "expected_set": [
+    "Asia",
+    "Africa",
+    "Europe",
+    "North America",
+    "South America",
+    "Oceania",
+    "Antarctica"
+  ],
+  "id": "agg-003-seven-continents",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-worldometers-info-geography-7-continents",
+      "sha256": "e0f56c6ed4726b2a61f409f90bff9208daccd7e99f87ab14ffcec7dc2a0a679d"
+    }
+  ],
+  "query": "List the seven continents of the world."
+}

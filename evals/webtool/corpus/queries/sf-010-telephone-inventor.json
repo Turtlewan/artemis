@@ -1,0 +1,30 @@
+{
+  "accepted_variants": [
+    "Bell"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "Alexander Graham Bell",
+  "expected_citations": [
+    "https://crows.org/stem-blog/who-invented-that-the-telephone"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-010-telephone-inventor",
+  "must_not": [
+    "cite a distractor"
+  ],
+  "noise": true,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "crows-org-stem-blog-who-invented-that-the-telephone",
+      "sha256": "74c40ed2b3e3012791b03fa7b74f3ac6519a9e73183a415eee40dae13afee491"
+    }
+  ],
+  "query": "Who is commonly credited with inventing the telephone?"
+}

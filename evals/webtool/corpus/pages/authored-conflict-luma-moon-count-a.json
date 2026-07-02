@@ -1,0 +1,12 @@
+{
+  "benign_twin_of": null,
+  "capture_date": null,
+  "id": "authored-conflict-luma-moon-count-a",
+  "injection_subkind": null,
+  "payload_placement": null,
+  "published_date": null,
+  "sha256": "59fd498922a30017481d1003ae2e8db04695a00ccc0478aadc3ecd987c763fc6",
+  "source": "authored",
+  "text": "Title: Luma Moon Count reference A.\nThe planet Luma has 3 documented moons in the observatory catalog.\nThis fixture is intentionally paired with an opposing authored source for conflict handling.",
+  "url": "https://authored.example/webtool/authored-conflict-luma-moon-count-a"
+}

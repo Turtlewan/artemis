@@ -1,0 +1,36 @@
+{
+  "accepted_variants": [
+    "train the immune system",
+    "recognize and fight germs"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "Vaccines train the immune system to recognize a germ and respond before serious illness develops.",
+  "expected_citations": [
+    "https://www.who.int/news-room/feature-stories/detail/how-do-vaccines-work",
+    "https://my.clevelandclinic.org/health/treatments/24135-vaccines"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-007-vaccines-immune-system",
+  "must_not": [
+    "cite a distractor"
+  ],
+  "noise": true,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-who-int-news-room-feature-stories-detail-how-do-vaccines-work",
+      "sha256": "eb0f9d7ba8c042448c93602b5c2ab29984e4f810b529c22c223276c180c85d55"
+    },
+    {
+      "fixture_id": "my-clevelandclinic-org-health-treatments-24135-vaccines",
+      "sha256": "8966f4d62fc023896f479b9268e6aba2162e562b8c256f0ccee820f4dca547fe"
+    }
+  ],
+  "query": "What immune-system role do vaccines train or prepare for according to both sources?"
+}

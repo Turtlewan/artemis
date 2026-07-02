@@ -1,0 +1,29 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "aggregation",
+  "conflicting_claims": [],
+  "expected_citations": [
+    "https://perledecoton.com/en/blogs/information/what-is-a-primary-color"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": [
+    "red",
+    "yellow",
+    "blue"
+  ],
+  "id": "agg-002-primary-colors",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "perledecoton-com-en-blogs-information-what-is-a-primary-color",
+      "sha256": "4cb9212209964f31239773b1383b72643d0220518d29369fa5e64483c38d82c1"
+    }
+  ],
+  "query": "List the primary colors named by the source."
+}

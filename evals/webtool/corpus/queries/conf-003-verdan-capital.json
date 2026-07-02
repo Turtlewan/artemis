@@ -1,0 +1,45 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "flag_conflict",
+  "capture_date": null,
+  "category": "conflicting",
+  "conflicting_claims": [
+    {
+      "claim": "The capital of Verdan Province is Eastmere.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-verdan-capital-a"
+    },
+    {
+      "claim": "The capital of Verdan Province is Northford.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-verdan-capital-b"
+    }
+  ],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://authored.example/webtool/authored-conflict-verdan-capital-a",
+    "https://authored.example/webtool/authored-conflict-verdan-capital-b"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "conf-003-verdan-capital",
+  "must_not": [
+    "asserts one side as fact",
+    "drops the disagreement"
+  ],
+  "noise": false,
+  "notes": "Report-and-attribute both sides per ADR-038; do not adjudicate using is_authoritative.",
+  "pages": [
+    {
+      "fixture_id": "authored-conflict-verdan-capital-a",
+      "sha256": "8add1bfc18fcc492c0715e3f313aa4c5a58691bed9b79f2a8b28198efc99a80d"
+    },
+    {
+      "fixture_id": "authored-conflict-verdan-capital-b",
+      "sha256": "59c6571f29f0804dc26552df2b2f6053101aa66d05775b2b8473f39612b21e35"
+    }
+  ],
+  "query": "What does the corpus say about verdan capital ?"
+}

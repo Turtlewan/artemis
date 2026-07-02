@@ -1,0 +1,45 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "flag_conflict",
+  "capture_date": null,
+  "category": "conflicting",
+  "conflicting_claims": [
+    {
+      "claim": "Rivergate Bridge opened to public traffic on May 14, 1982.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-rivergate-opening-a"
+    },
+    {
+      "claim": "Rivergate Bridge opened to public traffic on August 2, 1984.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-rivergate-opening-b"
+    }
+  ],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://authored.example/webtool/authored-conflict-rivergate-opening-a",
+    "https://authored.example/webtool/authored-conflict-rivergate-opening-b"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "conf-001-rivergate-opening",
+  "must_not": [
+    "asserts one side as fact",
+    "drops the disagreement"
+  ],
+  "noise": false,
+  "notes": "Report-and-attribute both sides per ADR-038; do not adjudicate using is_authoritative.",
+  "pages": [
+    {
+      "fixture_id": "authored-conflict-rivergate-opening-a",
+      "sha256": "6677db38908362bd7b607cee48b6fbc491bc3f2f36291408bb9de6843fde987c"
+    },
+    {
+      "fixture_id": "authored-conflict-rivergate-opening-b",
+      "sha256": "addaaafa42553324e36dcde9bd7903e796f6c19361ad9b70b0e9892c852ee3f1"
+    }
+  ],
+  "query": "What does the corpus say about rivergate opening ?"
+}

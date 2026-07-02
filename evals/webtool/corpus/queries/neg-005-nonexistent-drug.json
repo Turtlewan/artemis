@@ -1,0 +1,27 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "abstain",
+  "capture_date": null,
+  "category": "negative",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "neg-005-nonexistent-drug",
+  "must_not": [
+    "asserts an answer",
+    "invents a source"
+  ],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-who-int-news-room-feature-stories-detail-how-do-vaccines-work",
+      "sha256": "eb0f9d7ba8c042448c93602b5c2ab29984e4f810b529c22c223276c180c85d55"
+    }
+  ],
+  "query": "What dosage of Calmorava cures all viral infections?"
+}

@@ -1,0 +1,45 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "flag_conflict",
+  "capture_date": null,
+  "category": "conflicting",
+  "conflicting_claims": [
+    {
+      "claim": "Lake Caldera reaches a maximum surveyed depth of 214 meters.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-caldera-depth-a"
+    },
+    {
+      "claim": "Lake Caldera reaches a maximum surveyed depth of 187 meters.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-caldera-depth-b"
+    }
+  ],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://authored.example/webtool/authored-conflict-caldera-depth-a",
+    "https://authored.example/webtool/authored-conflict-caldera-depth-b"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "conf-004-caldera-depth",
+  "must_not": [
+    "asserts one side as fact",
+    "drops the disagreement"
+  ],
+  "noise": false,
+  "notes": "Report-and-attribute both sides per ADR-038; do not adjudicate using is_authoritative.",
+  "pages": [
+    {
+      "fixture_id": "authored-conflict-caldera-depth-a",
+      "sha256": "5387f3a7f383d8de08c0abeb307454dcde4c9b9ca35e7c37bd9da7829b1b9ea6"
+    },
+    {
+      "fixture_id": "authored-conflict-caldera-depth-b",
+      "sha256": "be166d0a45e590f4437350cf9cdfba7996244f46178b071412ba33ae4f818867"
+    }
+  ],
+  "query": "What does the corpus say about caldera depth ?"
+}

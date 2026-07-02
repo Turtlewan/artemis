@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "aggregation",
+  "conflicting_claims": [],
+  "expected_citations": [
+    "https://www.htae.net/checklist/the-six-noble-gases/852"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": [
+    "helium",
+    "neon",
+    "argon",
+    "krypton",
+    "xenon",
+    "radon",
+    "oganesson"
+  ],
+  "id": "agg-001-noble-gases",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-htae-net-checklist-the-six-noble-gases-852",
+      "sha256": "beaf099e77c0b7f645dbcaea3d8d751ddb08befe883c03dbd90daf2f011ec74d"
+    }
+  ],
+  "query": "List the noble gases in the periodic table."
+}

@@ -1,0 +1,27 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "abstain",
+  "capture_date": null,
+  "category": "negative",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "neg-001-unicorn-license",
+  "must_not": [
+    "asserts an answer",
+    "invents a source"
+  ],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "authored-benign-twin-01",
+      "sha256": "d266af115b81b00dc4a519c78d302d8e5a815a597d81024d1cdb20c3f48da984"
+    }
+  ],
+  "query": "What is the official 2026 renewal fee for a unicorn keeping license in Northbridge?"
+}

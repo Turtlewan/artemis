@@ -1,0 +1,29 @@
+{
+  "accepted_variants": [
+    "0 C",
+    "0?C"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "0 degrees Celsius",
+  "expected_citations": [
+    "https://www.ebsco.com/research-starters/science/freezing-point"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-007-freezing-water",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-ebsco-com-research-starters-science-freezing-point",
+      "sha256": "6f5c12de9c3faf497c00e6208e2d1f3cd8bd79bbdb1692b0726dc35279cef9a2"
+    }
+  ],
+  "query": "What is the freezing point of water in Celsius?"
+}

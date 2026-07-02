@@ -1,0 +1,28 @@
+{
+  "accepted_variants": [
+    "2.25 dollars"
+  ],
+  "as_of_date": "2021-01-01",
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "temporal",
+  "conflicting_claims": [],
+  "expected_answer": "$2.25",
+  "expected_citations": [
+    "https://authored.example/webtool/authored-stale-riverline-fare-2021"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "tmp-005-riverline-fare-2021",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "authored-stale-riverline-fare-2021",
+      "sha256": "3c7656c2501b158c000bdf18f874a60d45d8f2f48e86ed88acdf969862792a94"
+    }
+  ],
+  "query": "As of 2021-01-01, what was the Riverline single-ride fare?"
+}

@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "France, about 68 million"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "The Eiffel Tower is in France; France has about 68 million people.",
+  "expected_citations": [
+    "https://kids.nationalgeographic.com/history/article/eiffel-tower",
+    "https://roadgenius.com/statistics/tourism/france/eiffel-tower"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-001-eiffel-country-population",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "kids-nationalgeographic-com-history-article-eiffel-tower",
+      "sha256": "73db75b8d68c7f211d37f07a141e4b50bacde11cb4557fc614291d859ea13f7d"
+    },
+    {
+      "fixture_id": "roadgenius-com-statistics-tourism-france-eiffel-tower",
+      "sha256": "5cca6051530ff36055e9f69b2539140fcb1f6adc791ae224f9111cada148aaa5"
+    }
+  ],
+  "query": "What is the population of the country where the Eiffel Tower is located?"
+}

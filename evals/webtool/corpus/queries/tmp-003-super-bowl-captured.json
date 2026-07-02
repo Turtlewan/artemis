@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "Eagles"
+  ],
+  "as_of_date": "2026-07-02",
+  "behavior": "answer",
+  "capture_date": "2026-07-02T02:03:16.961189+00:00",
+  "category": "temporal",
+  "conflicting_claims": [],
+  "expected_answer": "Philadelphia Eagles",
+  "expected_citations": [
+    "https://www.profootballhof.com/nfl-champions",
+    "https://www.statmuse.com/nfl/ask/superbowl-winners-last-10-years"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "tmp-003-super-bowl-captured",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-profootballhof-com-nfl-champions",
+      "sha256": "2c486ea3c42a2bbb697b9feb3d7fb9b9605d394467b22480649f2564f4097bc6"
+    },
+    {
+      "fixture_id": "www-statmuse-com-nfl-ask-superbowl-winners-last-10-years",
+      "sha256": "d25ea6b89da9a83bf67d37d445620b77e6114ca824478db265f217f4ef4be401"
+    }
+  ],
+  "query": "As of the 2026-07-02 capture, who was listed as the most recent Super Bowl champion?"
+}

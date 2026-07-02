@@ -1,0 +1,45 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "flag_conflict",
+  "capture_date": null,
+  "category": "conflicting",
+  "conflicting_claims": [
+    {
+      "claim": "The planet Luma has 3 documented moons in the observatory catalog.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-luma-moon-count-a"
+    },
+    {
+      "claim": "The planet Luma has 5 documented moons in the observatory catalog.",
+      "is_authoritative": false,
+      "source_url": "https://authored.example/webtool/authored-conflict-luma-moon-count-b"
+    }
+  ],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://authored.example/webtool/authored-conflict-luma-moon-count-a",
+    "https://authored.example/webtool/authored-conflict-luma-moon-count-b"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "conf-002-luma-moon-count",
+  "must_not": [
+    "asserts one side as fact",
+    "drops the disagreement"
+  ],
+  "noise": false,
+  "notes": "Report-and-attribute both sides per ADR-038; do not adjudicate using is_authoritative.",
+  "pages": [
+    {
+      "fixture_id": "authored-conflict-luma-moon-count-a",
+      "sha256": "59fd498922a30017481d1003ae2e8db04695a00ccc0478aadc3ecd987c763fc6"
+    },
+    {
+      "fixture_id": "authored-conflict-luma-moon-count-b",
+      "sha256": "434c3dc3e0645ea95c94c0e1701b40ebbf04a27259e8ba75eda0eeb316175caf"
+    }
+  ],
+  "query": "What does the corpus say about luma moon count ?"
+}

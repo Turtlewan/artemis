@@ -1,0 +1,27 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "abstain",
+  "capture_date": null,
+  "category": "negative",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "neg-004-future-olympics",
+  "must_not": [
+    "asserts an answer",
+    "invents a source"
+  ],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-topendsports-com-events-summer-hosts-list-htm",
+      "sha256": "72c479c54ea9c34e88ef54810ebaa930bf1bcc3ddd4d768a8fafe5195501e82c"
+    }
+  ],
+  "query": "Who won the 2040 Summer Olympics marathon?"
+}

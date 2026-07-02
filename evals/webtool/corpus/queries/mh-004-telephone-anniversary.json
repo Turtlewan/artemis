@@ -1,0 +1,34 @@
+{
+  "accepted_variants": [
+    "Graham Bell",
+    "Bell"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "Alexander Graham Bell",
+  "expected_citations": [
+    "https://www.bu.edu/articles/2026/graham-bell-150-years-telephone",
+    "https://crows.org/stem-blog/who-invented-that-the-telephone"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-004-telephone-anniversary",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-bu-edu-articles-2026-graham-bell-150-years-telephone",
+      "sha256": "3278848d685071bc21e30015bcc05366fbf36b497555d4f0ff14679f0689890c"
+    },
+    {
+      "fixture_id": "crows-org-stem-blog-who-invented-that-the-telephone",
+      "sha256": "74c40ed2b3e3012791b03fa7b74f3ac6519a9e73183a415eee40dae13afee491"
+    }
+  ],
+  "query": "The 150th anniversary article is about which inventor associated with the telephone?"
+}

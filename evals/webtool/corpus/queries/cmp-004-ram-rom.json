@@ -1,0 +1,31 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "comparative",
+  "conflicting_claims": [],
+  "expected_answer": "RAM is volatile working memory used while programs run; ROM is non-volatile memory that retains stored instructions or data without power.",
+  "expected_citations": [
+    "https://www.corsair.com/us/en/explorer/diy-builder/memory/whats-the-difference-between-ram-and-rom",
+    "https://www.geeksforgeeks.org/computer-science-fundamentals/difference-between-ram-and-rom"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "cmp-004-ram-rom",
+  "must_not": [],
+  "noise": false,
+  "notes": "Verdict: volatile main memory versus persistent non-volatile memory.",
+  "pages": [
+    {
+      "fixture_id": "www-corsair-com-us-en-explorer-diy-builder-memory-whats-the-difference-between-r",
+      "sha256": "be31f94680d2fb1d9c6419b166567230342620994efe8655bc39f3b751b3389e"
+    },
+    {
+      "fixture_id": "www-geeksforgeeks-org-computer-science-fundamentals-difference-between-ram-and-r",
+      "sha256": "8e3d8c797e76c20015c45cd1504220c13c3d21247eacf73052100867abce82fd"
+    }
+  ],
+  "query": "Compare RAM and ROM memory."
+}

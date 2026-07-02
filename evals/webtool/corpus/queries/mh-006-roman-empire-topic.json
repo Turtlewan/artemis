@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "Roman Empire"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "multi_hop",
+  "conflicting_claims": [],
+  "expected_answer": "The Roman Empire",
+  "expected_citations": [
+    "https://www.mpm.edu/research-collections/anthropology/anthropology-collections-research/mediterranean-oil-lamps/roman-empire-brief-history",
+    "https://fromdanielsdesk.com/2021/01/17/the-roman-empire-a-summary-of-its-history"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "mh-006-roman-empire-topic",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-mpm-edu-research-collections-anthropology-anthropology-collections-research-",
+      "sha256": "2fbb81bbbb3e19e7c8199be259bfd392fa2c261f1c72dbd6f28f5e43545319d6"
+    },
+    {
+      "fixture_id": "fromdanielsdesk-com-2021-01-17-the-roman-empire-a-summary-of-its-history",
+      "sha256": "564d308ec08bdcf095cc5fff38fa8a1f6af2204070545e136631f2457bede026"
+    }
+  ],
+  "query": "Which ancient empire is summarized by both long overview pages?"
+}

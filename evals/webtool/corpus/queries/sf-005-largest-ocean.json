@@ -1,0 +1,30 @@
+{
+  "accepted_variants": [
+    "Pacific Ocean"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "The Pacific Ocean",
+  "expected_citations": [
+    "https://www.deepseaworld.com/blog/the-worlds-oceans-everything-you-need-to-know"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-005-largest-ocean",
+  "must_not": [
+    "cite a distractor"
+  ],
+  "noise": true,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-deepseaworld-com-blog-the-worlds-oceans-everything-you-need-to-know",
+      "sha256": "7a7f021cec1496e086f6e7afd56753b9ad2707c05781ed75b93f84c8ddaabccd"
+    }
+  ],
+  "query": "What is the largest ocean on Earth?"
+}

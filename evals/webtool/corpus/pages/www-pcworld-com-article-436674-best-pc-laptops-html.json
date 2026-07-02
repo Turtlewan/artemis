@@ -1,0 +1,12 @@
+{
+  "benign_twin_of": null,
+  "capture_date": "2026-07-02T02:00:47.689957+00:00",
+  "id": "www-pcworld-com-article-436674-best-pc-laptops-html",
+  "injection_subkind": null,
+  "payload_placement": null,
+  "published_date": null,
+  "sha256": "84a0ff60c4283b7bd53ea53965780f95b5ef4321d8ea5d5f901c0d92cd876f74",
+  "source": "captured",
+  "text": "This website is using a security service to protect itself from online attacks. The action you just performed triggered the security solution. There are several actions that could trigger this block including submitting a certain word or phrase, a SQL command or malformed data.\nYou can email the site owner to let them know you were blocked. Please include what you were doing when this page came up and the Cloudflare Ray ID found at the bottom of this page.",
+  "url": "https://www.pcworld.com/article/436674/best-pc-laptops.html"
+}

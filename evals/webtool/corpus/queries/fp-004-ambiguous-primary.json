@@ -1,0 +1,26 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "clarify",
+  "capture_date": null,
+  "category": "false_premise",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://perledecoton.com/en/blogs/information/what-is-a-primary-color"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "fp-004-ambiguous-primary",
+  "must_not": [],
+  "noise": false,
+  "notes": "Clarify grading target: flag that primary colors depend on the color model/context before answering.",
+  "pages": [
+    {
+      "fixture_id": "perledecoton-com-en-blogs-information-what-is-a-primary-color",
+      "sha256": "4cb9212209964f31239773b1383b72643d0220518d29369fa5e64483c38d82c1"
+    }
+  ],
+  "query": "Which primary colors does the page mean if it says primary colors are always universal across every color model?"
+}

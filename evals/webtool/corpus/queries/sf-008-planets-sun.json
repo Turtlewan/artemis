@@ -1,0 +1,31 @@
+{
+  "accepted_variants": [
+    "8 planets",
+    "eight"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "Eight planets",
+  "expected_citations": [
+    "https://science.nasa.gov/solar-system/planets"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-008-planets-sun",
+  "must_not": [
+    "cite a distractor"
+  ],
+  "noise": true,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "science-nasa-gov-solar-system-planets",
+      "sha256": "653a7dda4820e17ed1ca45404da886b14ecea1cfe0c1e6a8d38a394da1a167ef"
+    }
+  ],
+  "query": "How many planets orbit the Sun?"
+}

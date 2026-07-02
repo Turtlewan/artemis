@@ -1,0 +1,27 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "abstain",
+  "capture_date": null,
+  "category": "negative",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "neg-007-undocumented-treaty",
+  "must_not": [
+    "asserts an answer",
+    "invents a source"
+  ],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "historynet-com-us-presidents",
+      "sha256": "a380e0759a9f358d0041670ef2d6714f3396efc950bc2167a825dd862f688330"
+    }
+  ],
+  "query": "Which country signed the 1899 Treaty of Blue Apples first?"
+}

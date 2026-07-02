@@ -1,0 +1,29 @@
+{
+  "accepted_variants": [
+    "206 to 213 bones",
+    "between 206 and 213"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "Adults have between 206 and 213 bones",
+  "expected_citations": [
+    "https://my.clevelandclinic.org/health/body/25176-bones"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-009-adult-bones",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "my-clevelandclinic-org-health-body-25176-bones",
+      "sha256": "c5f772fcdb2b0e6a68dbb9be13d77cbba2f617262f46457de9f6b56a3f5c0106"
+    }
+  ],
+  "query": "How many bones are in the adult human body?"
+}

@@ -20,7 +20,7 @@ where = ["src"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "evals", "tests"]
 
 [[tool.mypy.overrides]]
 module = ["cognee.*"]

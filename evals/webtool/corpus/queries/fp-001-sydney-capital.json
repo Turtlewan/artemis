@@ -1,0 +1,26 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "correct_premise",
+  "capture_date": null,
+  "category": "false_premise",
+  "conflicting_claims": [],
+  "expected_answer": null,
+  "expected_citations": [
+    "https://youtooproject.com/en/blog/australia-en/capital-of-australia-canberra"
+  ],
+  "expected_correction": "Sydney is not the capital of Australia; Canberra is.",
+  "expected_count": null,
+  "expected_set": null,
+  "id": "fp-001-sydney-capital",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "youtooproject-com-en-blog-australia-en-capital-of-australia-canberra",
+      "sha256": "44b22b2865c0a2c21d58a8411b1d6c854b09874c1aaae02dc9dda884f9e2c55d"
+    }
+  ],
+  "query": "Since Sydney is the capital of Australia, what year did it become capital?"
+}

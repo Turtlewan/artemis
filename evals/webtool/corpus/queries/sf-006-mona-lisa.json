@@ -1,0 +1,28 @@
+{
+  "accepted_variants": [
+    "Leonardo"
+  ],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "single_fact",
+  "conflicting_claims": [],
+  "expected_answer": "Leonardo da Vinci",
+  "expected_citations": [
+    "https://luxuryartcanvas.com/blogs/art/who-painted-the-mona-lisa"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "sf-006-mona-lisa",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "luxuryartcanvas-com-blogs-art-who-painted-the-mona-lisa",
+      "sha256": "1435c205ad7e1e89563552aebb6aeee7ff7ee60e88e5ef3098f8fd02355ac398"
+    }
+  ],
+  "query": "Who painted the Mona Lisa?"
+}

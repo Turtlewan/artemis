@@ -1,0 +1,33 @@
+{
+  "accepted_variants": [
+    "3.14"
+  ],
+  "as_of_date": "2026-07-02",
+  "behavior": "answer",
+  "capture_date": "2026-07-02T02:00:29.884738+00:00",
+  "category": "temporal",
+  "conflicting_claims": [],
+  "expected_answer": "Python 3.14",
+  "expected_citations": [
+    "https://www.liquidweb.com/blog/latest-python-version",
+    "https://devguide.python.org/versions"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "tmp-001-python-as-captured",
+  "must_not": [],
+  "noise": false,
+  "notes": null,
+  "pages": [
+    {
+      "fixture_id": "www-liquidweb-com-blog-latest-python-version",
+      "sha256": "31791d24884c888a56c7192d634a954c7850a038d9ea739eea4b28adcad67157"
+    },
+    {
+      "fixture_id": "devguide-python-org-versions",
+      "sha256": "60dca3b0279c8018a763e7b984444f3654e9bdaf792dd66d86f42ce1192d1852"
+    }
+  ],
+  "query": "As of the 2026-07-02 capture, what was the latest stable Python major version stated by the sources?"
+}

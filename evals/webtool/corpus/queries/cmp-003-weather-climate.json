@@ -1,0 +1,31 @@
+{
+  "accepted_variants": [],
+  "as_of_date": null,
+  "behavior": "answer",
+  "capture_date": null,
+  "category": "comparative",
+  "conflicting_claims": [],
+  "expected_answer": "Weather describes short-term conditions; climate describes longer-term patterns and trends.",
+  "expected_citations": [
+    "https://weather.com/news/climate/news/2026-04-22-what-is-climate-change",
+    "https://education.nationalgeographic.org/resource/photosynthesis"
+  ],
+  "expected_correction": null,
+  "expected_count": null,
+  "expected_set": null,
+  "id": "cmp-003-weather-climate",
+  "must_not": [],
+  "noise": false,
+  "notes": "Verdict: short-term condition versus long-term pattern.",
+  "pages": [
+    {
+      "fixture_id": "weather-com-news-climate-news-2026-04-22-what-is-climate-change",
+      "sha256": "4b106067c6d670eeea075d981b48e3523e26f124a6c6ae4e05c3cdbff23841d0"
+    },
+    {
+      "fixture_id": "education-nationalgeographic-org-resource-photosynthesis",
+      "sha256": "c3d58b762554dc7d34b4f1a8d63c6f102854d0b132431dcc1e8ca27e4054fa6d"
+    }
+  ],
+  "query": "What is the difference between weather and climate?"
+}
