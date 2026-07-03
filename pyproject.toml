@@ -6,13 +6,36 @@ build-backend = "setuptools.build_meta"
 name = "artemis"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["jsonschema>=4", "pydantic>=2", "pyyaml>=6", "anthropic>=0.40", "httpx>=0.27", "croniter>=2", "fastapi>=0.115", "uvicorn>=0.30", "cryptography>=42", "trafilatura>=1.12", "tldextract>=5.1", "keyring>=25"]
+dependencies = [
+    "jsonschema>=4",
+    "pydantic>=2",
+    "pyyaml>=6",
+    "anthropic>=0.40",
+    "httpx>=0.27",
+    "croniter>=2",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "cryptography>=42",
+    "trafilatura>=1.12",
+    "tldextract>=5.1",
+    "keyring>=25",
+    "psutil>=5.9",
+]
 
 [project.scripts]
 artemis = "artemis.app:main"
 
 [dependency-groups]
-dev = ["mypy", "ruff", "pytest", "pytest-asyncio", "types-PyYAML", "types-croniter", "pip-audit"]
+dev = [
+    "mypy",
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+    "types-PyYAML",
+    "types-croniter",
+    "pip-audit",
+    "types-psutil>=7.2.2.20260518",
+]
 memory = ["cognee>=1.2"]
 
 [tool.setuptools.packages.find]

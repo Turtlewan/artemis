@@ -16,9 +16,16 @@ from artemis.types import Message
 
 
 class ClaudeCodeProvider:
-    def __init__(self, *, binary: str = "claude", model_default: str = "sonnet") -> None:
+    def __init__(
+        self,
+        *,
+        binary: str = "claude",
+        model_default: str = "sonnet",
+        timeout: float = cli_support.DEFAULT_TIMEOUT_S,
+    ) -> None:
         self._binary = shutil.which(binary) or binary
         self._model_default = model_default
+        self._timeout = timeout
         self._cfg_dir: Path | None = None
 
     async def generate(
@@ -46,7 +53,13 @@ class ClaudeCodeProvider:
             "--tools",
             "",
         ]
-        returncode, stdout, stderr = await self._run_cli(argv)
+        try:
+            returncode, stdout, stderr = await self._run_cli(argv)
+        except TimeoutError as exc:
+            raise ProviderUnavailableError(
+                "claude_code",
+                f"call timed out after {int(self._timeout)}s; process tree killed",
+            ) from exc
         text = stdout.decode("utf-8", errors="replace")
         stderr_text = stderr.decode("utf-8", errors="replace")
         if returncode != 0:
@@ -62,7 +75,7 @@ class ClaudeCodeProvider:
 
     async def _run_cli(self, argv: list[str]) -> tuple[int, bytes, bytes]:
         env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self._ensure_clean_config_dir())}
-        return await cli_support.run_cli(argv, stdin=b"", env=env)
+        return await cli_support.run_cli(argv, stdin=b"", env=env, timeout=self._timeout)
 
     def _ensure_clean_config_dir(self) -> Path:
         """Return a private Claude config dir containing only a fresh credentials copy.

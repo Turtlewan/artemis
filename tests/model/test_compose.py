@@ -33,9 +33,13 @@ async def test_build_model_router_order_and_fallover(
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: dict[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
-        del argv, stdin, env
+        del argv, stdin, env, timeout
         return (1, b"", b"quota exceeded")
 
     async def fake_anthropic_create(self: object, **kwargs: object) -> object:

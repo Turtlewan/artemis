@@ -72,7 +72,11 @@ async def test_generate_defences_structured_output(
     _patch_home(monkeypatch, home)
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
         return (0, b'{"result":"```json\\n{\\"answer\\": \\"ok\\"}\\n```"}', b"")
 
@@ -140,7 +144,11 @@ async def test_claude_provider_argv_json_output_and_clean_config(
     captured: dict[str, object] = {}
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
         captured["argv"] = argv
         captured["stdin"] = stdin
@@ -186,7 +194,11 @@ async def test_claude_provider_poison_guard_recleans_repeat_invocations(
     captured_dirs: list[Path] = []
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
         del argv, stdin
         assert env is not None
@@ -255,7 +267,11 @@ async def test_claude_provider_missing_credentials_raise(
     _patch_home(monkeypatch, tmp_path / "home")
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
         del argv, stdin, env
         raise AssertionError("run_cli must not be called without credentials")
@@ -278,7 +294,11 @@ async def test_claude_provider_detects_quota(
     _patch_home(monkeypatch, home)
 
     async def fake_run_cli(
-        argv: list[str], *, stdin: bytes, env: Mapping[str, str] | None = None
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
     ) -> tuple[int, bytes, bytes]:
         del argv, stdin, env
         return (1, b"", b"Claude usage limit reached")
@@ -287,6 +307,33 @@ async def test_claude_provider_detects_quota(
     provider = ClaudeCodeProvider(binary="claude-test")
 
     with pytest.raises(QuotaExhaustedError):
+        await provider.generate(
+            messages=[Message(role="user", content="hello")], model="", schema=None
+        )
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_timeout_maps_to_failover_eligible(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+
+    async def fake_run_cli(
+        argv: list[str],
+        *,
+        stdin: bytes,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> tuple[int, bytes, bytes]:
+        del argv, stdin, env, timeout
+        raise TimeoutError
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    provider = ClaudeCodeProvider(binary="claude-test", timeout=9.0)
+
+    with pytest.raises(ProviderUnavailableError, match="timed out after 9s"):
         await provider.generate(
             messages=[Message(role="user", content="hello")], model="", schema=None
         )
