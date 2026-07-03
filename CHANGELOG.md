@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Google OAuth broker core for BYO-client loopback PKCE connect, keychain refresh-token storage,
+  in-memory access-token minting, refresh rotation, and disconnect. (ADR-044)
 - Added — auth_status set at promote (unverified for credentialed capabilities) + flip to verified on first successful credentialed invoke.
 - Added — capability metadata fields (goal/built_at/auth_status/oauth_scopes).
 - Telegram inbound (R4): the always-on runner now routes allowlisted inbound Telegram messages
