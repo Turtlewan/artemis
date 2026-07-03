@@ -109,4 +109,6 @@ def test_set_secret_rejects_url_unsafe_name(tmp_path: Path) -> None:
         assert resp.status_code == 422, bad
     assert store.list_names() == []  # nothing stored
     # a normal env-var-style name is accepted
-    assert client.post("/app/secrets", json={"name": "GITHUB_TOKEN", "value": "v"}).status_code == 204
+    assert (
+        client.post("/app/secrets", json={"name": "GITHUB_TOKEN", "value": "v"}).status_code == 204
+    )
