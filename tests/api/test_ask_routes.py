@@ -137,8 +137,9 @@ class FakeFetchSandbox(FetchSandbox):
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        output_limit: int = 4000,
     ) -> FetchResult:
-        del capability_dir, entrypoint, argv, egress_domains, timeout_s, secrets
+        del capability_dir, entrypoint, argv, egress_domains, timeout_s, secrets, output_limit
         self.calls += 1
         if self.delay_s:
             await asyncio.sleep(self.delay_s)

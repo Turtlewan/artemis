@@ -33,7 +33,8 @@ from pydantic import BaseModel
 
 from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox, VerifyResult
 
-_OUTPUT_LIMIT = 4000
+OUTPUT_LIMIT_DEFAULT = 4000
+OUTPUT_LIMIT_MAX = 1_000_000
 _CGROUP_PERIOD_US = 100_000
 _SAFE_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _RESERVED_ENV_NAMES = frozenset(
@@ -54,6 +55,7 @@ _RESERVED_ENV_NAMES = frozenset(
         "PIDS_MAX",
         "ULIMIT_T",
         "ULIMIT_V",
+        "OUTPUT_LIMIT",
         "WSLENV",
         "ARTEMIS_SECRETS_B64",
         "_",
@@ -72,8 +74,10 @@ NS="artemis-$RUN_ID"; WORK="/tmp/artemis-$RUN_ID"; CG="/sys/fs/cgroup/artemis-$R
 NGXDIR="/run/artemis-ngx-$RUN_ID"                       # BLOCK 4: ROOT-OWNED firewall-config dir, NEVER chowned
 NGX_HTTPS=8443; NGX_HTTP=8080; UNTRUSTED_UID=4000; NGINX_UID=33   # nginx=www-data; capability de-privileged
 DNS_STUB=127.0.0.1                                      # BLOCK 3: the only resolver the capability may reach
-SID="${RUN_ID:0:8}"; VETH_HOST="vh$SID"; VETH_PEER="vc$SID"; HOST_IF=""
 abort() { echo "isolate-setup-failed: $1" >&2; exit 1; }   # BLOCK 2: explicit guard on each security-critical step
+SID="${RUN_ID:0:8}"; VETH_HOST="vh$SID"; VETH_PEER="vc$SID"; HOST_IF=""
+OUTPUT_LIMIT="${OUTPUT_LIMIT:-4000}"
+[[ "$OUTPUT_LIMIT" =~ ^[0-9]+$ ]] || abort bad-output-limit
 cleanup() {
   ip netns pids "$NS" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
   ip netns del "$NS" 2>/dev/null || true
@@ -222,7 +226,7 @@ OUT=$(ip netns exec "$NS" unshare --mount --pid --fork bash -c '
        --inh-caps=-all --bounding-set=-all -- "$@"' _ "$@" 2>&1)
 STATUS=$?
 set -e
-printf '%s\n%s' "${#OUT}" "${OUT:0:4000}"   # first line = original length; run_isolated derives `truncated`
+printf '%s\n%s' "${#OUT}" "${OUT:0:$OUTPUT_LIMIT}"   # first line = original length; run_isolated derives `truncated`
 exit "$STATUS"
 '''
 
@@ -312,7 +316,7 @@ def _caps_env(caps: SandboxCaps) -> dict[str, str]:
 
 
 def _wsl_env(existing: str | None) -> str:
-    cap_names = "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V"
+    cap_names = "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V:OUTPUT_LIMIT"
     return f"{existing}:{cap_names}" if existing else cap_names
 
 
@@ -329,14 +333,16 @@ def _secrets_b64(secrets: dict[str, str] | None) -> str:
     return base64.b64encode(json.dumps(secrets, separators=(",", ":")).encode()).decode()
 
 
-def _parse_isolate_output(stdout: bytes, stderr: bytes) -> tuple[str, bool]:
-    stdout_text = stdout.decode(errors="replace")
-    stderr_text = stderr.decode(errors="replace")
+def _parse_isolate_output(
+    stdout: bytes | str, stderr: bytes | str, output_limit: int = OUTPUT_LIMIT_DEFAULT
+) -> tuple[str, bool]:
+    stdout_text = stdout if isinstance(stdout, str) else stdout.decode(errors="replace")
+    stderr_text = stderr if isinstance(stderr, str) else stderr.decode(errors="replace")
     first_line, separator, rest = stdout_text.partition("\n")
     if separator and first_line.isdecimal():
         original_len = int(first_line)
         output = rest + stderr_text
-        return output, original_len > _OUTPUT_LIMIT
+        return output, original_len > output_limit
     return stdout_text + stderr_text, False
 
 
@@ -348,19 +354,23 @@ async def run_isolated(
     command: list[str],
     timeout_s: float,
     secrets: dict[str, str] | None = None,
+    output_limit: int = OUTPUT_LIMIT_DEFAULT,
 ) -> tuple[int, str, bool]:
     """Run a command in the hardened WSL2 guest sandbox.
 
     Returns `(exit_code, output, truncated)`. `truncated` is derived from the guest's
-    length-prefixed output, not from the returned output length.
+    length-prefixed output, not from the returned output length. `output_limit` controls
+    how many output characters the isolate returns, clamped to `[1, OUTPUT_LIMIT_MAX]`.
     """
 
     run_id = uuid.uuid4().hex
+    clamped_output_limit = min(max(1, output_limit), OUTPUT_LIMIT_MAX)
     skill_wsl_path = _to_wsl_path(skill_dir)
     blob = _secrets_b64(secrets)
     script = _ISOLATE_SCRIPT.replace("__ARTEMIS_SECRETS_B64__", blob)
     env = os.environ.copy()
     env.update(_caps_env(caps))
+    env["OUTPUT_LIMIT"] = str(clamped_output_limit)
     env["WSLENV"] = _wsl_env(env.get("WSLENV"))
 
     proc = await asyncio.create_subprocess_exec(
@@ -389,7 +399,7 @@ async def run_isolated(
         await proc.communicate()
         return 124, "sandbox timeout exceeded", False
 
-    output, truncated = _parse_isolate_output(stdout, stderr)
+    output, truncated = _parse_isolate_output(stdout, stderr, clamped_output_limit)
     return proc.returncode or 0, output, truncated
 
 

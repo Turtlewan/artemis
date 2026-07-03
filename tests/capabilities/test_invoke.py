@@ -104,8 +104,9 @@ class RecordingSandbox(FetchSandbox):
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        output_limit: int = 4000,
     ) -> FetchResult:
-        del timeout_s
+        del timeout_s, output_limit
         self.calls.append(
             SandboxCall(
                 capability_dir=capability_dir,

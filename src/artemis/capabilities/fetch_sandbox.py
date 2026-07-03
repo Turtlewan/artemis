@@ -21,7 +21,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
 
-from artemis.capabilities.sandbox_wsl2 import SandboxCaps, run_isolated
+from artemis.capabilities.sandbox_wsl2 import OUTPUT_LIMIT_DEFAULT, SandboxCaps, run_isolated
 from artemis.ports.secrets import SecretStorePort
 
 _MAX_TIMEOUT_S = 300.0
@@ -67,6 +67,7 @@ class FetchSandbox:
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        output_limit: int = OUTPUT_LIMIT_DEFAULT,
     ) -> FetchResult:
         """Run `entrypoint` inside the isolate and return its raw output.
 
@@ -89,5 +90,6 @@ class FetchSandbox:
             command=["python3", entrypoint, *argv],
             timeout_s=min(timeout_s, _MAX_TIMEOUT_S),
             secrets=secrets,
+            output_limit=output_limit,
         )
         return FetchResult(output=output, exit_code=exit_code, truncated=truncated)

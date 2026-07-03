@@ -101,6 +101,27 @@ async def test_run_assembles_command_and_passes_egress(
     assert kwargs["egress_domains"] == ["api.example.com"]
     assert kwargs["timeout_s"] == 42.0
     assert kwargs["secrets"] is None
+    assert kwargs["output_limit"] == 4000
+
+
+@pytest.mark.asyncio
+async def test_run_forwards_output_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    mock = AsyncMock(return_value=(0, "raw bytes out", False))
+    monkeypatch.setattr(fs, "run_isolated", mock)
+
+    await FetchSandbox().run(
+        tmp_path,
+        entrypoint="fetch.py",
+        argv=[],
+        egress_domains=[],
+        output_limit=200_000,
+    )
+
+    await_args = mock.await_args
+    assert await_args is not None
+    assert await_args.kwargs["output_limit"] == 200_000
 
 
 @pytest.mark.asyncio

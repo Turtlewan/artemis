@@ -14,6 +14,7 @@ from artemis.capabilities.sandbox import SubprocessSandbox
 from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.sandbox_wsl2 import (
     _ISOLATE_SCRIPT,
+    OUTPUT_LIMIT_MAX,
     SandboxCaps,
     Wsl2SandboxRunner,
     _parse_isolate_output,
@@ -94,7 +95,9 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
         assert env["CPU_MAX"] == "50000 100000"
         assert env["PIDS_MAX"] == "64"
         assert env["ULIMIT_T"] == "13"
-        assert env["WSLENV"] == "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V"
+        assert env["OUTPUT_LIMIT"] == "200000"
+        assert env["WSLENV"] == "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V:OUTPUT_LIMIT"
+        assert "OUTPUT_LIMIT" in env["WSLENV"]
         return fake_process
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
@@ -105,6 +108,7 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
         caps=SandboxCaps(memory_mb=256, cpu_pct=50, pids_max=64, timeout_s=12.5),
         command=["python3", "-m", "pytest"],
         timeout_s=20,
+        output_limit=200_000,
     )
 
     # _to_wsl_path is pure Python now (wslpath mangles backslashes over the interop layer)
@@ -125,7 +129,67 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
     )
     assert code == 0
     assert output == "abcd"
-    assert truncated is True
+    assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_run_isolated_uses_default_output_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured_env: dict[str, str] = {}
+    monkeypatch.delenv("WSLENV", raising=False)
+
+    async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        captured_env.update(env)
+        return _FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_isolated(
+        tmp_path,
+        egress_domains=[],
+        caps=SandboxCaps(),
+        command=["python3", "-c", "print('ok')"],
+        timeout_s=20,
+    )
+
+    assert captured_env["OUTPUT_LIMIT"] == "4000"
+    assert "OUTPUT_LIMIT" in captured_env["WSLENV"]
+
+
+@pytest.mark.parametrize(
+    ("output_limit", "expected"),
+    [
+        (5_000_000, str(OUTPUT_LIMIT_MAX)),
+        (0, "1"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_run_isolated_clamps_output_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, output_limit: int, expected: str
+) -> None:
+    captured_env: dict[str, str] = {}
+
+    async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        captured_env.update(env)
+        return _FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_isolated(
+        tmp_path,
+        egress_domains=[],
+        caps=SandboxCaps(),
+        command=["python3", "-c", "print('ok')"],
+        timeout_s=20,
+        output_limit=output_limit,
+    )
+
+    assert captured_env["OUTPUT_LIMIT"] == expected
 
 
 @pytest.mark.parametrize(
@@ -136,6 +200,7 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
         "FOO;ls",
         "PATH",
         "MEM_MAX",
+        "OUTPUT_LIMIT",
         "LD_AUDIT",
         "GLIBC_TUNABLES",
         "_",
@@ -214,7 +279,7 @@ async def test_run_isolated_keeps_secrets_out_of_argv_env_and_plaintext_stdin(
     env_values = "\n".join(captured_env.values())
     assert secret_value not in env_values
     assert "GITHUB_TOKEN" not in env_values
-    assert captured_env["WSLENV"] == "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V"
+    assert captured_env["WSLENV"] == "MEM_MAX:CPU_MAX:PIDS_MAX:ULIMIT_T:ULIMIT_V:OUTPUT_LIMIT"
     assert fake_process.stdin_payload is not None
     payload = fake_process.stdin_payload.decode()
     assert secret_value not in payload
@@ -280,6 +345,18 @@ def test_reliable_truncation_parsing() -> None:
     assert truncated is False
 
     output, truncated = _parse_isolate_output(f"4001\n{long_output}".encode(), b"")
+    assert output == long_output
+    assert truncated is True
+
+    output, truncated = _parse_isolate_output(
+        "120000\n" + long_output, b"", output_limit=200_000
+    )
+    assert output == long_output
+    assert truncated is False
+
+    output, truncated = _parse_isolate_output(
+        ("120000\n" + long_output).encode(), b"", output_limit=4000
+    )
     assert output == long_output
     assert truncated is True
 
