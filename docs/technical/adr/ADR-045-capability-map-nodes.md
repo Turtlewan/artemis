@@ -1,5 +1,11 @@
 # ADR-045 — Built capabilities as nodes on the spatial command-map (CB-5b)
 
+> **⚠️ Partially revised by ADR-047 (#10), 2026-07-03 (same day, later session):** node identity
+> changed — primary map nodes are now DOMAINS (per the ADR-046 local-first doctrine), with
+> capabilities as smaller satellite nodes around their domain. Decisions 2–6 below (overlay,
+> layout persistence, metadata, refresh) still stand, re-anchored on domain nodes. The cb5b-2/3/4
+> draft specs need revision before build.
+
 - **Status:** **Proposed** — owner + planning, 2026-07-03 (build not yet greenlit).
 - **Date:** 2026-07-03
 - **Deciders:** owner + planning
