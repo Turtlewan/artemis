@@ -17,7 +17,7 @@ _Last updated by planning mode:_ 2026-07-03
 
 ## Current state — Slices 0–2 complete
 
-All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff clean) + client (tsc/eslint clean · 97 vitest · 24 cargo · clippy). HEAD `040de1b`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
+All green on `v2-rebuild` (merged→main session 7) — brain (mypy 147 files · 459 tests · ruff clean, session 7) + client (tsc/eslint clean · 116 vitest · cargo/clippy, last verified session 6). HEAD `6fe337b`. Build cadence = incremental: one spec → Codex builds → host-verify → commit → `done/` (memory `artemis-v2-build-cadence`).
 
 - **Slice 0 — spine proves itself.** Scaffold + 5 typed ports + model layer + schema-normalization shim + minimal plan→act→verify loop + one capability through its full lifecycle (author → sandbox → promote to `SKILL.md` → reuse).
 - **Slice 1 — model layer.** Own `QuotaAwareRouter` over the four-provider subscription-first chain (codex → claude_code → anthropic_api → ollama); per-backend schema down-conversion lives in each `RawProvider`. **LiteLLM rejected** (architecture.md §2).
