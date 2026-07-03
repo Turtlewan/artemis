@@ -7,7 +7,9 @@ import logging
 import re
 import shutil
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal, cast
 from uuid import uuid4
 
 from artemis.capabilities.skill_md import read_skill_md, write_skill_md
@@ -46,6 +48,8 @@ class FileCapabilityStore:
             uses=draft.uses,
             secrets=draft.secrets,
             inputs=[param.model_dump() for param in draft.inputs],
+            goal=draft.goal,
+            oauth_scopes=list(draft.oauth_scopes),
             body=draft.body,
         )
         if draft.tool_script is not None:
@@ -76,6 +80,7 @@ class FileCapabilityStore:
         library_dir = self._library / draft.name
         existing = self.get(draft.name)
         version = existing.version + 1 if existing is not None else 1
+        built_at = datetime.now(tz=UTC).isoformat()
 
         if library_dir.exists():
             shutil.rmtree(library_dir)
@@ -90,6 +95,10 @@ class FileCapabilityStore:
             uses=draft.uses,
             secrets=draft.secrets,
             inputs=[param.model_dump() for param in draft.inputs],
+            goal=draft.goal,
+            built_at=built_at,
+            auth_status="not-required",
+            oauth_scopes=list(draft.oauth_scopes),
             body=draft.body,
         )
         tool_path = staged_dir / "tool.py"
@@ -107,6 +116,10 @@ class FileCapabilityStore:
             description=draft.description,
             version=version,
             path=str(library_dir),
+            goal=draft.goal,
+            built_at=built_at,
+            auth_status="not-required",
+            oauth_scopes=list(draft.oauth_scopes),
             tags=[],
             uses=draft.uses,
             secrets=draft.secrets,
@@ -162,9 +175,11 @@ class FileCapabilityStore:
             description=str(meta["description"]),
             body=body,
             tool_script=tool_path.read_text(encoding="utf-8") if tool_path.exists() else None,
+            goal=str(meta.get("goal", "")),
             inputs=[SkillInputParam(**item) for item in meta.get("inputs", [])],
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
+            oauth_scopes=[str(item) for item in meta.get("oauth_scopes", [])],
             egress_domains=_egress(staged_dir),
             tests=tests_path.read_text(encoding="utf-8") if tests_path.exists() else None,
         )
@@ -176,6 +191,10 @@ class FileCapabilityStore:
             description=str(meta["description"]),
             version=int(meta["version"]),
             path=str(skill_path.parent),
+            goal=str(meta.get("goal", "")),
+            built_at=_optional_str(meta.get("built_at")),
+            auth_status=_auth_status(meta.get("auth_status", "not-required")),
+            oauth_scopes=[str(item) for item in meta.get("oauth_scopes", [])],
             tags=[str(item) for item in meta.get("tags", [])],
             uses=[str(item) for item in meta.get("uses", [])],
             secrets=[str(item) for item in meta.get("secrets", [])],
@@ -204,3 +223,16 @@ def _egress(dir_: Path) -> list[str]:
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         _log.warning("unusable sandbox_policy.json in %s: %s", dir_, exc)
         return []
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _auth_status(value: object) -> Literal["not-required", "unverified", "verified"]:
+    status = str(value)
+    if status in {"not-required", "unverified", "verified"}:
+        return cast(Literal["not-required", "unverified", "verified"], status)
+    return "not-required"

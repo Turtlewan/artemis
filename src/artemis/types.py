@@ -125,9 +125,11 @@ class SkillDraft(BaseModel):
     description: str
     body: str
     tool_script: str | None
+    goal: str = ""
     inputs: list[SkillInputParam] = Field(default_factory=list)
     uses: list[str] = Field(default_factory=list)
     secrets: list[str] = Field(default_factory=list)
+    oauth_scopes: list[str] = Field(default_factory=list)
     egress_domains: list[str] = Field(default_factory=list)
     tests: str | None
 
@@ -142,6 +144,10 @@ class Skill(BaseModel):
     description: str
     version: int
     path: str
+    goal: str = ""
+    built_at: str | None = None
+    auth_status: Literal["not-required", "unverified", "verified"] = "not-required"
+    oauth_scopes: list[str] = Field(default_factory=list)
     tags: list[str]
     uses: list[str]
     secrets: list[str]

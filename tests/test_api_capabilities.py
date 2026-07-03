@@ -150,7 +150,9 @@ def test_list_capabilities_returns_promoted_capabilities(tmp_path: Path) -> None
     resp = client.get("/app/capabilities")
 
     assert resp.status_code == 200
-    assert resp.json() == {
+    body = resp.json()
+    assert body["capabilities"][0]["built_at"]
+    assert body == {
         "capabilities": [
             {
                 "name": "Echo",
@@ -158,6 +160,10 @@ def test_list_capabilities_returns_promoted_capabilities(tmp_path: Path) -> None
                 "version": 1,
                 "uses": ["clipboard"],
                 "secrets": ["ECHO_TOKEN"],
+                "auth_status": "not-required",
+                "oauth_scopes": [],
+                "goal": "",
+                "built_at": body["capabilities"][0]["built_at"],
             }
         ]
     }

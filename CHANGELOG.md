@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Added — capability metadata fields (goal/built_at/auth_status/oauth_scopes).
 - Telegram inbound (R4): the always-on runner now routes allowlisted inbound Telegram messages
   through the intent router — chat + web questions answer inline (quarantined), and capability
   **invokes** are consent-gated by a version-scoped "bless" grant. A blessed capability runs on a

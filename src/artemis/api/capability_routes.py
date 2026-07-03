@@ -63,6 +63,8 @@ class InstalledCard(BaseModel):
     name: str
     version: int
     path: str
+    auth_status: str
+    built_at: str | None
 
 
 class CapabilitySummary(BaseModel):
@@ -71,6 +73,10 @@ class CapabilitySummary(BaseModel):
     version: int
     uses: list[str]
     secrets: list[str]
+    auth_status: str
+    oauth_scopes: list[str]
+    goal: str
+    built_at: str | None
 
 
 class CapabilitiesList(BaseModel):
@@ -115,6 +121,10 @@ async def list_capabilities(
                 version=s.version,
                 uses=s.uses,
                 secrets=s.secrets,
+                auth_status=s.auth_status,
+                oauth_scopes=s.oauth_scopes,
+                goal=s.goal,
+                built_at=s.built_at,
             )
             for s in skills
         ]
@@ -210,4 +220,10 @@ async def promote(
         raise HTTPException(status_code=409, detail="build not verified")
     skill = await _forge(request).promote(state.staged_id)
     del builds[req.build_id]
-    return InstalledCard(name=skill.name, version=skill.version, path=skill.path)
+    return InstalledCard(
+        name=skill.name,
+        version=skill.version,
+        path=skill.path,
+        auth_status=skill.auth_status,
+        built_at=skill.built_at,
+    )

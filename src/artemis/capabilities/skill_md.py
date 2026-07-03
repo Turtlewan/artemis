@@ -22,6 +22,10 @@ def write_skill_md(
     uses: list[str],
     secrets: list[str],
     inputs: list[dict[str, Any]],
+    goal: str = "",
+    built_at: str | None = None,
+    auth_status: str = "not-required",
+    oauth_scopes: list[str] | None = None,
     body: str,
 ) -> None:
     """Write an Agent-Skills format SKILL.md file.
@@ -39,6 +43,10 @@ def write_skill_md(
         "uses": uses,
         "secrets": secrets,
         "inputs": inputs,
+        "goal": goal,
+        "built_at": built_at,
+        "auth_status": auth_status,
+        "oauth_scopes": oauth_scopes or [],
     }
     frontmatter = yaml.safe_dump(meta, sort_keys=False)
     path.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8")
