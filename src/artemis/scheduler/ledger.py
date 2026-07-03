@@ -28,9 +28,15 @@ class ScheduleLedger:
     never deleted — cancel and one-shot-fire flip ``active=0`` (durable audit trail).
     """
 
-    def __init__(self, db_path: str = ":memory:", *, now: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        db_path: str = ":memory:",
+        *,
+        now: Callable[[], float] = time.time,
+        check_same_thread: bool = True,
+    ) -> None:
         self._now = now
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS jobs ("
             " id TEXT PRIMARY KEY, cron TEXT, run_at TEXT, payload TEXT,"

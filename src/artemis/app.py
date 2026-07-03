@@ -132,7 +132,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     from artemis.api import create_app
 
-    uvicorn.run(create_app(), host="127.0.0.1", port=args.port)
+    uvicorn.run(create_app(enable_sync=True), host="127.0.0.1", port=args.port)
 
 
 def cmd_add(args: argparse.Namespace) -> None:

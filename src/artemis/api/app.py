@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
@@ -23,22 +24,71 @@ from artemis.capabilities.sandbox import SandboxRunner
 from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.select import build_capability_selector
 from artemis.capabilities.store import FileCapabilityStore, builtin_capabilities_root
+from artemis.data.fetcher import FetcherRunner
+from artemis.data.ingest import IngestService
 from artemis.data.store import DataStore
+from artemis.model.claude_code_provider import ClaudeCodeProvider
+from artemis.model.client import ModelClient
 from artemis.model.compose import build_model_router
 from artemis.oauth.broker import OAuthBroker
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
+from artemis.scheduler.ledger import ScheduleLedger
+from artemis.scheduler.scheduler import DurableScheduler
 from artemis.secrets_store import KeyringSecretStore
+from artemis.types import ScheduledJob
+
+
+_CALENDAR_SYNC_CRON = "*/15 * * * *"
 
 
 class HealthResponse(BaseModel):
     status: str
 
 
+def _calendar_sync_job() -> ScheduledJob:
+    return ScheduledJob(
+        id="calendar-sync",
+        cron=_CALENDAR_SYNC_CRON,
+        run_at=None,
+        payload={"kind": "fetch", "capability": "calendar-sync", "args": {}},
+    )
+
+
+def _build_sync(app: FastAPI, resolved_data_dir: Path) -> None:
+    """Construct the background sync components onto app.state (no async work here)."""
+    reader = ModelClient(ClaudeCodeProvider(), model_default="haiku")
+    ingest = IngestService(app.state.data_store, reader=reader)
+    fetcher = FetcherRunner(
+        capability_store=app.state.capability_store,
+        secrets_store=app.state.secrets,
+        sandbox=app.state.fetch_sandbox,
+        ingest=ingest,
+        oauth_broker=app.state.oauth_broker,
+    )
+    app.state.ingest_service = ingest
+    app.state.fetcher_runner = fetcher
+    app.state.sync_scheduler = DurableScheduler(
+        ScheduleLedger(str(resolved_data_dir / "schedule.db"), check_same_thread=False),
+        dispatch=fetcher.dispatch,
+        tick_seconds=30.0,
+    )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Placeholder: later slices compose router/memory/scheduler onto app.state here.
-    yield
+    task: asyncio.Task[None] | None = None
+    scheduler = getattr(app.state, "sync_scheduler", None)
+    if scheduler is not None:
+        await scheduler.schedule(_calendar_sync_job())
+        task = asyncio.create_task(scheduler.run())
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 def create_app(
@@ -47,6 +97,7 @@ def create_app(
     model: ModelPort | None = None,
     sandbox: SandboxRunner | None = None,
     secrets: SecretStorePort | None = None,
+    enable_sync: bool = False,
 ) -> FastAPI:
     resolved_data_dir = (
         Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
@@ -79,6 +130,8 @@ def create_app(
     app.state.fetch_sandbox = FetchSandbox()
     app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
     app.state.data_store = DataStore(str(resolved_data_dir / "spine.db"))
+    if enable_sync:
+        _build_sync(app, resolved_data_dir)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
