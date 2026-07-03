@@ -399,7 +399,10 @@ class OAuthBroker:
         if parsed.path != "/callback":
             return None
         query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=False)
-        if set(query) != {"code", "state"}:
+        # Require code + state to be present and single-valued. Google's real redirect also
+        # carries extra params (scope, authuser, prompt, hd) — accept and ignore those rather
+        # than rejecting the callback (an exact-set check silently drops the real Google flow).
+        if "code" not in query or "state" not in query:
             return None
         codes = query["code"]
         states = query["state"]

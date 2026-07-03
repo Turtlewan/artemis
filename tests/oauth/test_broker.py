@@ -255,11 +255,44 @@ async def test_loopback_malformed_request_does_not_touch_pending_state() -> None
     assert address is not None
 
     callback_task = asyncio.create_task(broker.listen_for_callback())
-    await _send_loopback(address, "/callback?code=auth-code&state=state&extra=bad")
+    # Genuinely malformed: missing the state param -> rejected, pending untouched.
+    await _send_loopback(address, "/callback?code=auth-code")
     assert broker.listener_address == address
     callback_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await callback_task
+
+
+@pytest.mark.asyncio
+async def test_loopback_accepts_google_extra_params() -> None:
+    """Google's real redirect carries extra params (scope/authuser/prompt) — accept it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"refresh_token": "refresh-token", "scope": "scope-a"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        broker = OAuthBroker(
+            secrets_store=_store(),
+            http_client=client,
+            open_browser=lambda _url: True,
+        )
+        consent_url = broker.begin_connect(["scope-a"])
+        state = _single(_query(consent_url), "state")
+        address = broker.listener_address
+        assert address is not None
+
+        callback_task = asyncio.create_task(broker.listen_for_callback())
+        google_style = (
+            f"/callback?state={state}&code=auth-code"
+            "&scope=https://www.googleapis.com/auth/calendar.readonly"
+            "&authuser=0&prompt=consent"
+        )
+        ok = await _send_loopback(address, google_style)
+        result = await callback_task
+
+    assert b"Connection closed." in ok
+    assert result.account == DEFAULT_ACCOUNT
+    assert result.granted_scopes == ("scope-a",)
 
 
 @pytest.mark.asyncio
