@@ -135,6 +135,10 @@ pub(crate) struct OAuthStatusResponse {
     account: String,
     connected: bool,
     granted_scopes: Vec<String>,
+    #[serde(default)]
+    connect_pending: bool,
+    #[serde(default)]
+    last_connect_error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

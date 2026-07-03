@@ -34,7 +34,14 @@ CLIENT_SECRET_SECRET_NAME = "google_oauth_client_secret"
 REFRESH_SECRET_PREFIX = "google_refresh:"
 GRANTED_SCOPES_PREFIX = "google_scopes:"
 
+# Distinct, static loopback bodies so the owner's browser tab says which way the token
+# exchange went (identical bodies made success and failure indistinguishable in the first
+# live smoke). Static text only -- never include exception detail or token material.
 _HTTP_CLOSED_BODY = b"Connection closed.\n"
+_HTTP_SUCCESS_BODY = b"Google connected. You can close this tab and return to Artemis.\n"
+_HTTP_FAILURE_BODY = (
+    b"Google connect FAILED. Close this tab and try again from Artemis (Keys panel).\n"
+)
 _MAX_REQUEST_BYTES = 8192
 
 
@@ -256,9 +263,9 @@ class OAuthBroker:
                 try:
                     result = await self.complete_connect(code=code, state=state)
                 except OAuthUnavailable:
-                    await self._write_loopback_response(conn, status=200)
+                    await self._write_loopback_response(conn, status=200, body=_HTTP_FAILURE_BODY)
                     raise
-                await self._write_loopback_response(conn, status=200)
+                await self._write_loopback_response(conn, status=200, body=_HTTP_SUCCESS_BODY)
                 return result
             finally:
                 conn.close()
@@ -410,15 +417,17 @@ class OAuthBroker:
             return None
         return codes[0], states[0]
 
-    async def _write_loopback_response(self, conn: socket.socket, *, status: int) -> None:
+    async def _write_loopback_response(
+        self, conn: socket.socket, *, status: int, body: bytes = _HTTP_CLOSED_BODY
+    ) -> None:
         reason = "OK" if status == 200 else "Not Found"
         response = (
             f"HTTP/1.1 {status} {reason}\r\n"
             "Content-Type: text/plain; charset=utf-8\r\n"
-            f"Content-Length: {len(_HTTP_CLOSED_BODY)}\r\n"
+            f"Content-Length: {len(body)}\r\n"
             "Connection: close\r\n"
             "\r\n"
-        ).encode("ascii") + _HTTP_CLOSED_BODY
+        ).encode("ascii") + body
         loop = asyncio.get_running_loop()
         await loop.sock_sendall(conn, response)
 

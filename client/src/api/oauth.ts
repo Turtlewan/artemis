@@ -18,6 +18,8 @@ export interface OAuthStatusResponse {
   account: string;
   connected: boolean;
   granted_scopes: string[];
+  connect_pending: boolean;
+  last_connect_error: string | null;
 }
 
 export interface OAuthDisconnectResponse {

@@ -411,6 +411,12 @@ export function KeysPanel({ open, onClose, pendingKey, reconnectGoogle = false }
                   Disconnect
                 </button>
               </div>
+            ) : googleStatus?.connect_pending ? (
+              <p style={styles.subtle}>Waiting for Google consent in the browser...</p>
+            ) : googleStatus?.last_connect_error != null ? (
+              <p style={styles.error}>
+                Google connect failed: {googleStatus.last_connect_error} — try again.
+              </p>
             ) : (
               <p style={styles.subtle}>No Google account connected.</p>
             )}

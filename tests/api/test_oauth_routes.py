@@ -6,6 +6,7 @@ from collections.abc import Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -168,9 +169,69 @@ def test_status_returns_account_and_scopes_without_token_values(tmp_path: Path) 
         "account": DEFAULT_ACCOUNT,
         "connected": True,
         "granted_scopes": ["calendar.read", "mail.read"],
+        "connect_pending": False,
+        "last_connect_error": None,
     }
     assert secret_value not in response.text
     assert "token" not in response.text
+
+
+def test_status_surfaces_pending_connect(tmp_path: Path) -> None:
+    broker = StubOAuthBroker(status=AccountStatus(connected=False, granted_scopes=()))
+    client, app = _client(tmp_path, broker)
+
+    class NotDoneTask:
+        def done(self) -> bool:
+            return False
+
+    app.state.oauth_connect_task = NotDoneTask()
+
+    body = client.get("/app/oauth/google/status").json()
+
+    assert body["connect_pending"] is True
+    assert body["connected"] is False
+
+
+def test_status_surfaces_last_connect_error(tmp_path: Path) -> None:
+    broker = StubOAuthBroker(status=AccountStatus(connected=False, granted_scopes=()))
+    client, app = _client(tmp_path, broker)
+    app.state.oauth_last_connect_error = "Google OAuth token exchange failed"
+
+    body = client.get("/app/oauth/google/status").json()
+
+    assert body["last_connect_error"] == "Google OAuth token exchange failed"
+    assert body["connect_pending"] is False
+
+
+def test_connect_resets_previous_connect_error(tmp_path: Path) -> None:
+    broker = StubOAuthBroker()
+    client, app = _client(tmp_path, broker)
+    app.state.oauth_last_connect_error = "Google OAuth token exchange failed"
+
+    response = client.post("/app/oauth/google/connect", json={"scopes": ["calendar.read"]})
+
+    assert response.status_code == 200
+    assert app.state.oauth_last_connect_error is None
+
+
+@pytest.mark.asyncio
+async def test_listen_and_record_records_safe_failure_message(tmp_path: Path) -> None:
+    from artemis.api.oauth_routes import _listen_and_record
+
+    class FailingBroker:
+        async def _fail(self) -> None:
+            raise OAuthUnavailable("Google OAuth token exchange failed")
+
+        def listen_for_callback(self) -> Coroutine[Any, Any, None]:
+            return self._fail()
+
+    class State:
+        oauth_last_connect_error: str | None = None
+
+    state = State()
+    await _listen_and_record(FailingBroker(), state)  # type: ignore[arg-type]
+
+    assert state.oauth_last_connect_error == "Google OAuth token exchange failed"
 
 
 def test_disconnect_calls_broker_and_returns_success(tmp_path: Path) -> None:

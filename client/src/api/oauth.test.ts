@@ -31,7 +31,13 @@ describe("oauth facade", () => {
   });
 
   it("invokes app_oauth_status without args", async () => {
-    const response = { account: "default", connected: true, granted_scopes: ["scope-a"] };
+    const response = {
+      account: "default",
+      connected: true,
+      granted_scopes: ["scope-a"],
+      connect_pending: false,
+      last_connect_error: null,
+    };
     mocks.invoke.mockResolvedValueOnce(response);
 
     await expect(oauth.oauthStatus()).resolves.toEqual(response);

@@ -242,7 +242,7 @@ async def test_loopback_binds_localhost_rejects_non_callback_and_completes() -> 
         ok = await _send_loopback(address, valid)
         result = await callback_task
 
-    assert b"Connection closed." in ok
+    assert b"Google connected" in ok
     assert result.account == DEFAULT_ACCOUNT
     assert _single(_form(token_requests[0]), "redirect_uri") == _single(query, "redirect_uri")
 
@@ -290,9 +290,36 @@ async def test_loopback_accepts_google_extra_params() -> None:
         ok = await _send_loopback(address, google_style)
         result = await callback_task
 
-    assert b"Connection closed." in ok
+    assert b"Google connected" in ok
     assert result.account == DEFAULT_ACCOUNT
     assert result.granted_scopes == ("scope-a",)
+
+
+@pytest.mark.asyncio
+async def test_loopback_failed_exchange_gets_distinct_failure_body() -> None:
+    """Success and failure must not be indistinguishable in the owner's browser tab."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        broker = OAuthBroker(
+            secrets_store=_store(),
+            http_client=client,
+            open_browser=lambda _url: True,
+        )
+        consent_url = broker.begin_connect(["scope-a"])
+        state = _single(_query(consent_url), "state")
+        address = broker.listener_address
+        assert address is not None
+
+        callback_task = asyncio.create_task(broker.listen_for_callback())
+        body = await _send_loopback(address, f"/callback?code=auth-code&state={state}")
+        with pytest.raises(OAuthUnavailable):
+            await callback_task
+
+    assert b"Google connect FAILED" in body
+    assert b"Google connected." not in body
 
 
 @pytest.mark.asyncio

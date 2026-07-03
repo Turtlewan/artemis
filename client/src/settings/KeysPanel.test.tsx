@@ -102,6 +102,8 @@ describe("KeysPanel", () => {
       account: "default",
       connected: false,
       granted_scopes: [],
+      connect_pending: false,
+      last_connect_error: null,
     });
   });
 
@@ -223,6 +225,8 @@ describe("KeysPanel", () => {
       account: "default",
       connected: true,
       granted_scopes: ["scope-a", "scope-b"],
+      connect_pending: false,
+      last_connect_error: null,
     });
     const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
     await flush();
@@ -232,6 +236,40 @@ describe("KeysPanel", () => {
     expect(container.textContent).toContain("scope-b");
   });
 
+  it("shows a pending connect while the consent flow is open", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthStatus.mockResolvedValueOnce({
+      account: "default",
+      connected: false,
+      granted_scopes: [],
+      connect_pending: true,
+      last_connect_error: null,
+    });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    expect(container.textContent).toContain("Waiting for Google consent");
+    expect(container.textContent).not.toContain("No Google account connected.");
+  });
+
+  it("surfaces a failed Google connect distinctly", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthStatus.mockResolvedValueOnce({
+      account: "default",
+      connected: false,
+      granted_scopes: [],
+      connect_pending: false,
+      last_connect_error: "Google OAuth token exchange failed",
+    });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    expect(container.textContent).toContain(
+      "Google connect failed: Google OAuth token exchange failed",
+    );
+    expect(container.textContent).not.toContain("No Google account connected.");
+  });
+
   it("disconnects Google and refreshes the status list", async () => {
     gatewayMocks.secretList.mockResolvedValue([]);
     gatewayMocks.oauthStatus
@@ -239,11 +277,15 @@ describe("KeysPanel", () => {
         account: "default",
         connected: true,
         granted_scopes: ["scope-a"],
+        connect_pending: false,
+        last_connect_error: null,
       })
       .mockResolvedValueOnce({
         account: "default",
         connected: false,
         granted_scopes: [],
+        connect_pending: false,
+        last_connect_error: null,
       });
     gatewayMocks.oauthDisconnect.mockResolvedValueOnce({ disconnected: true });
     const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);

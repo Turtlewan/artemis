@@ -31,6 +31,8 @@ class StatusResponse(BaseModel):
     account: str
     connected: bool
     granted_scopes: list[str]
+    connect_pending: bool = False
+    last_connect_error: str | None = None
 
 
 class DisconnectRequest(BaseModel):
@@ -64,8 +66,25 @@ async def connect_google(
         if str(exc) == _NOT_CONFIGURED_MESSAGE:
             return ClientNotConfiguredResponse()
         raise
-    request.app.state.oauth_connect_task = asyncio.create_task(broker.listen_for_callback())
+    request.app.state.oauth_last_connect_error = None
+    request.app.state.oauth_connect_task = asyncio.create_task(
+        _listen_and_record(broker, request.app.state)
+    )
     return ConnectStartedResponse(consent_url=consent_url)
+
+
+async def _listen_and_record(broker: OAuthBroker, state: object) -> None:
+    """Run the loopback listener and record the outcome so /status can surface a failure.
+
+    OAuthUnavailable messages are safe by the broker's contract (never token material);
+    without this the background task's exception was silently unobserved and a failed
+    connect looked identical to a pending one.
+    """
+
+    try:
+        await broker.listen_for_callback()
+    except OAuthUnavailable as exc:
+        setattr(state, "oauth_last_connect_error", str(exc))
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -77,10 +96,15 @@ async def google_status(
 
     account = DEFAULT_ACCOUNT
     status = _broker(request).account_status(account)
+    task = getattr(request.app.state, "oauth_connect_task", None)
+    pending = task is not None and not task.done()
+    error = getattr(request.app.state, "oauth_last_connect_error", None)
     return StatusResponse(
         account=account,
         connected=status.connected,
         granted_scopes=list(status.granted_scopes),
+        connect_pending=pending,
+        last_connect_error=error,
     )
 
 
