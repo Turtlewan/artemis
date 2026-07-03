@@ -3,9 +3,14 @@ from artemis.data.store import DataStore, Record
 
 def _rec(**over: object) -> Record:
     base = dict(
-        domain="calendar", kind="event", key="e1",
-        payload={"title": "Standup"}, sanitized_text="Standup at 9am",
-        source="today-calendar", fetched_at=100.0, owner_fields={},
+        domain="calendar",
+        kind="event",
+        key="e1",
+        payload={"title": "Standup"},
+        sanitized_text="Standup at 9am",
+        source="today-calendar",
+        fetched_at=100.0,
+        owner_fields={},
     )
     base.update(over)
     return Record(**base)  # type: ignore[arg-type]
@@ -23,7 +28,9 @@ def test_upsert_get_roundtrip() -> None:
 def test_upsert_preserves_owner_fields() -> None:
     s = DataStore()
     s.upsert(_rec(owner_fields={"note": "keep me"}))
-    s.upsert(_rec(sanitized_text="Standup moved to 10am", fetched_at=200.0))  # re-pull, no owner_fields
+    s.upsert(
+        _rec(sanitized_text="Standup moved to 10am", fetched_at=200.0)
+    )  # re-pull, no owner_fields
     got = s.get("calendar", "event", "e1")
     assert got is not None
     assert got.sanitized_text == "Standup moved to 10am"  # feed field updated
@@ -35,7 +42,11 @@ def test_query_newest_first_and_filters() -> None:
     s = DataStore()
     s.upsert(_rec(key="e1", sanitized_text="Standup", fetched_at=100.0))
     s.upsert(_rec(key="e2", sanitized_text="Lunch with Sam", fetched_at=200.0, kind="event"))
-    s.upsert(_rec(key="t1", domain="calendar", kind="task", sanitized_text="File taxes", fetched_at=150.0))
+    s.upsert(
+        _rec(
+            key="t1", domain="calendar", kind="task", sanitized_text="File taxes", fetched_at=150.0
+        )
+    )
     newest = s.query(domain="calendar")
     assert [r.key for r in newest] == ["e2", "t1", "e1"]  # fetched_at desc
     assert [r.key for r in s.query(domain="calendar", kinds=["task"])] == ["t1"]
@@ -47,7 +58,9 @@ def test_query_text_wildcards_are_literal() -> None:
     s = DataStore()
     s.upsert(_rec(key="a", sanitized_text="50% off"))
     s.upsert(_rec(key="b", sanitized_text="5000 off"))
-    assert [r.key for r in s.query(domain="calendar", text="50%")] == ["a"]  # % is literal, not wildcard
+    assert [r.key for r in s.query(domain="calendar", text="50%")] == [
+        "a"
+    ]  # % is literal, not wildcard
 
 
 def test_latest_fetched_at() -> None:
