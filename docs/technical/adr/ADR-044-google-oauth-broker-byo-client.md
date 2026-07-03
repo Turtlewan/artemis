@@ -1,6 +1,6 @@
 # ADR-044 — Google OAuth broker (bring-your-own client)
 
-- **Status:** **Proposed** — owner + planning, 2026-07-03 (owner chose to invest in the broker; build not greenlit).
+- **Status:** **Accepted** — owner + planning, 2026-07-03. Broker greenlit; specs `oauth-1..4` reviewed (apex-security ×2, apex-auth, apex-google) + promoted to `docs/changes/` ready. See § Refinements.
 - **Date:** 2026-07-03
 - **Deciders:** owner + planning
 - **Refines:** ADR-039 (capability invoke/reuse — the broker plugs a *dynamic* credential into the existing secret-injection path) and the credential-kernel work (keychain `SecretStorePort`). Complements ADR-035 (network capabilities). Keeps ADR-009/037 quarantine unchanged.
@@ -43,6 +43,14 @@ infrastructure; the owner's real tokens never touch model-authored code at build
   a capability invoke that can't mint a token fails closed with a "re-connect Google" signal, not a crash.
 - Opening a browser + binding a loopback port is an interactive, desktop-bound action; it can't run in
   a headless/cron context (acceptable — connecting an account is a deliberate owner action).
+
+## Refinements (2026-07-03 draft→ready review pass)
+
+The dispatched domain reviews surfaced three decisions that refine the decisions above:
+
+- **R1 — Consent-screen must be published to Production (refines decision 1).** An OAuth client left in Google's "Testing" publishing status issues refresh tokens that **expire after 7 days**, which would break the broker's durable-refresh design weekly. The runbook (`google-oauth-setup.md`) must instruct the owner to **publish the consent screen to Production** — a status flip distinct from Google's multi-week verification review; for the owner as sole user it only adds an "unverified app" warning screen. This is a required owner action in Cloud Console before first live use.
+- **R2 — The client opens the consent browser, not the brain (refines decision 2).** Decision 2 said the broker "opens the owner's browser." Resolved: `begin_connect` takes an injected `open_browser` (default `webbrowser.open` for standalone/CLI use), but the connect route (oauth-2) injects a **no-op** so the desktop client (oauth-4) opens the returned consent URL via the OS browser — single opener, no double-tab, and keeps the brain headless-capable. The brain-side loopback listener still catches the redirect.
+- **R3 — Account keyed by a fixed label, not email (refines decision 5).** Google's identity rules forbid using `email` as a primary key. For the single-account MVP the broker keys stored credentials by a caller-supplied `account` id that is a fixed constant (`"default"`), never email-derived. The UI shows "Connected to Google" + granted scopes without the specific email. Multi-account support + `sub`-based keying (via `openid` + id-token) + connected-email display are **deferred** — a future revision reopens decision 5.
 
 ## Alternatives considered
 - **Shipped/shared Artemis OAuth client** — rejected (decision 1): the "secret" isn't secret in a
