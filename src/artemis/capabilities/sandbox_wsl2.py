@@ -3,7 +3,10 @@
 Provisioning runbook for the WSL2 distro:
 1. Install the required guest tools:
    `wsl.exe -d Ubuntu -- sudo apt-get update`
-   `wsl.exe -d Ubuntu -- sudo apt-get install -y iptables nginx libnginx-mod-stream dnsmasq util-linux`
+   `wsl.exe -d Ubuntu -- sudo apt-get install -y iptables nginx libnginx-mod-stream dnsmasq util-linux python3-pytest`
+   (`python3-pytest` is REQUIRED — capability verification runs `python3 -m pytest tests -q` in the
+   isolate; without it every build fails with "No module named pytest". Runtime libraries a capability
+   imports at verify time — e.g. `python3-requests`/`python3-httpx` — must likewise be present in the guest.)
 2. Verify nginx has transparent TLS SNI support:
    `wsl.exe -d Ubuntu -- bash -lc 'nginx -V 2>&1 | grep -q ssl_preread'`
 3. Create the de-privileged capability user once:
