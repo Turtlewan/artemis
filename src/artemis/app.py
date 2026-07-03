@@ -9,12 +9,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from artemis.ingress import InboundRouter
+from artemis.intent import IntentRouter
+from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.compose import build_model_router
+from artemis.model.client import ModelClient
 from artemis.ports.model import ModelPort
+from artemis.ports.secrets import SecretStorePort
 from artemis.ports.transport import TransportPort
 from artemis.proactivity import ProactiveWorker, build_proactive_worker
+from artemis.reachout.web_tool import build_web_tool
 from artemis.scheduler import DurableScheduler, ScheduleLedger, build_scheduler
 from artemis.secrets_store import KeyringSecretStore
+from artemis.secrets_store import resolve_secret
 from artemis.transport import ConsoleTransport, telegram_from_env
 from artemis.types import ScheduledJob
 
@@ -23,10 +30,25 @@ from artemis.types import ScheduledJob
 class App:
     scheduler: DurableScheduler
     worker: ProactiveWorker
+    ingress: InboundRouter | None = None
 
     async def run(self) -> None:
         """Start the always-on heartbeat (runs until cancelled)."""
-        await self.scheduler.run()
+        if self.ingress is None:
+            await self.scheduler.run()
+            return
+
+        tasks = [
+            asyncio.create_task(self.scheduler.run()),
+            asyncio.create_task(self.ingress.run()),
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
 
 def build_app(
@@ -35,14 +57,48 @@ def build_app(
     owner_identity: str = "console",
     model: ModelPort | None = None,
     transport: TransportPort | None = None,
+    secrets: SecretStorePort | None = None,
     anthropic_api_key: str | None = None,
     tick_seconds: float = 1.0,
+    enable_ingress: bool = True,
 ) -> App:
     router = model if model is not None else build_model_router(anthropic_api_key=anthropic_api_key)
     surface = transport if transport is not None else ConsoleTransport()
     worker = build_proactive_worker(model=router, transport=surface, owner_identity=owner_identity)
     scheduler = build_scheduler(dispatch=worker.run_job, db_path=db_path, tick_seconds=tick_seconds)
-    return App(scheduler=scheduler, worker=worker)
+    ingress = _build_ingress(
+        model=router,
+        transport=surface,
+        owner_identity=owner_identity,
+        secrets=secrets,
+        enable_ingress=enable_ingress,
+    )
+    return App(scheduler=scheduler, worker=worker, ingress=ingress)
+
+
+def _build_ingress(
+    *,
+    model: ModelPort,
+    transport: TransportPort,
+    owner_identity: str,
+    secrets: SecretStorePort | None,
+    enable_ingress: bool,
+) -> InboundRouter | None:
+    if (
+        not enable_ingress
+        or isinstance(transport, ConsoleTransport)
+        or not hasattr(transport, "receive")
+    ):
+        return None
+
+    tavily_api_key = (resolve_secret("TAVILY_API_KEY", secrets=secrets) or "").strip()
+    return InboundRouter(
+        intent=IntentRouter(ModelClient(ClaudeCodeProvider(), model_default="haiku")),
+        model=model,
+        web_tool=build_web_tool(tavily_api_key=tavily_api_key),
+        transport=transport,
+        owner_identity=owner_identity,
+    )
 
 
 async def _noop_dispatch(payload: dict) -> None:  # type: ignore[type-arg]
@@ -59,7 +115,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     telegram = telegram_from_env(os.environ, secrets=secrets)
     if telegram is not None:
         owner_identity = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
-        app = build_app(db_path=args.db, transport=telegram, owner_identity=owner_identity)
+        app = build_app(
+            db_path=args.db,
+            transport=telegram,
+            owner_identity=owner_identity,
+            secrets=secrets,
+        )
     else:
         app = build_app(db_path=args.db)
     asyncio.run(app.run())
