@@ -160,7 +160,7 @@ def test_list_capabilities_returns_promoted_capabilities(tmp_path: Path) -> None
                 "version": 1,
                 "uses": ["clipboard"],
                 "secrets": ["ECHO_TOKEN"],
-                "auth_status": "not-required",
+                "auth_status": "unverified",
                 "oauth_scopes": [],
                 "goal": "",
                 "built_at": body["capabilities"][0]["built_at"],

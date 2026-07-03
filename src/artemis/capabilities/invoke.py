@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import logging
 from pathlib import Path
 import time
-from typing import Literal, cast
+from typing import Literal, Protocol, TypeGuard, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -94,6 +94,10 @@ class _SynthResult(BaseModel):
     answer: str
 
 
+class _AuthVerifiableStore(Protocol):
+    def mark_auth_verified(self, name: str) -> None: ...
+
+
 _EXTRACT_SCHEMA = cast(dict[str, object], _ExtractResult.model_json_schema())
 _SYNTH_SCHEMA = cast(dict[str, object], _SynthResult.model_json_schema())
 
@@ -171,6 +175,9 @@ async def confirm_invoke(
         )
         return InvokeConfirmResult(status="error")
 
+    if result.exit_code == 0 and skill.secrets:
+        _mark_auth_verified_best_effort(capability_store, skill.name)
+
     text = await _quarantine_output(
         reader=reader,
         synth=synth,
@@ -179,6 +186,23 @@ async def confirm_invoke(
         raw_output=result.output,
     )
     return InvokeConfirmResult(status="ok", text=text)
+
+
+def _mark_auth_verified_best_effort(capability_store: CapabilityStore, name: str) -> None:
+    if not _supports_auth_verification(capability_store):
+        return
+    try:
+        capability_store.mark_auth_verified(name)
+    except Exception as exc:
+        _log.warning(
+            "invoke_auth_verify_writeback_failed capability=%s exc_type=%s",
+            name,
+            type(exc).__name__,
+        )
+
+
+def _supports_auth_verification(store: CapabilityStore) -> TypeGuard[_AuthVerifiableStore]:
+    return callable(getattr(store, "mark_auth_verified", None))
 
 
 async def _quarantine_output(

@@ -35,9 +35,11 @@ from artemis.types import (
 
 
 class FakeCapabilityStore:
-    def __init__(self, skill: Skill | None) -> None:
+    def __init__(self, skill: Skill | None, *, mark_raises: Exception | None = None) -> None:
         self._skill = skill
+        self.mark_raises = mark_raises
         self.get_calls: list[str] = []
+        self.mark_auth_verified_calls: list[str] = []
 
     async def stage(self, draft: SkillDraft) -> StagedSkill:
         raise NotImplementedError
@@ -60,6 +62,11 @@ class FakeCapabilityStore:
         if self._skill is not None and self._skill.name == name:
             return self._skill
         return None
+
+    def mark_auth_verified(self, name: str) -> None:
+        self.mark_auth_verified_calls.append(name)
+        if self.mark_raises is not None:
+            raise self.mark_raises
 
 
 class FakeSecretStore:
@@ -296,9 +303,11 @@ async def test_confirm_invoke_runs_sandbox_with_secrets_and_quarantines_output()
     reader = FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"}))
     synth = FakeModel(json.dumps({"answer": "final answer"}))
 
+    capability_store = FakeCapabilityStore(skill)
+
     result = await confirm_invoke(
         InvokeState(capability="Echo", args={"topic": "x"}, request_text="echo x"),
-        capability_store=FakeCapabilityStore(skill),
+        capability_store=capability_store,
         secrets_store=FakeSecretStore({"TOKEN": "resolved-value"}),
         sandbox=sandbox,
         reader=reader,
@@ -315,6 +324,62 @@ async def test_confirm_invoke_runs_sandbox_with_secrets_and_quarantines_output()
     assert call.egress_domains == skill.egress_domains
     assert call.secrets == {"TOKEN": "resolved-value"}
     assert "raw output" in reader.calls[0].messages[1].content
+    assert capability_store.mark_auth_verified_calls == ["Echo"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_failed_credentialed_run_does_not_mark_verified() -> None:
+    skill = _skill(secrets=["TOKEN"])
+    capability_store = FakeCapabilityStore(skill)
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=capability_store,
+        secrets_store=FakeSecretStore({"TOKEN": "resolved-value"}),
+        sandbox=RecordingSandbox(FetchResult(output="failed output", exit_code=1, truncated=False)),
+        reader=FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})),
+        synth=FakeModel(json.dumps({"answer": "final answer"})),
+    )
+
+    assert result.status == "ok"
+    assert capability_store.mark_auth_verified_calls == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_no_secret_capability_does_not_mark_verified() -> None:
+    skill = _skill(secrets=[])
+    capability_store = FakeCapabilityStore(skill)
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=capability_store,
+        secrets_store=FakeSecretStore({}),
+        sandbox=RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False)),
+        reader=FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})),
+        synth=FakeModel(json.dumps({"answer": "final answer"})),
+    )
+
+    assert result.status == "ok"
+    assert capability_store.mark_auth_verified_calls == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_writeback_exception_does_not_break_invoke() -> None:
+    skill = _skill(secrets=["TOKEN"])
+    capability_store = FakeCapabilityStore(skill, mark_raises=RuntimeError("disk full"))
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=capability_store,
+        secrets_store=FakeSecretStore({"TOKEN": "resolved-value"}),
+        sandbox=RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False)),
+        reader=FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})),
+        synth=FakeModel(json.dumps({"answer": "final answer"})),
+    )
+
+    assert result.status == "ok"
+    assert result.text == "final answer"
+    assert capability_store.mark_auth_verified_calls == ["Echo"]
 
 
 @pytest.mark.asyncio

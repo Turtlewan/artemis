@@ -81,6 +81,9 @@ class FileCapabilityStore:
         existing = self.get(draft.name)
         version = existing.version + 1 if existing is not None else 1
         built_at = datetime.now(tz=UTC).isoformat()
+        auth_status: Literal["not-required", "unverified"] = (
+            "not-required" if not draft.secrets else "unverified"
+        )
 
         if library_dir.exists():
             shutil.rmtree(library_dir)
@@ -97,7 +100,7 @@ class FileCapabilityStore:
             inputs=[param.model_dump() for param in draft.inputs],
             goal=draft.goal,
             built_at=built_at,
-            auth_status="not-required",
+            auth_status=auth_status,
             oauth_scopes=list(draft.oauth_scopes),
             body=draft.body,
         )
@@ -118,7 +121,7 @@ class FileCapabilityStore:
             path=str(library_dir),
             goal=draft.goal,
             built_at=built_at,
-            auth_status="not-required",
+            auth_status=auth_status,
             oauth_scopes=list(draft.oauth_scopes),
             tags=[],
             uses=draft.uses,
@@ -157,6 +160,33 @@ class FileCapabilityStore:
         if not skill_path.exists():
             return None
         return self._read_skill(skill_path)
+
+    def mark_auth_verified(self, name: str) -> None:
+        skill_path = self._library / name / "SKILL.md"
+        if not skill_path.exists():
+            return
+
+        meta, body = read_skill_md(skill_path)
+        if _auth_status(meta.get("auth_status", "not-required")) != "unverified":
+            return
+        if not meta.get("secrets", []):
+            return
+
+        write_skill_md(
+            skill_path,
+            name=str(meta["name"]),
+            description=str(meta["description"]),
+            version=int(meta["version"]),
+            tags=[str(item) for item in meta.get("tags", [])],
+            uses=[str(item) for item in meta.get("uses", [])],
+            secrets=[str(item) for item in meta.get("secrets", [])],
+            inputs=[dict(item) for item in meta.get("inputs", [])],
+            goal=str(meta.get("goal", "")),
+            built_at=_optional_str(meta.get("built_at")),
+            auth_status="verified",
+            oauth_scopes=[str(item) for item in meta.get("oauth_scopes", [])],
+            body=body,
+        )
 
     def list(self) -> list[Skill]:
         """Every promoted capability in the library, sorted by name."""

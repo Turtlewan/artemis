@@ -88,14 +88,14 @@ def test_capability_summary_and_installed_card_carry_metadata(tmp_path: Path) ->
     promote_resp = client.post("/app/capabilities/promote", json={"build_id": build_id})
     assert promote_resp.status_code == 200
     installed = promote_resp.json()
-    assert installed["auth_status"] == "not-required"
+    assert installed["auth_status"] == "unverified"
     assert isinstance(installed["built_at"], str)
     assert installed["built_at"]
 
     list_resp = client.get("/app/capabilities")
     assert list_resp.status_code == 200
     summary = list_resp.json()["capabilities"][0]
-    assert summary["auth_status"] == "not-required"
+    assert summary["auth_status"] == "unverified"
     assert summary["oauth_scopes"] == ["calendar.read"]
     assert summary["goal"] == "Keep calendars aligned."
     assert summary["built_at"] == installed["built_at"]
