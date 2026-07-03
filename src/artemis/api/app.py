@@ -62,10 +62,9 @@ def create_app(
         if secrets is not None
         else KeyringSecretStore(resolved_data_dir / "secrets_index.json")
     )
-    app.state.oauth_broker = OAuthBroker(
-        secrets_store=app.state.secrets,
-        open_browser=lambda _url: True,
-    )
+    # Default opener (webbrowser.open): the brain runs on the local desktop and opens the
+    # consent browser itself. The client (oauth-4) has no opener plugin and does not open URLs.
+    app.state.oauth_broker = OAuthBroker(secrets_store=app.state.secrets)
     app.state.oauth_connect_task = None
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
     capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
