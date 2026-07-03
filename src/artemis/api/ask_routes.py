@@ -51,7 +51,7 @@ class AskResponse(BaseModel):
 
 class InvokeConfirmResponse(BaseModel):
     invoke_id: str
-    status: Literal["ok", "missing_secrets", "not_found", "error"]
+    status: Literal["ok", "missing_secrets", "not_found", "error", "reconnect_google"]
     text: str | None = None
     missing_secrets: list[str] = Field(default_factory=list)
 
@@ -270,6 +270,7 @@ async def confirm_invoke_route(
         sandbox=sandbox,
         reader=reader,
         synth=synth,
+        oauth_broker=getattr(request.app.state, "oauth_broker", None),
     )
     if result.status == "missing_secrets":
         invokes[invoke_id] = state

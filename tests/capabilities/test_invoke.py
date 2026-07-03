@@ -147,6 +147,24 @@ class SandboxCall:
         self.secrets = secrets
 
 
+class FakeOAuthBroker:
+    def __init__(
+        self,
+        *,
+        token: str = "ya29.test-token",
+        raises_for: set[str] | None = None,
+    ) -> None:
+        self.token = token
+        self.raises_for = raises_for or set()
+        self.calls: list[tuple[str, str]] = []
+
+    async def mint_access_token(self, account: str, scope: str) -> str:
+        self.calls.append((account, scope))
+        if scope in self.raises_for:
+            raise RuntimeError("private oauth failure detail")
+        return self.token
+
+
 class FakeModel:
     def __init__(self, text: str | None = None, *, raises: Exception | None = None) -> None:
         self.text = text or json.dumps(
@@ -325,6 +343,112 @@ async def test_confirm_invoke_runs_sandbox_with_secrets_and_quarantines_output()
     assert call.secrets == {"TOKEN": "resolved-value"}
     assert "raw output" in reader.calls[0].messages[1].content
     assert capability_store.mark_auth_verified_calls == ["Echo"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_injects_oauth_token_with_static_secrets(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="artemis.capabilities.invoke")
+    token = "ya29.dynamic-token-secret"
+    skill = _skill(
+        egress_domains=["api.example.com"],
+        secrets=["TOKEN"],
+        oauth_scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+    )
+    sandbox = RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False))
+    reader = FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"}))
+    synth = FakeModel(json.dumps({"answer": "final answer"}))
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="echo x"),
+        capability_store=FakeCapabilityStore(skill),
+        secrets_store=FakeSecretStore({"TOKEN": "resolved-value"}),
+        sandbox=sandbox,
+        reader=reader,
+        synth=synth,
+        oauth_broker=FakeOAuthBroker(token=token),
+    )
+
+    assert result.status == "ok"
+    assert len(sandbox.calls) == 1
+    assert sandbox.calls[0].secrets == {
+        "TOKEN": "resolved-value",
+        "GOOGLE_ACCESS_TOKEN": token,
+    }
+    assert sandbox.calls[0].egress_domains == skill.egress_domains
+    assert token not in result.model_dump_json()
+    assert all(token not in record.getMessage() for record in caplog.records)
+    prompt_text = "\n".join(
+        message.content for call in [*reader.calls, *synth.calls] for message in call.messages
+    )
+    assert token not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_oauth_scope_without_broker_reconnects_without_sandbox() -> None:
+    sandbox = RecordingSandbox()
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=FakeCapabilityStore(_skill(oauth_scopes=["scope-a"])),
+        secrets_store=FakeSecretStore({}),
+        sandbox=sandbox,
+        reader=FakeModel(),
+        synth=FakeModel(json.dumps({"answer": "final"})),
+    )
+
+    assert result == InvokeConfirmResult(status="reconnect_google")
+    assert sandbox.calls == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_oauth_broker_exception_reconnects_without_detail(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="artemis.capabilities.invoke")
+    sandbox = RecordingSandbox()
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=FakeCapabilityStore(_skill(oauth_scopes=["scope-a"])),
+        secrets_store=FakeSecretStore({}),
+        sandbox=sandbox,
+        reader=FakeModel(),
+        synth=FakeModel(json.dumps({"answer": "final"})),
+        oauth_broker=FakeOAuthBroker(raises_for={"scope-a"}),
+    )
+
+    assert result == InvokeConfirmResult(status="reconnect_google")
+    assert sandbox.calls == []
+    assert "private oauth failure detail" not in result.model_dump_json()
+    assert "private oauth failure detail" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_oauth_partial_scope_failure_reconnects_without_partial_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="artemis.capabilities.invoke")
+    token = "ya29.partial-token-secret"
+    sandbox = RecordingSandbox()
+    broker = FakeOAuthBroker(token=token, raises_for={"scope-b"})
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=FakeCapabilityStore(_skill(oauth_scopes=["scope-a", "scope-b"])),
+        secrets_store=FakeSecretStore({}),
+        sandbox=sandbox,
+        reader=FakeModel(),
+        synth=FakeModel(json.dumps({"answer": "final"})),
+        oauth_broker=broker,
+    )
+
+    assert result == InvokeConfirmResult(status="reconnect_google")
+    assert broker.calls == [("default", "scope-a"), ("default", "scope-b")]
+    assert sandbox.calls == []
+    assert token not in result.model_dump_json()
+    assert all(token not in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -539,6 +663,7 @@ def _skill(
     inputs: list[SkillInputParam] | None = None,
     egress_domains: list[str] | None = None,
     secrets: list[str] | None = None,
+    oauth_scopes: list[str] | None = None,
     path: str = "C:/tmp/Echo",
 ) -> Skill:
     return Skill(
@@ -549,6 +674,7 @@ def _skill(
         tags=[],
         uses=[],
         secrets=secrets or [],
+        oauth_scopes=oauth_scopes or [],
         inputs=inputs or [],
         egress_domains=egress_domains or [],
     )

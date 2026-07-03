@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- OAuth-scoped capabilities now mint and inject a fresh Google access token at confirmed invoke
+  time, failing closed to reconnect when Google authorization is unavailable. (ADR-044)
 - OAuth connect/status/disconnect API routes for Google account linking, wired to the broker with
   session-gated responses that never expose token values. (ADR-044)
 - Google OAuth broker core for BYO-client loopback PKCE connect, keychain refresh-token storage,

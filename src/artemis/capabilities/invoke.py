@@ -75,7 +75,7 @@ class InvokeProposal(BaseModel):
 class InvokeConfirmResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    status: Literal["ok", "missing_secrets", "not_found", "error"]
+    status: Literal["ok", "missing_secrets", "not_found", "error", "reconnect_google"]
     text: str | None = None
     missing_secrets: list[str] = Field(default_factory=list)
 
@@ -96,6 +96,10 @@ class _SynthResult(BaseModel):
 
 class _AuthVerifiableStore(Protocol):
     def mark_auth_verified(self, name: str) -> None: ...
+
+
+class _OAuthMinter(Protocol):
+    async def mint_access_token(self, account: str, scope: str) -> str: ...
 
 
 _EXTRACT_SCHEMA = cast(dict[str, object], _ExtractResult.model_json_schema())
@@ -135,13 +139,16 @@ async def confirm_invoke(
     sandbox: FetchSandbox,
     reader: ModelPort,
     synth: ModelPort,
+    oauth_broker: _OAuthMinter | None = None,
 ) -> InvokeConfirmResult:
     """Run one claimed invoke state after the confirm route's pop-first claim.
 
     The route, not this function, manages `app.state.invokes`, so a proposal runs
     at most once. Missing typed input args are handled before proposal creation;
-    this function checks only the missing-secret gate. Resolved secret values are
-    never logged, returned, or sent to quarantine prompts.
+    this function checks only the missing-secret gate. Resolved static secrets and
+    dynamic OAuth tokens are injected only into the sandbox environment and are
+    never logged, returned, or sent to quarantine prompts. `reconnect_google`
+    means an OAuth-scoped capability cannot mint its requested access token.
     """
 
     skill = capability_store.get(state.capability)
@@ -157,6 +164,28 @@ async def confirm_invoke(
     except ValueError:
         missing = missing_required_secrets(skill.secrets, secrets_store)
         return InvokeConfirmResult(status="missing_secrets", missing_secrets=missing)
+
+    if skill.oauth_scopes:
+        if oauth_broker is None:
+            return InvokeConfirmResult(status="reconnect_google")
+
+        # MVP: capabilities declare a single OAuth scope. The loop validates every declared
+        # scope is granted (fail-closed on any un-granted/errored). The injected token is
+        # minted per scope, so a multi-scope capability currently gets only the LAST scope's
+        # token — see the multi-scope follow-up in status.md before shipping a >1-scope one.
+        try:
+            google_access_token = ""
+            for scope in skill.oauth_scopes:
+                google_access_token = await oauth_broker.mint_access_token("default", scope)
+        except Exception as exc:
+            _log.warning(
+                "invoke_oauth_mint_failed capability=%s exc_type=%s",
+                state.capability,
+                type(exc).__name__,
+            )
+            return InvokeConfirmResult(status="reconnect_google")
+
+        resolved["GOOGLE_ACCESS_TOKEN"] = google_access_token
 
     argv = build_invoke_argv(skill.inputs, state.args)
     try:

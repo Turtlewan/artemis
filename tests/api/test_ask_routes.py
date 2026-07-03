@@ -150,6 +150,16 @@ class FakeFetchSandbox(FetchSandbox):
         return self.result
 
 
+class FakeOAuthBroker:
+    def __init__(self, token: str = "ya29.route-token") -> None:
+        self.token = token
+        self.calls: list[tuple[str, str]] = []
+
+    async def mint_access_token(self, account: str, scope: str) -> str:
+        self.calls.append((account, scope))
+        return self.token
+
+
 class MutableSecretStore:
     def __init__(self, values: dict[str, str] | None = None) -> None:
         self.values = dict(values or {})
@@ -479,6 +489,39 @@ def test_confirm_route_runs_end_to_end_and_spends_state(tmp_path: Path) -> None:
     assert second.json()["status"] == "not_found"
 
 
+def test_confirm_route_passes_oauth_broker_to_invoke(tmp_path: Path) -> None:
+    app = create_app(data_dir=tmp_path, model=FakeModel(json.dumps({"answer": "confirmed"})))
+    _promote_echo(app, secrets=[], oauth_scopes=["scope-a"])
+    broker = FakeOAuthBroker()
+    app.state.oauth_broker = broker
+    app.dependency_overrides[require_session] = lambda: Principal(
+        device_id="dev", person_id="owner"
+    )
+    app.dependency_overrides[ask_routes._selector] = lambda: FixedSelector(
+        SelectionResult(
+            matched=True,
+            capability="Echo",
+            args={},
+            confidence=0.9,
+            missing_required=[],
+        )
+    )
+    app.dependency_overrides[ask_routes._fetch_sandbox] = lambda: FakeFetchSandbox(
+        FetchResult(output="raw output", exit_code=0, truncated=False)
+    )
+    app.dependency_overrides[ask_routes._quarantine_reader] = lambda: FakeModel(
+        json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})
+    )
+    client = TestClient(app)
+    invoke_id = client.post("/app/ask", json={"text": "echo"}).json()["invoke_id"]
+
+    response = client.post(f"/app/ask/invoke/{invoke_id}/confirm")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert broker.calls == [("default", "scope-a")]
+
+
 @pytest.mark.asyncio
 async def test_concurrent_confirm_runs_capability_at_most_once(tmp_path: Path) -> None:
     app = create_app(data_dir=tmp_path, model=FakeModel(json.dumps({"answer": "confirmed"})))
@@ -713,8 +756,9 @@ def _promote_echo(
     *,
     inputs: list[SkillInputParam] | None = None,
     secrets: list[str] | None = None,
+    oauth_scopes: list[str] | None = None,
 ) -> None:
-    asyncio.run(_promote_echo_async(app, inputs=inputs, secrets=secrets))
+    asyncio.run(_promote_echo_async(app, inputs=inputs, secrets=secrets, oauth_scopes=oauth_scopes))
 
 
 async def _promote_echo_async(
@@ -722,6 +766,7 @@ async def _promote_echo_async(
     *,
     inputs: list[SkillInputParam] | None = None,
     secrets: list[str] | None = None,
+    oauth_scopes: list[str] | None = None,
 ) -> None:
     staged = await app.state.capability_store.stage(
         SkillDraft(
@@ -732,6 +777,7 @@ async def _promote_echo_async(
             inputs=inputs or [],
             uses=[],
             secrets=["TOKEN"] if secrets is None else secrets,
+            oauth_scopes=oauth_scopes or [],
             egress_domains=["api.example.com"],
             tests="def test_skill() -> None:\n    assert True\n",
         )
