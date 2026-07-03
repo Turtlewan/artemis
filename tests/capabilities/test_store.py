@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from artemis.capabilities.skill_md import read_skill_md
-from artemis.capabilities.store import FileCapabilityStore
+from artemis.capabilities.skill_md import write_skill_md
+from artemis.capabilities.store import FileCapabilityStore, builtin_capabilities_root
 from artemis.types import SkillDraft
 
 
@@ -24,6 +25,25 @@ def _draft(
         secrets=["CALENDAR_TOKEN"] if secrets is None else secrets,
         oauth_scopes=oauth_scopes or ["calendar.read"],
         tests=None,
+    )
+
+
+def _seed_capability(dir_: Path, *, name: str, description: str = "d") -> None:
+    dir_.mkdir(parents=True)
+    write_skill_md(
+        dir_ / "SKILL.md",
+        name=name,
+        description=description,
+        version=1,
+        tags=[],
+        uses=[],
+        secrets=[],
+        inputs=[],
+        body="Use this skill.\n",
+    )
+    (dir_ / "sandbox_policy.json").write_text(
+        '{"egress_domains":[],"memory_mb":512,"cpu_pct":100,"pids_max":128,"timeout_s":60}',
+        encoding="utf-8",
     )
 
 
@@ -157,3 +177,39 @@ async def test_mark_auth_verified_noops_on_missing_already_verified_and_no_secre
     assert no_secret_meta["auth_status"] == "not-required"
     assert after_no_secret_meta == no_secret_meta
     assert after_no_secret_body == no_secret_body
+
+
+def test_get_falls_back_to_builtin(tmp_path: Path) -> None:
+    builtin = tmp_path / "builtin"
+    _seed_capability(builtin / "foo", name="foo")
+    store = FileCapabilityStore(tmp_path / "data", builtin_root=builtin)
+    got = store.get("foo")
+    assert got is not None and got.name == "foo"
+
+
+@pytest.mark.asyncio
+async def test_builtin_not_in_list_or_retrieve(tmp_path: Path) -> None:
+    builtin = tmp_path / "builtin"
+    _seed_capability(builtin / "foo", name="foo")
+    store = FileCapabilityStore(tmp_path / "data", builtin_root=builtin)
+    assert store.list() == []
+    assert await store.retrieve("foo") == []
+
+
+def test_library_wins_over_builtin_on_name_clash(tmp_path: Path) -> None:
+    builtin = tmp_path / "builtin"
+    _seed_capability(builtin / "foo", name="foo", description="builtin one")
+    store = FileCapabilityStore(tmp_path / "data", builtin_root=builtin)
+    _seed_capability(store._library / "foo", name="foo", description="library one")
+    got = store.get("foo")
+    assert got is not None and got.description == "library one"
+
+
+def test_no_builtin_root_is_fine(tmp_path: Path) -> None:
+    store = FileCapabilityStore(tmp_path / "data")
+    assert store.get("anything") is None
+
+
+def test_builtin_capabilities_root_points_at_repo() -> None:
+    root = builtin_capabilities_root()
+    assert root.name == "builtin" and root.parent.name == "capabilities"

@@ -28,9 +28,10 @@ class FileCapabilityStore:
     `sandbox_policy.json` is the C1 sandbox artifact and the on-disk home for egress policy.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, builtin_root: Path | None = None) -> None:
         self._staging = root / "staging"
         self._library = root / "library"
+        self._builtin = builtin_root
         self._staging.mkdir(parents=True, exist_ok=True)
         self._library.mkdir(parents=True, exist_ok=True)
 
@@ -157,9 +158,13 @@ class FileCapabilityStore:
 
     def get(self, name: str) -> Skill | None:
         skill_path = self._library / name / "SKILL.md"
-        if not skill_path.exists():
-            return None
-        return self._read_skill(skill_path)
+        if skill_path.exists():
+            return self._read_skill(skill_path)
+        if self._builtin is not None:
+            builtin_path = self._builtin / name / "SKILL.md"
+            if builtin_path.exists():
+                return self._read_skill(builtin_path)
+        return None
 
     def mark_auth_verified(self, name: str) -> None:
         skill_path = self._library / name / "SKILL.md"
@@ -235,6 +240,15 @@ class FileCapabilityStore:
 
 def slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def builtin_capabilities_root() -> Path:
+    """Repo-shipped (tracked, read-only) builtin capabilities, independent of the data dir.
+
+    Resolved relative to this source file so it points at the checked-out repo's
+    capabilities/builtin/ on any machine (dev box or Mini) where the runtime data dir differs.
+    """
+    return Path(__file__).resolve().parents[3] / "capabilities" / "builtin"
 
 
 def _tokens(s: str) -> set[str]:

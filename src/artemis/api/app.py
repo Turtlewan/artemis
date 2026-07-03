@@ -22,7 +22,7 @@ from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.sandbox import SandboxRunner
 from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.select import build_capability_selector
-from artemis.capabilities.store import FileCapabilityStore
+from artemis.capabilities.store import FileCapabilityStore, builtin_capabilities_root
 from artemis.data.store import DataStore
 from artemis.model.compose import build_model_router
 from artemis.oauth.broker import OAuthBroker
@@ -68,7 +68,9 @@ def create_app(
     app.state.oauth_broker = OAuthBroker(secrets_store=app.state.secrets)
     app.state.oauth_connect_task = None
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
-    capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
+    capability_store = FileCapabilityStore(
+        resolved_data_dir / "capabilities", builtin_root=builtin_capabilities_root()
+    )
     app.state.capability_store = capability_store
     app.state.bless = BlessStore(resolved_data_dir / "bless.json")
     app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
