@@ -281,6 +281,26 @@ describe("AskPopup", () => {
     expect(container.textContent).toContain("Missing secrets: GMAIL_TOKEN");
   });
 
+  it("renders declared Google OAuth scopes on the plan card", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.capabilityPropose.mockResolvedValueOnce(
+      planCard({
+        egress_domains: ["www.googleapis.com"],
+        oauth_scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+      }),
+    );
+
+    await act(async () => {
+      await askStore.startBuild("build me a calendar capability");
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    expect(container.textContent).toContain(
+      "Google access: https://www.googleapis.com/auth/calendar.readonly",
+    );
+  });
+
   it("submits ask text and renders an invoke confirm card without auto-running", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();

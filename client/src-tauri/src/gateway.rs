@@ -85,6 +85,15 @@ pub(crate) struct PlanCard {
     description: String,
     summary: String,
     secrets: Vec<String>,
+    // Without these fields serde silently DROPS them between the brain and the webview,
+    // leaving the plan-gate render undefined (informed-consent gap; missing_secrets also
+    // feeds the pending-credential deep-link).
+    #[serde(default)]
+    egress_domains: Vec<String>,
+    #[serde(default)]
+    oauth_scopes: Vec<String>,
+    #[serde(default)]
+    missing_secrets: Vec<String>,
     blocked: bool,
     block_reason: Option<String>,
 }
@@ -1518,6 +1527,9 @@ mod tests {
                 "description": "Plan things",
                 "summary": "Adds planning",
                 "secrets": ["TOKEN"],
+                "egress_domains": ["www.googleapis.com"],
+                "oauth_scopes": ["https://www.googleapis.com/auth/calendar.readonly"],
+                "missing_secrets": ["TOKEN"],
                 "blocked": false,
                 "block_reason": null
             })))
@@ -1538,6 +1550,9 @@ mod tests {
                 "description": "Plan things",
                 "summary": "Adds planning",
                 "secrets": ["TOKEN"],
+                "egress_domains": ["www.googleapis.com"],
+                "oauth_scopes": ["https://www.googleapis.com/auth/calendar.readonly"],
+                "missing_secrets": ["TOKEN"],
                 "blocked": false,
                 "block_reason": null
             })

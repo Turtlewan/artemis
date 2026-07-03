@@ -193,6 +193,8 @@ export interface BuildPlanCard {
   summary: string;
   secrets: string[];
   egress_domains: string[];
+  /** Google OAuth scope URLs the capability declares (shown at the plan gate for consent). */
+  oauth_scopes?: string[];
   missing_secrets: string[];
   blocked: boolean;
   block_reason: string | null;

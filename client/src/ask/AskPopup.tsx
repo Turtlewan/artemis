@@ -447,6 +447,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                     const plan = {
                       ...message.plan,
                       egress_domains: message.plan.egress_domains ?? [],
+                      oauth_scopes: message.plan.oauth_scopes ?? [],
                       secrets: message.plan.secrets ?? [],
                       missing_secrets: message.plan.missing_secrets ?? [],
                     };
@@ -467,6 +468,11 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                           ) : (
                             <div className="ask-card__meta">No network access</div>
                           )}
+                          {plan.oauth_scopes.length > 0 ? (
+                            <div className="ask-card__meta">
+                              Google access: {plan.oauth_scopes.join(", ")}
+                            </div>
+                          ) : null}
                           {plan.secrets.length > 0 ? (
                             <div className="ask-card__meta">
                               Secrets:{" "}
