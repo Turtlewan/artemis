@@ -136,6 +136,17 @@ def test_author_schema_lets_the_model_declare_oauth_scopes() -> None:
     assert "www.googleapis.com" in AUTHOR_SYSTEM
 
 
+def test_author_prompt_teaches_the_argv_json_input_convention() -> None:
+    """build_invoke_argv packs all inputs into one JSON object in argv[1]; if the prompt
+    doesn't say so, the forge authors positional arg reading and every input-taking
+    capability breaks at invoke (the today-calendar 404, session 9 live smoke)."""
+
+    from artemis.capabilities.forge import AUTHOR_SYSTEM
+
+    assert "sys.argv[1]" in AUTHOR_SYSTEM
+    assert "json.loads" in AUTHOR_SYSTEM
+
+
 def test_egress_validation_accepts_and_normalizes_valid_domains() -> None:
     assert _draft(egress_domains=["API.Example.COM.", "sub.good.io"]).egress_domains == [
         "api.example.com",
