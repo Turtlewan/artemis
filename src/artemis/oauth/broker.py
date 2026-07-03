@@ -70,6 +70,14 @@ class ConnectResult:
     granted_scopes: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AccountStatus:
+    """Safe account status. Token material is intentionally omitted."""
+
+    connected: bool
+    granted_scopes: tuple[str, ...]
+
+
 @dataclass
 class _PendingConnect:
     state: str
@@ -212,6 +220,18 @@ class OAuthBroker:
             listener.close()
             self._pending = None
             raise
+
+    def account_status(self, account: str = DEFAULT_ACCOUNT) -> AccountStatus:
+        """Return stored Google OAuth account status without touching the network."""
+
+        account = _validate_account(account)
+        connected = self._store.get(_refresh_key(account)) is not None
+        raw_scopes = self._store.get(_scopes_key(account))
+        if raw_scopes is None:
+            granted_scopes: tuple[str, ...] = ()
+        else:
+            granted_scopes = _parse_granted_scopes(raw_scopes)
+        return AccountStatus(connected=connected, granted_scopes=granted_scopes)
 
     async def listen_for_callback(self) -> ConnectResult:
         """Serve the loopback listener until a valid callback completes or times out."""
@@ -428,13 +448,7 @@ class OAuthBroker:
         raw = self._store.get(_scopes_key(account))
         if raw is None:
             raise OAuthUnavailable("Google OAuth granted scopes are missing")
-        try:
-            loaded: Any = json.loads(raw)
-        except json.JSONDecodeError:
-            raise OAuthUnavailable("Google OAuth granted scopes are invalid") from None
-        if not isinstance(loaded, list) or not all(isinstance(scope, str) for scope in loaded):
-            raise OAuthUnavailable("Google OAuth granted scopes are invalid")
-        return _scope_tuple(loaded)
+        return _parse_granted_scopes(raw)
 
     @staticmethod
     def _default_socket() -> socket.socket:
@@ -476,6 +490,16 @@ def _required_int(data: dict[str, object], key: str) -> int:
 
 def _scope_tuple(scopes: Sequence[str]) -> tuple[str, ...]:
     return tuple(sorted(set(scopes)))
+
+
+def _parse_granted_scopes(raw: str) -> tuple[str, ...]:
+    try:
+        loaded: Any = json.loads(raw)
+    except json.JSONDecodeError:
+        raise OAuthUnavailable("Google OAuth granted scopes are invalid") from None
+    if not isinstance(loaded, list) or not all(isinstance(scope, str) for scope in loaded):
+        raise OAuthUnavailable("Google OAuth granted scopes are invalid")
+    return _scope_tuple(loaded)
 
 
 def _refresh_key(account: str) -> str:

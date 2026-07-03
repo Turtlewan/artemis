@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- OAuth connect/status/disconnect API routes for Google account linking, wired to the broker with
+  session-gated responses that never expose token values. (ADR-044)
 - Google OAuth broker core for BYO-client loopback PKCE connect, keychain refresh-token storage,
   in-memory access-token minting, refresh rotation, and disconnect. (ADR-044)
 - Added — auth_status set at promote (unverified for credentialed capabilities) + flip to verified on first successful credentialed invoke.

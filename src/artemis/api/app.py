@@ -10,7 +10,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
-from artemis.api import ask_routes, bless_routes, capability_routes, domain_routes, secret_routes
+from artemis.api import ask_routes, bless_routes, capability_routes, domain_routes, oauth_routes
+from artemis.api import secret_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
@@ -23,6 +24,7 @@ from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.select import build_capability_selector
 from artemis.capabilities.store import FileCapabilityStore
 from artemis.model.compose import build_model_router
+from artemis.oauth.broker import OAuthBroker
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
 from artemis.secrets_store import KeyringSecretStore
@@ -60,6 +62,11 @@ def create_app(
         if secrets is not None
         else KeyringSecretStore(resolved_data_dir / "secrets_index.json")
     )
+    app.state.oauth_broker = OAuthBroker(
+        secrets_store=app.state.secrets,
+        open_browser=lambda _url: True,
+    )
+    app.state.oauth_connect_task = None
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
     capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
     app.state.capability_store = capability_store
@@ -79,6 +86,7 @@ def create_app(
     app.include_router(bless_routes.router)
     app.include_router(capability_routes.router)
     app.include_router(domain_routes.router)
+    app.include_router(oauth_routes.router)
     app.include_router(secret_routes.router)
     return app
 

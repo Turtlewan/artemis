@@ -101,6 +101,23 @@ def test_generate_pkce_and_consent_url_are_rfc7636_s256() -> None:
     assert generate_state() != generate_state()
 
 
+def test_account_status_reads_store_without_returning_tokens() -> None:
+    store = _store()
+    store.set("google_refresh:default", "refresh-token-secret")
+    store.set("google_scopes:default", json.dumps(["scope-b", "scope-a", "scope-a"]))
+    broker = OAuthBroker(secrets_store=store, open_browser=lambda _url: True)
+
+    connected = broker.account_status()
+    unknown = broker.account_status("other")
+
+    assert connected.connected is True
+    assert connected.granted_scopes == ("scope-a", "scope-b")
+    assert unknown.connected is False
+    assert unknown.granted_scopes == ()
+    assert "refresh-token-secret" not in repr(connected)
+    assert "refresh-token-secret" not in repr(unknown)
+
+
 @pytest.mark.asyncio
 async def test_complete_connect_stores_refresh_and_scopes_without_returning_tokens() -> None:
     requests: list[httpx.Request] = []
