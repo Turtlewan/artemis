@@ -1,15 +1,18 @@
 ---
 spec: js-rendering-fetcher
-status: blocked
+status: ready
 token_profile: lean
 autonomy_level: L5
 coder_effort: high
 ---
 
-<!-- BLOCKED 2026-07-03: Codex built all 4 tasks (unit-green), but the required build-time live
-     smoke fails — chrome cannot run in the PRODUCTION isolate due to two substrate defects outside
-     this spec's scope (sandbox_wsl2.py + fetch_sandbox.py). Both fixes diagnosed + confirmed. See
-     docs/progress/js-rendering-fetcher.md. Awaiting owner fork decision (fix isolate now vs new spec). -->
+<!-- UNBLOCKED 2026-07-03: the two isolate-substrate defects are now fixed by the prerequisite spec
+     `chrome-capable-fetch-sandbox` (docs/changes/chrome-capable-fetch-sandbox.md, ADR-041). Tasks 1-4
+     below are already built (unit-green, mypy/ruff clean) and their code is uncommitted-but-correct
+     in the working tree — see docs/progress/js-rendering-fetcher.md. Finishing this spec now requires
+     only: (a) build chrome-capable-fetch-sandbox first, (b) apply the one-line Task 2 addendum below
+     (pass caps_profile="render"), (c) re-run the build-time live smoke, (d) commit. Do NOT re-do
+     Tasks 1/3/4 — they are already correct as built. -->
 
 
 # Spec: JS-rendering fallback fetcher
@@ -28,7 +31,8 @@ coder_effort: high
 Simplicity check: considered replacing `TrafilaturaFetcher` outright — rejected (owner decision 2026-07-03): ~5-8× slower on every query and breaks the web tool on any non-provisioned host. Fallback-on-empty keeps the 0.25s fast path and pays the ~2s isolate cost only for pages trafilatura can't read.
 
 ## Prerequisites
-- `js-fetch-output-limit` (adds `FetchSandbox.run(output_limit=...)`, which `JsFetcher` requires) — must be built first.
+- `js-fetch-output-limit` (adds `FetchSandbox.run(output_limit=...)`, which `JsFetcher` requires) — built.
+- `chrome-capable-fetch-sandbox` (adds `FetchSandbox.run(caps_profile=...)`, which Task 2's addendum below requires; fixes the WSL arg-quoting defect the live smoke needs) — must be built first. ADR-041.
 - Environment setup for the LIVE smoke only (not for unit tests / build): WSL2 provisioned per docs/technical/setup/js-fetcher-provisioning.md. The build and unit tests mock the sandbox and need no WSL2.
 
 ## Files to Change
@@ -48,12 +52,14 @@ Simplicity check: considered replacing `TrafilaturaFetcher` outright — rejecte
 <!-- TDD: each code task ships WITH its tests (test file named in the same task); coding mode REDs the
      task's acceptance-criteria bullets before writing the implementation. -->
 - [ ] Task 1: Create `render_script.py` + its unit test. Port `poc/wsl2_browser_userns/capability/render.py`: keep the `_TextExtractor(HTMLParser)` + `extract_text(html)` pure function and the chrome flag set — but DO NOT pass `--no-sandbox` or `--disable-setuid-sandbox` (userns-spike PASS 2026-07-03: omitting them engages Chrome's seccomp-bpf renderer sandbox nested in the isolate — `Seccomp: 2` — for defense-in-depth; keeping them would DISABLE it. See `poc/wsl2_browser_userns/README.md`). Flag set: `--headless --disable-gpu --disable-dev-shm-usage --disable-quic --user-data-dir=<tmp> --disable-crash-reporter … --dump-dom`, with `HOME`/`XDG_RUNTIME_DIR` set to the profile dir. Change the default binary to `/opt/chromium_headless_shell/chrome-headless-shell`. `main()`: `argv[1]=url`, optional `argv[2]=binary`; print extracted text to stdout, exit 0; on chrome error/timeout write a short diagnostic to stderr and exit non-zero. Stdlib only — NO `artemis` imports. Must pass `mypy --strict` and ruff. Test `extract_text` in `test_render_script.py` (tags stripped; `script`/`style`/`noscript`/`template` skipped; whitespace collapsed). — files: src/artemis/reachout/render_script.py, tests/reachout/test_render_script.py — done when: the `extract_text` AC bullets pass and the module type-checks.
-- [ ] Task 2: Create `JsFetcher` in `js_fetch.py` + its unit tests. Implements the `Fetcher` protocol (`fetch(url, *, max_chars=20000) -> FetchedContent`, `aclose()`). Behaviour: derive `host = urllib.parse.urlsplit(url).hostname` — the EXACT hostname (e.g. `en.wikipedia.org`), NOT `registrable_domain(url)` (the isolate's nginx `$ssl_preread_server_name` map is exact-match, so the eTLD+1 would silently default-deny Chrome's real SNI — see Specialist Context ▸ Security BLOCK 1); if `host` is None/empty return empty `FetchedContent(url, "", "")`; create a `tempfile.TemporaryDirectory`, `shutil.copyfile` `render_script.py` into it as `render.py`; call `self._sandbox.run(Path(tmp), entrypoint="render.py", argv=[url, self._chromium_bin], egress_domains=[host], timeout_s=self._timeout_s, output_limit=max_chars)`; on ANY exception (missing wsl.exe, driveless path, timeout) log `js_fetch_degraded reason=%s host=%s` (type name + host ONLY — NEVER `result.output` or page text) and return empty text; if `result.exit_code != 0` log the same safe fields and return empty text; else return `FetchedContent(url, host, result.output[:max_chars].strip())`. `__init__(self, *, sandbox: FetchSandbox | None = None, chromium_bin: str = "/opt/chromium_headless_shell/chrome-headless-shell", timeout_s: float = 45.0)`. Tests in `test_js_fetch.py`: stub-sandbox truncation, `argv`/`egress_domains`(==exact host)/`output_limit` forwarding, degrade-on-nonzero-exit, degrade-on-`FileNotFoundError`, degrade-on-`TimeoutError`, bad-URL→empty, `aclose()` no-op; plus the gated live happy-path smoke AND a gated chrome-path egress negative test (gate exactly as § below). — files: src/artemis/reachout/js_fetch.py, tests/reachout/test_js_fetch.py — done when: the `JsFetcher` AC bullets pass and the gated smokes report `skipped` without the env gate.
+- [ ] Task 2: Create `JsFetcher` in `js_fetch.py` + its unit tests. Implements the `Fetcher` protocol (`fetch(url, *, max_chars=20000) -> FetchedContent`, `aclose()`). Behaviour: derive `host = urllib.parse.urlsplit(url).hostname` — the EXACT hostname (e.g. `en.wikipedia.org`), NOT `registrable_domain(url)` (the isolate's nginx `$ssl_preread_server_name` map is exact-match, so the eTLD+1 would silently default-deny Chrome's real SNI — see Specialist Context ▸ Security BLOCK 1); if `host` is None/empty return empty `FetchedContent(url, "", "")`; create a `tempfile.TemporaryDirectory`, `shutil.copyfile` `render_script.py` into it as `render.py`; call `self._sandbox.run(Path(tmp), entrypoint="render.py", argv=[url, self._chromium_bin], egress_domains=[host], timeout_s=self._timeout_s, output_limit=max_chars, caps_profile="render")` (`caps_profile="render"` added 2026-07-03 — requires the `chrome-capable-fetch-sandbox` prerequisite; without it Chrome SIGTRAPs on the default 512MB caps profile); on ANY exception (missing wsl.exe, driveless path, timeout) log `js_fetch_degraded reason=%s host=%s` (type name + host ONLY — NEVER `result.output` or page text) and return empty text; if `result.exit_code != 0` log the same safe fields and return empty text; else return `FetchedContent(url, host, result.output[:max_chars].strip())`. `__init__(self, *, sandbox: FetchSandbox | None = None, chromium_bin: str = "/opt/chromium_headless_shell/chrome-headless-shell", timeout_s: float = 45.0)`. Tests in `test_js_fetch.py`: stub-sandbox truncation, `argv`/`egress_domains`(==exact host)/`output_limit` forwarding, degrade-on-nonzero-exit, degrade-on-`FileNotFoundError`, degrade-on-`TimeoutError`, bad-URL→empty, `aclose()` no-op; plus the gated live happy-path smoke AND a gated chrome-path egress negative test (gate exactly as § below). — files: src/artemis/reachout/js_fetch.py, tests/reachout/test_js_fetch.py — done when: the `JsFetcher` AC bullets pass and the gated smokes report `skipped` without the env gate.
 - [ ] Task 3: Add `FallbackFetcher` to `web_tool.py`, wire it, + tests. `FallbackFetcher(primary: Fetcher, secondary: Fetcher)`: `fetch` calls `primary.fetch(url, max_chars=max_chars)` (let `EgressDenied` propagate — do NOT catch it); if `content.text.strip()` return it, else return `secondary.fetch(...)`; `aclose` closes both (duck-typed, mirror `WebTool.aclose`). In `build_web_tool`, add `enable_js_fallback: bool = True`; build `fetcher = FallbackFetcher(TrafilaturaFetcher(egress), JsFetcher()) if enable_js_fallback else TrafilaturaFetcher(egress)` and pass it to `WebTool`. Import `JsFetcher`. Tests in `test_web_tool.py`: primary-empty→secondary (awaited once), primary-non-empty→secondary never awaited, primary-`EgressDenied`→propagates, `aclose` closes both, and the two `build_web_tool` wiring assertions. — files: src/artemis/reachout/web_tool.py, tests/reachout/test_web_tool.py — done when: the `FallbackFetcher`/`build_web_tool` AC bullets pass.
 - [ ] Task 4: Write the provisioning runbook (ADR-040 is authored at planning time — this task only cross-references it). `js-fetcher-provisioning.md`: the exact steps from `poc/wsl2_browser/README.md` (playwright download of chromium → copy to `/opt/chromium_headless_shell` → `chmod -R a+rX`), the reserved binary path, the "chrome-headless-shell not full chrome" warning, AND a PINNED build + checksum: record the exact build (POC used Chrome-for-Testing 149.0.7827.55 / chrome-headless-shell build 1228) and add a `sha256sum` verify step against the copied binary so re-provisioning cannot silently pull a different build (FLAG 3 / supply-chain). — files: docs/technical/setup/js-fetcher-provisioning.md — done when: the runbook exists with the pin + checksum-verify step and links ADR-040.
+- [ ] Task 5 (added 2026-07-03, finishing step — Tasks 1-4 are already built, do not redo them): Apply the one-line `caps_profile="render"` addendum to Task 2's `self._sandbox.run(...)` call in the already-built `src/artemis/reachout/js_fetch.py` (requires `chrome-capable-fetch-sandbox` built first, above). Then re-run the build-time live smoke: `ARTEMIS_JS_SMOKE=1 uv run pytest tests/reachout/test_js_fetch.py -k live -o addopts=''` on this provisioned WSL2 host. Then run full host-verify (`uv run mypy`, `uv run ruff check`, `uv run pytest -q`). — files: src/artemis/reachout/js_fetch.py — done when: the live smoke (both happy-path and egress-negative) passes, and full host-verify is clean.
 
 ## Wave plan
-Wave 1: [Task 1, Task 4] | Wave 2: [Task 2] | Wave 3: [Task 3]
+Wave 1: [Task 1, Task 4] | Wave 2: [Task 2] | Wave 3: [Task 3] | Wave 4: [Task 5]
+<!-- Task 5 added 2026-07-03: depends on Task 2 (edits the same file) and on the chrome-capable-fetch-sandbox prerequisite. -->
 
 ## Live-smoke gate (exact)
 Mirror `tests/capabilities/test_fetch_sandbox.py` precisely (do NOT invert the polarity):
@@ -119,13 +125,13 @@ Standing invariants: egress = the single exact first-party hostname (fail-closed
 |----------|------|--------|
 | Inline | src/artemis/reachout/js_fetch.py, render_script.py | module + `JsFetcher.fetch` docstrings (quarantine + degrade contract) |
 | Setup | docs/technical/setup/js-fetcher-provisioning.md | create (provisioning runbook) |
-| ADR | docs/technical/adr/ADR-040-js-rendering-fetcher.md | already written at planning (2026-07-03) — build only cross-references it |
+| ADR | docs/technical/adr/ADR-040-js-rendering-fetcher.md, docs/technical/adr/ADR-041-fetch-sandbox-render-caps.md | already written at planning (2026-07-03) — build only cross-references them |
 | Changelog | CHANGELOG.md | add entry under Unreleased (JS-render fallback fetcher) |
 
 ## Acceptance Criteria
 - [ ] `extract_text("<div>A</div><script>bad()</script><style>x</style><p>B</p>")` → verify returns `"A B"` (tags stripped, script/style skipped, whitespace collapsed).
 - [ ] `extract_text("<p>keep</p><noscript>no1</noscript><template>tpl</template><p>me</p>")` → verify returns `"keep me"` (noscript + template content excluded).
-- [ ] `JsFetcher(sandbox=stub).fetch("https://en.wikipedia.org/wiki/X", max_chars=20000)` with the stub returning `output="Z"*50000, exit_code=0` → verify returned `text` is 20000 chars, and the stub was called with `entrypoint="render.py"`, `argv==["https://en.wikipedia.org/wiki/X", "/opt/chromium_headless_shell/chrome-headless-shell"]`, `egress_domains==["en.wikipedia.org"]` (EXACT hostname, not `wikipedia.org`), `output_limit==20000`.
+- [ ] `JsFetcher(sandbox=stub).fetch("https://en.wikipedia.org/wiki/X", max_chars=20000)` with the stub returning `output="Z"*50000, exit_code=0` → verify returned `text` is 20000 chars, and the stub was called with `entrypoint="render.py"`, `argv==["https://en.wikipedia.org/wiki/X", "/opt/chromium_headless_shell/chrome-headless-shell"]`, `egress_domains==["en.wikipedia.org"]` (EXACT hostname, not `wikipedia.org`), `output_limit==20000`, `caps_profile=="render"` (added 2026-07-03, Task 5).
 - [ ] Stub sandbox returns `exit_code=1` → verify `fetch` returns empty text (degrade), no exception.
 - [ ] Stub sandbox raises `FileNotFoundError` (no wsl.exe) → verify `fetch` returns empty text (degrade), no exception.
 - [ ] Stub sandbox raises `TimeoutError` → verify `fetch` returns empty text (degrade), no exception.
@@ -141,4 +147,5 @@ Standing invariants: egress = the single exact first-party hostname (fail-closed
 - [ ] `uv run mypy` clean; `uv run ruff check` clean; `uv run pytest -q` green with the live smokes reported `skipped` in a normal (un-gated) run.
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Tasks 1–4 — built by Codex (prior session, uncommitted-correct): `render_script.py`, `JsFetcher`, `FallbackFetcher` wiring, provisioning runbook. Unit-green, mypy/ruff clean.
+- [x] Task 5 — finishing step. DONE (Opus, this session, unblocked by `chrome-capable-fetch-sandbox`). Added `caps_profile="render"` to `JsFetcher`'s `self._sandbox.run(...)` call; captured `caps_profile` in the test stub + assert `== "render"`. **BUILD-TIME live smoke PASSED** on the provisioned WSL2 host (`ARTEMIS_JS_SMOKE=1`): `test_live_js_fetch_reads_blocked_page` (real chrome render of a bot-blocked Wikipedia page) + `test_live_js_fetch_egress_negative` (SNI mismatch → blocked) both green. Full host-verify clean: 419 passed / 6 skipped, mypy (136 files) + ruff clean. **The original build-time block is resolved end-to-end.**
