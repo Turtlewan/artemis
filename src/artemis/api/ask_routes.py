@@ -14,6 +14,8 @@ from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.invoke import InvokeState, build_invoke_proposal, confirm_invoke
 from artemis.capabilities.select import CapabilitySelector
 from artemis.capabilities.store import FileCapabilityStore
+from artemis.data.read import ReadService
+from artemis.data.store import DataStore
 from artemis.intent import IntentRouter
 from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.client import ModelClient
@@ -107,6 +109,11 @@ def _quarantine_reader(request: Request) -> ModelPort:
     return ModelClient(ClaudeCodeProvider(), model_default="haiku")
 
 
+def _read_service(request: Request) -> ReadService:
+    store: DataStore = request.app.state.data_store
+    return ReadService(store, phraser=ModelClient(ClaudeCodeProvider(), model_default="haiku"))
+
+
 def _invokes(request: Request) -> dict[str, InvokeState]:
     invokes: dict[str, InvokeState] = request.app.state.invokes
     return invokes
@@ -158,6 +165,7 @@ async def _routed_answer(
 
 async def _invoke_or_routed_answer(
     *,
+    read_service: ReadService,
     selector: CapabilitySelector,
     capability_store: FileCapabilityStore,
     invokes: dict[str, InvokeState],
@@ -166,6 +174,13 @@ async def _invoke_or_routed_answer(
     secrets: SecretStorePort,
     text: str,
 ) -> AskResponse:
+    try:
+        local = await read_service.read(text)
+    except Exception:
+        local = None
+    if local is not None:
+        return AskResponse(text=local.answer, path="local_read", tool_used=None, escalated=False)
+
     selection = await selector.select(text)
     if selection.matched and selection.capability and not selection.missing_required:
         skill = capability_store.get(selection.capability)
@@ -208,8 +223,10 @@ async def ask(
     capability_store: FileCapabilityStore = Depends(_capability_store),
     invokes: dict[str, InvokeState] = Depends(_invokes),
     secrets: SecretStorePort = Depends(_secrets),
+    read_service: ReadService = Depends(_read_service),
 ) -> AskResponse:
     return await _invoke_or_routed_answer(
+        read_service=read_service,
         selector=selector,
         capability_store=capability_store,
         invokes=invokes,
@@ -230,9 +247,11 @@ async def ask_stream(
     capability_store: FileCapabilityStore = Depends(_capability_store),
     invokes: dict[str, InvokeState] = Depends(_invokes),
     secrets: SecretStorePort = Depends(_secrets),
+    read_service: ReadService = Depends(_read_service),
 ) -> StreamingResponse:
     async def event_stream() -> AsyncIterator[str]:
         response = await _invoke_or_routed_answer(
+            read_service=read_service,
             selector=selector,
             capability_store=capability_store,
             invokes=invokes,

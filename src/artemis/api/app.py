@@ -23,6 +23,7 @@ from artemis.capabilities.sandbox import SandboxRunner
 from artemis.capabilities.sandbox_wsl2 import default_sandbox
 from artemis.capabilities.select import build_capability_selector
 from artemis.capabilities.store import FileCapabilityStore
+from artemis.data.store import DataStore
 from artemis.model.compose import build_model_router
 from artemis.oauth.broker import OAuthBroker
 from artemis.ports.model import ModelPort
@@ -75,6 +76,7 @@ def create_app(
     app.state.capability_selector = build_capability_selector(capability_store)
     app.state.fetch_sandbox = FetchSandbox()
     app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
+    app.state.data_store = DataStore(str(resolved_data_dir / "spine.db"))
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
