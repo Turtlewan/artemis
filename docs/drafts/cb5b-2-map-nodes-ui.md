@@ -14,13 +14,14 @@ coder_effort: medium
 ## Assumptions
 - Placement reuses the existing `LayoutStore`/`/app/layout` (LWW) — a capability node is a `CardPlacement` keyed by `id = "cap:<name>"`; no brain change for placement → impact: Stop
 - The full-page overlay reuses the existing `card/DetailOverlay` + `useCardOverlay` pattern → impact: Caution
-- `GET /app/capabilities` returns `goal`, `built_at`, `uses`, `secrets`, egress, `auth_status` (from cb5b-1 + verify-auth); a `pending_count` field is 0/absent until Phase 2 → impact: Stop
+- `GET /app/capabilities` returns `goal`, `built_at`, `uses`, `secrets`, egress, `auth_status` (from `capability-metadata` + verify-auth); a `pending_count` field is 0/absent until Phase 2 → impact: Stop
 - The client stack is Tauri + TS (apex-tauri); session token stays in Rust (gateway command pattern) → impact: Stop
 
 Simplicity check: node badge omitted when count is 0 (Phase 1) — no empty "0" clutter.
 
 ## Prerequisites
-- `cb5b-1-capability-metadata` (the DTO must carry `goal`/`built_at`). `verify-auth-unverified-mark` optional (for `auth_status` in the overlay; degrade gracefully if absent).
+- **`capability-metadata`** (the DTO must carry `goal`/`built_at`/`auth_status`/`oauth_scopes` — supersedes the former `cb5b-1-capability-metadata`, folded into the one consolidated metadata spec 2026-07-03). `verify-auth-unverified-mark` optional (populates `auth_status`; overlay degrades gracefully if absent).
+- **Forge goal-population (1-line, do here or as a small forge task):** `capability-metadata` defines `SkillDraft.goal`/`Skill.goal` (default `""`) but does NOT populate it. The forge must set the staged draft's `goal` from `BuildProposal.goal` when it stages (so the node card shows the owner's original ask). Add that wiring as part of this spec (or a tiny forge follow-up) — without it, `goal` renders empty.
 
 ## Files to Change
 | File | Operation | Notes |

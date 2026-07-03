@@ -22,25 +22,22 @@ Simplicity check: reuse the existing `secrets=` injection channel rather than a 
 
 ## Prerequisites
 - `oauth-1-broker-core` (broker) — required.
-- **HARD OVERLAP with `verify-auth-unverified-mark` (docs/changes/):** BOTH edit `src/artemis/capabilities/invoke.py`, `src/artemis/types.py`, `src/artemis/capabilities/skill_md.py`, `src/artemis/capabilities/store.py`. These are NOT file-disjoint — build `verify-auth-unverified-mark` FIRST, then this spec rebases onto it. Do not build them concurrently. (This spec ADDS an `oauth_scopes` field + a resolution branch; verify-auth adds an `auth_status` field — additive and compatible, but same files.)
+- **`capability-metadata` (build FIRST)** — defines the `oauth_scopes` field on `Skill` + `SkillDraft`, its SKILL.md frontmatter round-trip, and the store stage/promote/read plumbing. This spec no longer defines that field; it only ADDS the invoke-time resolution logic (consolidation, 2026-07-03).
+- **`verify-auth-unverified-mark` (build BEFORE this):** both specs edit `src/artemis/capabilities/invoke.py` (verify-auth adds the `mark_auth_verified` write-back call; this adds the OAuth-token mint/inject branch). Additive + compatible, but the SAME file — sequence after verify-auth and rebase onto it; do not build concurrently.
 
 ## Files to Change
 | File | Operation | Notes |
 |------|-----------|-------|
-| src/artemis/types.py | modify | add `oauth_scopes: list[str]` to `Skill` + `SkillDraft` (Google scope URLs); default empty |
-| src/artemis/capabilities/skill_md.py | modify | persist/read `oauth_scopes` in SKILL.md frontmatter |
-| src/artemis/capabilities/store.py | modify | round-trip `oauth_scopes` on stage/promote/read |
 | src/artemis/capabilities/invoke.py | modify | when `skill.oauth_scopes` non-empty: mint token(s) via the broker, merge into the injected `secrets` dict; missing/revoked → `InvokeConfirmResult(status="reconnect_google")` (fail closed, no crash) |
 | tests/capabilities/test_invoke.py | modify | oauth-scope capability → token injected; broker fail-closed → reconnect status |
-| tests/... | modify | types/skill_md/store round-trip tests for `oauth_scopes` |
+<!-- types.py / skill_md.py / store.py are NO LONGER touched here — the oauth_scopes field lives in capability-metadata. -->
 
 ## Tasks
-- [ ] Task 1: Add `oauth_scopes: list[str]` (default `[]`) to `Skill` + `SkillDraft` in `types.py`, and round-trip it through `skill_md.py` (frontmatter) + `store.py` (stage/promote/read). — files: src/artemis/types.py, src/artemis/capabilities/skill_md.py, src/artemis/capabilities/store.py, + their tests — done when: a capability with `oauth_scopes` persists and reads back; capabilities without it read as `[]` (zero migration).
-- [ ] Task 2: Extend `confirm_invoke` (and the `InvokeConfirmResult` status enum) so that when `skill.oauth_scopes` is non-empty, the broker mints a fresh access token per scope and it is merged into the `resolved` secrets dict (env name e.g. `GOOGLE_ACCESS_TOKEN`) passed to `sandbox.run(secrets=...)`. A missing/revoked refresh token (broker fail-closed) → return `InvokeConfirmResult(status="reconnect_google")` (new status), never crash, never leak the token. Static-secret resolution is unchanged and composes with this. The broker is injected into `confirm_invoke` (add a param / read from app.state at the call site). — files: src/artemis/capabilities/invoke.py, tests/capabilities/test_invoke.py — done when: an oauth-scope capability gets the minted token injected (asserted via a stub broker + stub sandbox capturing `secrets`); a fail-closed broker yields `reconnect_google` and does not run the sandbox.
+- [ ] Task 1: Extend `confirm_invoke` (and the `InvokeConfirmResult` status enum) so that when `skill.oauth_scopes` is non-empty (the field exists from `capability-metadata`), the broker mints a fresh access token per scope and it is merged into the `resolved` secrets dict (env name e.g. `GOOGLE_ACCESS_TOKEN`) passed to `sandbox.run(secrets=...)`. A missing/revoked refresh token (broker fail-closed) → return `InvokeConfirmResult(status="reconnect_google")` (new status), never crash, never leak the token. Static-secret resolution is unchanged and composes with this. The broker is injected into `confirm_invoke` (add a param / read from app.state at the call site). — files: src/artemis/capabilities/invoke.py, tests/capabilities/test_invoke.py — done when: an oauth-scope capability gets the minted token injected (asserted via a stub broker + stub sandbox capturing `secrets`); a fail-closed broker yields `reconnect_google` and does not run the sandbox.
 
 ## Wave plan
-Wave 1: [Task 1] | Wave 2: [Task 2]
-<!-- Sequential: Task 2 depends on the oauth_scopes field from Task 1. Whole spec sequences AFTER verify-auth-unverified-mark (shared files). -->
+Wave 1: [Task 1]
+<!-- Single task. Whole spec sequences AFTER capability-metadata (field) and verify-auth-unverified-mark (shared invoke.py). -->
 
 ## Permissions
 ### File Operations

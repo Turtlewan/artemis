@@ -8,6 +8,9 @@ coder_effort: medium
 
 # Spec: Honest "auth-unverified" marking for credentialed capabilities (Light)
 
+## Prerequisites
+- **`capability-metadata` (build FIRST).** It defines the `auth_status` field on `Skill`, in SKILL.md frontmatter (`write_skill_md`), the `_read_skill` default, and the `InstalledCard`/`CapabilitySummary` DTOs. This spec adds ONLY the logic that *sets* `auth_status` — it no longer defines the field (consolidation, 2026-07-03).
+
 ## Intent
 A network+secret capability is verified at build time WITHOUT its secrets (the verify sandbox gets an
 egress allowlist via `sandbox_policy.json` but never a credential — only the invoke path injects secrets;
@@ -48,27 +51,16 @@ No new secret or egress flow — this is a status/labeling change only.
   — the invoke path should never fail because of a status write-back.
 
 ## Tasks
-1. Add the `auth_status` field to the persistence + model layer. In `src/artemis/capabilities/skill_md.py`,
-   add `auth_status: str = "not-required"` to `write_skill_md` and include it in the frontmatter `meta`
-   dict. In `src/artemis/types.py`, add `auth_status: Literal["not-required", "unverified", "verified"] =
-   "not-required"` to `Skill`. — files: src/artemis/capabilities/skill_md.py, src/artemis/types.py,
-   tests/capabilities/test_skill_md.py — done when: `write_skill_md(..., auth_status="unverified")` writes
-   the key and `read_skill_md` reads it back; `Skill(...)` defaults `auth_status` to `"not-required"`;
-   mypy clean.
-2. Compute + persist `auth_status` at promote, and read it back. In `src/artemis/capabilities/store.py`:
-   in `promote`, compute `auth_status = "not-required" if not draft.secrets else "unverified"`, pass it to
-   `write_skill_md`, and include it on the returned `Skill(...)`; in `_read_skill`, read
-   `meta.get("auth_status", "not-required")` onto the `Skill`. — files: src/artemis/capabilities/store.py,
-   tests/capabilities/test_store.py — done when: promoting a draft with a non-empty `secrets` list yields a
-   library SKILL.md with `auth_status: unverified` and `store.get(name).auth_status == "unverified"`;
-   promoting a no-secret draft yields `not-required`; a legacy SKILL.md with no key reads `not-required`.
-3. Surface `auth_status` in the capability DTOs. In `src/artemis/api/capability_routes.py`, add
-   `auth_status: str` to `InstalledCard` and `CapabilitySummary`; populate it from `skill.auth_status` in
-   the `promote` route and in `list_capabilities`. — files: src/artemis/api/capability_routes.py,
-   tests/api/test_capability_routes.py — done when: `POST /app/capabilities/promote` of a secret-declaring
-   capability returns `InstalledCard.auth_status == "unverified"`, and `GET /app/capabilities` includes
-   `auth_status` per row.
-4. (Separable) First-invoke write-back. In `src/artemis/capabilities/store.py`, add
+<!-- The `auth_status` FIELD (model + frontmatter + `_read_skill` default + DTOs) is provided by the
+     `capability-metadata` prerequisite. This spec adds ONLY the logic that SETS it. -->
+1. Compute + persist `auth_status` at promote. In `src/artemis/capabilities/store.py` `promote`: compute
+   `auth_status = "not-required" if not draft.secrets else "unverified"` and pass it into the existing
+   `write_skill_md(...)` call and the returned `Skill(...)`, overriding the metadata default. (The field,
+   frontmatter round-trip, `_read_skill` default, and DTO surface already exist from `capability-metadata`.)
+   — files: src/artemis/capabilities/store.py, tests/capabilities/test_store.py — done when: promoting a
+   draft with a non-empty `secrets` list yields a library SKILL.md with `auth_status: unverified` and
+   `store.get(name).auth_status == "unverified"`; a no-secret draft yields `not-required`.
+2. First-invoke write-back. In `src/artemis/capabilities/store.py`, add
    `mark_auth_verified(self, name: str) -> None` — read the library SKILL.md; if it is missing or its
    `auth_status` is not `"unverified"`, return silently; else rewrite it with `auth_status="verified"`
    (preserve body + all other frontmatter, do not bump version). In `src/artemis/capabilities/invoke.py`,
@@ -81,12 +73,14 @@ No new secret or egress flow — this is a status/labeling change only.
    missing/already-verified capability is a silent no-op.
 
 ## Files to touch
-- src/artemis/capabilities/skill_md.py — `write_skill_md` gains `auth_status` param → frontmatter
-- src/artemis/types.py — `Skill.auth_status` enum field (default `not-required`)
-- src/artemis/capabilities/store.py — compute/write at promote; read in `_read_skill`; `mark_auth_verified`
-- src/artemis/api/capability_routes.py — `InstalledCard` + `CapabilitySummary` gain `auth_status`
+- src/artemis/capabilities/store.py — compute `auth_status` at promote; `mark_auth_verified`
 - src/artemis/capabilities/invoke.py — best-effort write-back on successful credentialed invoke
-- tests: test_skill_md.py, test_store.py, test_capability_routes.py, test_invoke.py
+- tests: test_store.py, test_invoke.py
+<!-- skill_md.py / types.py / capability_routes.py are NO LONGER touched here — the field lives in capability-metadata. -->
+
+<!-- NOTE: the Key-decisions bullets above still describe the field being *added* here; that part is
+     superseded by the capability-metadata consolidation (2026-07-03) — the field is defined there,
+     this spec only sets it. The compute-at-promote + first-invoke write-back logic is unchanged. -->
 
 ## Acceptance criteria
 - [ ] Promote a capability declaring `secrets=["GMAIL_APP_PASSWORD"]` → library SKILL.md has
