@@ -24,6 +24,7 @@ from artemis.capabilities.sandbox_wsl2 import (
     _secrets_b64,
     _to_wsl_path,
     _validate_secret_name,
+    _with_missing_module_hint,
     default_sandbox,
     run_isolated,
 )
@@ -403,6 +404,52 @@ def test_default_sandbox_falls_back_when_probe_fails(monkeypatch: pytest.MonkeyP
 def test_hardened_flag_contract() -> None:
     assert Wsl2SandboxRunner().hardened is True
     assert getattr(SubprocessSandbox(), "hardened", False) is False
+
+
+def test_missing_module_hint_names_modules_and_base_set() -> None:
+    output = (
+        "E   ModuleNotFoundError: No module named 'google'\n"
+        "E   ModuleNotFoundError: No module named 'pandas'\n"
+        "E   ModuleNotFoundError: No module named 'google'\n"
+    )
+
+    hinted = _with_missing_module_hint(output)
+
+    assert "sandbox-hint:" in hinted
+    assert "google, pandas" in hinted  # deduped + sorted
+    assert "requests, httpx" in hinted
+    assert hinted.startswith(output)  # original traceback preserved
+
+
+def test_missing_module_hint_leaves_other_failures_untouched() -> None:
+    output = "E   AssertionError: assert 1 == 2"
+
+    assert _with_missing_module_hint(output) == output
+
+
+@pytest.mark.asyncio
+async def test_run_tests_appends_hint_only_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import artemis.capabilities.sandbox_wsl2 as sandbox_wsl2_module
+
+    result_code = 1
+
+    async def fake_run_isolated(
+        skill_dir: Path, **kwargs: object
+    ) -> tuple[int, str, bool]:
+        del skill_dir, kwargs
+        return (result_code, "ModuleNotFoundError: No module named 'flask'", False)
+
+    monkeypatch.setattr(sandbox_wsl2_module, "run_isolated", fake_run_isolated)
+    runner = Wsl2SandboxRunner()
+
+    failed = await runner.run_tests(Path("unused"))
+    assert failed.passed is False
+    assert "sandbox-hint:" in failed.output
+
+    result_code = 0
+    passed = await runner.run_tests(Path("unused"))
+    assert passed.passed is True
+    assert "sandbox-hint:" not in passed.output
 
 
 def test_reliable_truncation_parsing() -> None:

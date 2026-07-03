@@ -3,10 +3,12 @@
 Provisioning runbook for the WSL2 distro:
 1. Install the required guest tools:
    `wsl.exe -d Ubuntu -- sudo apt-get update`
-   `wsl.exe -d Ubuntu -- sudo apt-get install -y iptables nginx libnginx-mod-stream dnsmasq util-linux python3-pytest`
+   `wsl.exe -d Ubuntu -- sudo apt-get install -y iptables nginx libnginx-mod-stream dnsmasq util-linux python3-pytest python3-requests python3-httpx`
    (`python3-pytest` is REQUIRED — capability verification runs `python3 -m pytest tests -q` in the
-   isolate; without it every build fails with "No module named pytest". Runtime libraries a capability
-   imports at verify time — e.g. `python3-requests`/`python3-httpx` — must likewise be present in the guest.)
+   isolate; without it every build fails with "No module named pytest". `python3-requests` and
+   `python3-httpx` are the capability base set: the ONLY third-party runtime libraries the forge may
+   author against — anything else must be stdlib. Keep this list in sync with AUTHOR_SYSTEM in
+   forge.py and the sandbox-hint in run_tests below.)
 2. Verify nginx has transparent TLS SNI support:
    `wsl.exe -d Ubuntu -- bash -lc 'nginx -V 2>&1 | grep -q ssl_preread'`
 3. Create the de-privileged capability user once:
@@ -468,7 +470,36 @@ class Wsl2SandboxRunner:
             command=["python3", "-m", "pytest", "tests", "-q"],
             timeout_s=policy.caps.timeout_s,
         )
+        if code != 0:
+            output = _with_missing_module_hint(output)
         return VerifyResult(passed=code == 0, output=output)
+
+
+_MISSING_MODULE_RE = re.compile(r"ModuleNotFoundError: No module named '([^']+)'")
+
+# Third-party libraries provisioned in the guest (see the runbook in the module docstring).
+# Keep in sync with AUTHOR_SYSTEM in forge.py.
+GUEST_BASE_LIBRARIES = ("requests", "httpx")
+
+
+def _with_missing_module_hint(output: str) -> str:
+    """Append a clear hint when a verify failure is a module missing from the sandbox guest.
+
+    The raw ModuleNotFoundError is buried in a pytest traceback; the hint makes the cause
+    obvious to the owner in the result card AND steers the forge's self-correction retry
+    toward the provisioned base set / stdlib instead of another unavailable library.
+    """
+    missing = sorted(set(_MISSING_MODULE_RE.findall(output)))
+    if not missing:
+        return output
+    names = ", ".join(missing)
+    available = ", ".join(GUEST_BASE_LIBRARIES)
+    return (
+        f"{output}\n"
+        f"sandbox-hint: module(s) not installed in the sandbox guest: {names}. "
+        f"The only third-party libraries available are: {available} "
+        "(pytest runs the tests). Use those or the Python standard library."
+    )
 
 
 def default_sandbox() -> SandboxRunner:
