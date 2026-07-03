@@ -12,17 +12,18 @@ coder_effort: medium
 → why: docs/technical/adr/ADR-044-google-oauth-broker-byo-client.md (decision 6)
 
 ## Assumptions
-- The oauth routes (`oauth-2-connect-routes`) exist: connect (returns consent URL), status (accounts+scopes), disconnect → impact: Stop
-- The session token stays in Rust (Tauri command pattern), mirroring the existing `app_invoke_confirm` / keys-panel gateway commands in `client/src-tauri/src/gateway.rs` → impact: Stop
-- TS wrappers live under `client/src/api/` (the gateway dir is `src/api`, not `src/gateway`); a sibling module `client/src/api/oauth.ts` matches the existing `bless.ts` pattern → impact: Stop
-- Opening the consent URL uses the OS browser (Tauri shell/opener) — the loopback listener (brain, spec 1) catches the redirect; the client does not embed a webview for Google consent, and the brain does not open a browser server-side (oauth-2 injects a no-op opener) → impact: Stop
+- The oauth routes (`oauth-2-connect-routes`) exist (SHIPPED `64a0a9f`): connect (returns consent URL), status (account+scopes), disconnect → impact: Stop
+- The session token stays in Rust (Tauri command pattern), mirroring the existing gateway commands in `client/src-tauri/src/gateway.rs`: a thin `#[tauri::command] pub(crate) async fn app_X(state: State<AppState>, ...)` delegates to a private helper using `request_json`/`request_empty(..., authed=true)` (bearer token injected in Rust from `AppState`). Register each command in the `generate_handler!` list in `client/src-tauri/src/lib.rs` → impact: Stop
+- TS wrappers live under `client/src/api/` (the gateway dir is `src/api`, not `src/gateway`); a sibling module `client/src/api/oauth.ts` matches the existing `bless.ts` pattern (`export const x = (...) => call("app_x", {...})` using the `invoke`-based `call` helper) → impact: Stop
+- **The BRAIN opens the consent browser** (`webbrowser.open` on the local desktop host — see the prerequisite app.py opener flip), NOT the client. The client has no opener/shell plugin; adding one is out of scope. The client's connect command just triggers the flow; the brain opens the OS browser and its loopback listener (spec 1) catches the redirect. The client may show the returned `consent_url` as selectable fallback text but does not open it → impact: Stop
 - **Single connected account for the MVP** — the panel shows the one connected Google account as "Connected" + its granted scopes; the specific email is not displayed (account identity is a fixed label brain-side, not email-derived) → impact: Caution
 
-Simplicity check: reuse the existing keys-panel / gateway-command pattern; the OAuth UI is a section in the existing `KeysPanel`, not a new surface.
+Simplicity check: reuse the existing keys-panel / gateway-command pattern; the OAuth UI is a section in the existing `KeysPanel`, not a new surface. Brain-opens avoids adding a Tauri opener plugin (Cargo + npm + capability + permission) for identical UX on this single-machine desktop deployment.
 
 ## Prerequisites
-- `oauth-2-connect-routes` (routes) — required.
-- Shares no brain files with the other oauth specs; client-only. Independent of `verify-auth-unverified-mark` and R4.
+- `oauth-2-connect-routes` (routes) — SHIPPED (`64a0a9f`).
+- **Brain opener flip** — a 1-line change so `create_app` constructs `OAuthBroker` with its default `webbrowser.open` opener (not the no-op), landed as a small fix before this spec. Client-only otherwise.
+- Client-only; shares no brain files. Independent of `verify-auth-unverified-mark` and R4.
 
 ## Files to Change
 | File | Operation | Notes |
@@ -31,12 +32,12 @@ Simplicity check: reuse the existing keys-panel / gateway-command pattern; the O
 | client/src-tauri/src/lib.rs | modify | register the three commands in the `generate_handler!` list |
 | client/src/api/oauth.ts | create | TS wrappers over the commands (sibling to `bless.ts`) |
 | client/src/api/oauth.test.ts | create | wrapper tests (vitest) |
-| client/src/settings/KeysPanel.tsx | modify | "Connect Google account" section (opens consent URL) + connected-account/scopes list + Disconnect + `reconnect_google` prompt |
+| client/src/settings/KeysPanel.tsx | modify | "Connect Google account" section (triggers connect; brain opens browser) + connected-account/scopes list + Refresh + Disconnect + `reconnect_google` prompt |
 | client/src/settings/KeysPanel.test.tsx | modify | component tests |
 
 ## Tasks
 - [ ] Task 1: Add the three Tauri commands in `client/src-tauri/src/gateway.rs`, register them in the `generate_handler!` macro in `client/src-tauri/src/lib.rs`, and add `client/src/api/oauth.ts` TS wrappers (session token injected in Rust, not the webview), mirroring the existing gateway-command pattern. — files: client/src-tauri/src/gateway.rs, client/src-tauri/src/lib.rs, client/src/api/oauth.ts, client/src/api/oauth.test.ts — done when: the wrappers call the routes, the commands are registered, the session token never appears in the webview; vitest wrapper tests pass and `cargo test` is green.
-- [ ] Task 2: Add the OAuth section to `KeysPanel.tsx`: "Connect Google account" (scope pick → connect → open the returned consent URL in the OS browser via Tauri opener), a connected-account + granted-scopes list, and Disconnect. Reflect a `reconnect_google` state surfaced from an invoke (prompt to reconnect). — files: client/src/settings/KeysPanel.tsx, client/src/settings/KeysPanel.test.tsx — done when: connect opens the consent URL, the list renders the account+scopes from status, disconnect calls through; component tests pass; `tsc`/`eslint`/vitest clean.
+- [ ] Task 2: Add the OAuth section to `KeysPanel.tsx`: "Connect Google account" (scope pick → call the connect command; the BRAIN opens the OS browser — show a "A browser window opened — approve access, then Refresh" hint, optionally the returned `consent_url` as selectable fallback text), a connected-account + granted-scopes list (from status, with a Refresh control), and Disconnect. Reflect a `reconnect_google` state surfaced from an invoke (prompt to reconnect). The client does NOT open a URL itself. — files: client/src/settings/KeysPanel.tsx, client/src/settings/KeysPanel.test.tsx — done when: connect calls the connect command (no client-side URL open), the list renders the account+scopes from status, disconnect calls through; component tests pass; `tsc`/`eslint`/vitest clean.
 
 ## Wave plan
 Wave 1: [Task 1] | Wave 2: [Task 2]
@@ -76,7 +77,7 @@ The Connect section follows the existing `KeysPanel` a11y (labels, focus, keyboa
 | Changelog | CHANGELOG.md | Unreleased/Added — Connect Google UI |
 
 ## Acceptance Criteria
-- [ ] Connect → verify the returned consent URL opens in the OS browser and the session token is not exposed to the webview.
+- [ ] Connect → verify the connect command is called and the session token is not exposed to the webview (the client does not open a URL; the brain opens the browser).
 - [ ] Status → verify the panel lists the connected account + granted scopes (no token values).
 - [ ] Disconnect → verify it calls through and the account drops from the list.
 - [ ] A `reconnect_google` invoke outcome surfaces a reconnect prompt.

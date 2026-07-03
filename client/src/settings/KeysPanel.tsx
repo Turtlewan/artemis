@@ -2,12 +2,16 @@ import { type CSSProperties, type FormEvent, useCallback, useEffect, useState } 
 
 import { blessClear, blessList, type BlessEntry } from "../api/bless";
 import * as gateway from "../api/gateway";
+import * as oauth from "../api/oauth";
 
 export interface KeysPanelProps {
   open: boolean;
   onClose: () => void;
   pendingKey?: string;
+  reconnectGoogle?: boolean;
 }
+
+const DEFAULT_GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 
 const styles = {
   backdrop: {
@@ -137,27 +141,44 @@ const styles = {
     color: "#ffb4b4",
     fontSize: 13,
   },
+  success: {
+    margin: 0,
+    color: "#bdecc8",
+    fontSize: 13,
+    lineHeight: 1.4,
+  },
 } satisfies Record<string, CSSProperties>;
 
-export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
+export function KeysPanel({ open, onClose, pendingKey, reconnectGoogle = false }: KeysPanelProps) {
   const [names, setNames] = useState<string[]>([]);
   const [blessed, setBlessed] = useState<BlessEntry[]>([]);
+  const [googleStatus, setGoogleStatus] = useState<oauth.OAuthStatusResponse | null>(null);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
+  const [googleScopes, setGoogleScopes] = useState(DEFAULT_GOOGLE_SCOPE);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
   const [revokingName, setRevokingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [googleMessage, setGoogleMessage] = useState<string | null>(null);
+  const [googleConsentUrl, setGoogleConsentUrl] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      const [nextNames, nextBlessed] = await Promise.all([gateway.secretList(), blessList()]);
+      const [nextNames, nextBlessed, nextGoogleStatus] = await Promise.all([
+        gateway.secretList(),
+        blessList(),
+        oauth.oauthStatus(),
+      ]);
       setNames(nextNames);
       setBlessed(nextBlessed.filter((entry) => entry.blessed));
+      setGoogleStatus(nextGoogleStatus);
     } catch (_error: unknown) {
       setError("Unable to load saved keys.");
     } finally {
@@ -204,6 +225,48 @@ export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
       setError("Unable to delete key.");
     } finally {
       setDeletingName(null);
+    }
+  };
+
+  const connectGoogle = async (): Promise<void> => {
+    const scopes = googleScopes
+      .split(/[\s,]+/)
+      .map((scope) => scope.trim())
+      .filter((scope) => scope !== "");
+    if (scopes.length === 0) return;
+    setConnectingGoogle(true);
+    setError(null);
+    setGoogleMessage(null);
+    setGoogleConsentUrl(null);
+    try {
+      const response = await oauth.oauthConnect(scopes);
+      if ("status" in response && response.status === "client_not_configured") {
+        setGoogleMessage("Add your Google client ID/secret above first.");
+        return;
+      }
+      setGoogleMessage("A browser window opened - approve access, then Refresh.");
+      if ("consent_url" in response) {
+        setGoogleConsentUrl(response.consent_url);
+      }
+    } catch (_error: unknown) {
+      setError("Unable to start Google connect.");
+    } finally {
+      setConnectingGoogle(false);
+    }
+  };
+
+  const disconnectGoogle = async (): Promise<void> => {
+    setDisconnectingGoogle(true);
+    setError(null);
+    setGoogleMessage(null);
+    setGoogleConsentUrl(null);
+    try {
+      await oauth.oauthDisconnect(googleStatus?.account);
+      await refresh();
+    } catch (_error: unknown) {
+      setError("Unable to disconnect Google.");
+    } finally {
+      setDisconnectingGoogle(false);
     }
   };
 
@@ -290,6 +353,67 @@ export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
                 </li>
               ))}
             </ul>
+          </section>
+          <section>
+            <h3 style={styles.sectionTitle}>Connect Google account</h3>
+            {reconnectGoogle ? (
+              <p style={styles.error}>Reconnect Google before running Google-backed capabilities.</p>
+            ) : null}
+            {googleMessage !== null && <p style={styles.success}>{googleMessage}</p>}
+            {googleConsentUrl !== null && (
+              <p style={styles.subtle}>
+                Fallback URL: <span style={styles.keyName}>{googleConsentUrl}</span>
+              </p>
+            )}
+            <label style={styles.label}>
+              Google OAuth scopes
+              <input
+                autoComplete="off"
+                name="google-oauth-scopes"
+                onChange={(event) => setGoogleScopes(event.currentTarget.value)}
+                style={styles.input}
+                type="text"
+                value={googleScopes}
+              />
+            </label>
+            <div style={styles.actions}>
+              <button type="button" onClick={() => void refresh()} style={styles.button}>
+                Refresh
+              </button>
+              <button
+                type="button"
+                disabled={connectingGoogle}
+                onClick={() => void connectGoogle()}
+                style={styles.primaryButton}
+              >
+                Connect
+              </button>
+            </div>
+            {loading ? <p style={styles.subtle}>Loading Google status...</p> : null}
+            {googleStatus?.connected ? (
+              <div style={styles.row}>
+                <span style={styles.keyName}>
+                  Connected: {googleStatus.account}
+                  {googleStatus.granted_scopes.length > 0 ? (
+                    <span style={styles.subtle}>
+                      {" "}
+                      ({googleStatus.granted_scopes.join(", ")})
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Disconnect ${googleStatus.account}`}
+                  disabled={disconnectingGoogle}
+                  onClick={() => void disconnectGoogle()}
+                  style={styles.button}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <p style={styles.subtle}>No Google account connected.</p>
+            )}
           </section>
           <form onSubmit={(event) => void submit(event)} style={styles.form}>
             <h3 style={styles.sectionTitle}>Add key</h3>

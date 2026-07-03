@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Client Google OAuth connect/status/disconnect controls now let owners link, inspect, refresh, and
+  disconnect the brokered Google account without exposing token material to the webview. (ADR-044)
 - OAuth-scoped capabilities now mint and inject a fresh Google access token at confirmed invoke
   time, failing closed to reconnect when Google authorization is unavailable. (ADR-044)
 - OAuth connect/status/disconnect API routes for Google account linking, wired to the broker with

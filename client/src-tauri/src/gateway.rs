@@ -118,6 +118,36 @@ pub(crate) struct BlessListResponse {
     capabilities: Vec<BlessEntry>,
 }
 
+#[derive(Debug, Serialize)]
+struct OAuthConnectRequest {
+    scopes: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum OAuthConnectResponse {
+    Started { consent_url: String },
+    ClientNotConfigured { status: String },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct OAuthStatusResponse {
+    account: String,
+    connected: bool,
+    granted_scopes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct OAuthDisconnectRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct OAuthDisconnectResponse {
+    disconnected: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct InstalledCard {
     name: String,
@@ -658,6 +688,45 @@ pub(crate) async fn bless_clear(state: &AppState, name: String) -> Result<(), Ga
     .await
 }
 
+async fn oauth_connect(
+    state: &AppState,
+    scopes: Vec<String>,
+) -> Result<OAuthConnectResponse, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/oauth/google/connect",
+        Some(&OAuthConnectRequest { scopes }),
+        true,
+    )
+    .await
+}
+
+async fn oauth_status(state: &AppState) -> Result<OAuthStatusResponse, GatewayError> {
+    request_json::<OAuthStatusResponse, ()>(
+        state,
+        Method::GET,
+        "/app/oauth/google/status",
+        None,
+        true,
+    )
+    .await
+}
+
+async fn oauth_disconnect(
+    state: &AppState,
+    account: Option<String>,
+) -> Result<OAuthDisconnectResponse, GatewayError> {
+    request_json(
+        state,
+        Method::POST,
+        "/app/oauth/google/disconnect",
+        Some(&OAuthDisconnectRequest { account }),
+        true,
+    )
+    .await
+}
+
 pub(crate) async fn lock(state: &AppState) -> Result<OkResponse, GatewayError> {
     let response =
         request_json::<LockResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
@@ -1009,6 +1078,29 @@ pub(crate) async fn app_bless_clear(
     name: String,
 ) -> Result<(), GatewayError> {
     bless_clear(&state, name).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_oauth_connect(
+    state: State<'_, AppState>,
+    scopes: Vec<String>,
+) -> Result<OAuthConnectResponse, GatewayError> {
+    oauth_connect(&state, scopes).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_oauth_status(
+    state: State<'_, AppState>,
+) -> Result<OAuthStatusResponse, GatewayError> {
+    oauth_status(&state).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_oauth_disconnect(
+    state: State<'_, AppState>,
+    account: Option<String>,
+) -> Result<OAuthDisconnectResponse, GatewayError> {
+    oauth_disconnect(&state, account).await
 }
 
 #[tauri::command]
@@ -1552,6 +1644,67 @@ mod tests {
         bless_clear(&state, "Date Utility".to_string())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn oauth_commands_use_session_bearer_and_expected_routes() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/oauth/google/connect"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({
+                "scopes": ["https://www.googleapis.com/auth/calendar.readonly"]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "consent_url": "https://accounts.google.com/o/oauth2/v2/auth"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let connected = oauth_connect(
+            &state,
+            vec!["https://www.googleapis.com/auth/calendar.readonly".to_string()],
+        )
+        .await
+        .unwrap();
+        let encoded = serde_json::to_value(&connected).unwrap();
+        assert_eq!(
+            encoded,
+            json!({
+                "consent_url": "https://accounts.google.com/o/oauth2/v2/auth"
+            })
+        );
+
+        Mock::given(method("GET"))
+            .and(path("/app/oauth/google/status"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "account": "default",
+                "connected": true,
+                "granted_scopes": ["scope-a"]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let status = oauth_status(&state).await.unwrap();
+        assert!(status.connected);
+        assert_eq!(status.account, "default");
+
+        Mock::given(method("POST"))
+            .and(path("/app/oauth/google/disconnect"))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "disconnected": true
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let response = oauth_disconnect(&state, None).await.unwrap();
+        assert!(response.disconnected);
     }
 
     #[tokio::test]

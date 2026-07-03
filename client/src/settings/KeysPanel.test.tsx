@@ -10,6 +10,9 @@ const gatewayMocks = vi.hoisted(() => ({
   secretDelete: vi.fn(),
   blessList: vi.fn(),
   blessClear: vi.fn(),
+  oauthConnect: vi.fn(),
+  oauthStatus: vi.fn(),
+  oauthDisconnect: vi.fn(),
 }));
 
 vi.mock("../api/gateway", () => ({
@@ -21,6 +24,12 @@ vi.mock("../api/gateway", () => ({
 vi.mock("../api/bless", () => ({
   blessList: gatewayMocks.blessList,
   blessClear: gatewayMocks.blessClear,
+}));
+
+vi.mock("../api/oauth", () => ({
+  oauthConnect: gatewayMocks.oauthConnect,
+  oauthStatus: gatewayMocks.oauthStatus,
+  oauthDisconnect: gatewayMocks.oauthDisconnect,
 }));
 
 import { KeysPanel } from "./KeysPanel";
@@ -84,7 +93,16 @@ describe("KeysPanel", () => {
     gatewayMocks.secretDelete.mockReset();
     gatewayMocks.blessList.mockReset();
     gatewayMocks.blessClear.mockReset();
+    gatewayMocks.oauthConnect.mockReset();
+    gatewayMocks.oauthStatus.mockReset();
+    gatewayMocks.oauthDisconnect.mockReset();
+    vi.unstubAllGlobals();
     gatewayMocks.blessList.mockResolvedValue([]);
+    gatewayMocks.oauthStatus.mockResolvedValue({
+      account: "default",
+      connected: false,
+      granted_scopes: [],
+    });
   });
 
   it("renders secret names without rendering values", async () => {
@@ -158,6 +176,101 @@ describe("KeysPanel", () => {
     expect(gatewayMocks.blessClear).toHaveBeenCalledWith("Echo");
     expect(gatewayMocks.blessList).toHaveBeenCalledTimes(2);
     expect(container.textContent).not.toContain("Echo");
+  });
+
+  it("connects Google through the command without opening a URL", async () => {
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthConnect.mockResolvedValueOnce({
+      consent_url: "https://accounts.google.com/o/oauth2/v2/auth",
+    });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    await act(async () => {
+      buttonByText(container, /^connect$/i).click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(gatewayMocks.oauthConnect).toHaveBeenCalledWith([
+      "https://www.googleapis.com/auth/calendar.readonly",
+    ]);
+    expect(open).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("A browser window opened");
+    expect(container.textContent).toContain("https://accounts.google.com/o/oauth2/v2/auth");
+  });
+
+  it("shows the Google client configuration prompt", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthConnect.mockResolvedValueOnce({ status: "client_not_configured" });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    await act(async () => {
+      buttonByText(container, /^connect$/i).click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(container.textContent).toContain("Add your Google client ID/secret above first.");
+  });
+
+  it("renders the connected Google account and granted scopes", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthStatus.mockResolvedValueOnce({
+      account: "default",
+      connected: true,
+      granted_scopes: ["scope-a", "scope-b"],
+    });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    expect(container.textContent).toContain("Connected: default");
+    expect(container.textContent).toContain("scope-a");
+    expect(container.textContent).toContain("scope-b");
+  });
+
+  it("disconnects Google and refreshes the status list", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.oauthStatus
+      .mockResolvedValueOnce({
+        account: "default",
+        connected: true,
+        granted_scopes: ["scope-a"],
+      })
+      .mockResolvedValueOnce({
+        account: "default",
+        connected: false,
+        granted_scopes: [],
+      });
+    gatewayMocks.oauthDisconnect.mockResolvedValueOnce({ disconnected: true });
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    await act(async () => {
+      byLabel<HTMLButtonElement>(container, /disconnect default/i).click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(gatewayMocks.oauthDisconnect).toHaveBeenCalledWith("default");
+    expect(gatewayMocks.oauthStatus).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain("No Google account connected.");
+    expect(container.textContent).not.toContain("Connected: default");
+  });
+
+  it("surfaces a reconnect Google prompt", async () => {
+    gatewayMocks.secretList.mockResolvedValueOnce([]);
+    const { container } = render(
+      <KeysPanel open={true} onClose={vi.fn()} reconnectGoogle={true} />,
+    );
+    await flush();
+
+    expect(container.textContent).toContain(
+      "Reconnect Google before running Google-backed capabilities.",
+    );
   });
 
   it("masks the value input by default", async () => {
