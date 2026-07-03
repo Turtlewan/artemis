@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Request
 import pytest
@@ -137,9 +137,11 @@ class FakeFetchSandbox(FetchSandbox):
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        caps_profile: Literal["default", "render"] = "default",
         output_limit: int = 4000,
     ) -> FetchResult:
-        del capability_dir, entrypoint, argv, egress_domains, timeout_s, secrets, output_limit
+        del capability_dir, entrypoint, argv, egress_domains, timeout_s, secrets
+        del caps_profile, output_limit
         self.calls += 1
         if self.delay_s:
             await asyncio.sleep(self.delay_s)

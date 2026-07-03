@@ -9,6 +9,7 @@ import pytest
 
 from artemis.capabilities import fetch_sandbox as fs
 from artemis.capabilities.fetch_sandbox import FetchResult, FetchSandbox
+from artemis.capabilities.sandbox_wsl2 import RENDER_CAPS, SandboxCaps
 
 _WSL_SMOKE = shutil.which("wsl.exe") is not None and os.environ.get("ARTEMIS_WSL_SMOKE") == "1"
 
@@ -122,6 +123,36 @@ async def test_run_forwards_output_limit(
     await_args = mock.await_args
     assert await_args is not None
     assert await_args.kwargs["output_limit"] == 200_000
+
+
+@pytest.mark.asyncio
+async def test_run_uses_default_caps_profile_when_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    mock = AsyncMock(return_value=(0, "raw bytes out", False))
+    monkeypatch.setattr(fs, "run_isolated", mock)
+
+    await FetchSandbox().run(tmp_path, entrypoint="fetch.py", argv=[], egress_domains=[])
+
+    await_args = mock.await_args
+    assert await_args is not None
+    assert await_args.kwargs["caps"] == SandboxCaps()
+
+
+@pytest.mark.asyncio
+async def test_run_forwards_render_caps_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    mock = AsyncMock(return_value=(0, "raw bytes out", False))
+    monkeypatch.setattr(fs, "run_isolated", mock)
+
+    await FetchSandbox().run(
+        tmp_path, entrypoint="fetch.py", argv=[], egress_domains=[], caps_profile="render"
+    )
+
+    await_args = mock.await_args
+    assert await_args is not None
+    assert await_args.kwargs["caps"] == RENDER_CAPS
 
 
 @pytest.mark.asyncio

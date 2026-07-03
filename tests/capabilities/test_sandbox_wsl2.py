@@ -15,8 +15,10 @@ from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.sandbox_wsl2 import (
     _ISOLATE_SCRIPT,
     OUTPUT_LIMIT_MAX,
+    RENDER_CAPS,
     SandboxCaps,
     Wsl2SandboxRunner,
+    _caps_env,
     _parse_isolate_output,
     _policy_for,
     _secrets_b64,
@@ -50,6 +52,31 @@ def test_sandbox_caps_defaults() -> None:
     assert caps.cpu_pct == 100
     assert caps.pids_max == 128
     assert caps.timeout_s == 60.0
+    assert caps.unlimited_vsz is False
+
+
+def test_caps_env_default_bounds_vsz_to_memory() -> None:
+    env = _caps_env(SandboxCaps())
+
+    assert env["ULIMIT_V"] == str(512 * 1024)
+
+
+def test_caps_env_unlimited_vsz_maps_to_unlimited() -> None:
+    env = _caps_env(SandboxCaps(memory_mb=1536, cpu_pct=400, pids_max=256, unlimited_vsz=True))
+
+    assert env == {
+        "MEM_MAX": str(1536 * 1024 * 1024),
+        "CPU_MAX": "400000 100000",
+        "PIDS_MAX": "256",
+        "ULIMIT_T": "60",
+        "ULIMIT_V": "unlimited",
+    }
+
+
+def test_render_caps_matches_spike_confirmed_profile() -> None:
+    assert RENDER_CAPS == SandboxCaps(
+        memory_mb=1536, cpu_pct=400, pids_max=256, unlimited_vsz=True, timeout_s=60.0
+    )
 
 
 def test_policy_absent_defaults_to_no_network_and_default_caps(tmp_path: Path) -> None:
@@ -130,6 +157,48 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
     assert code == 0
     assert output == "abcd"
     assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_run_isolated_quotes_command_tokens_for_wsl_interop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    created: list[tuple[str, ...]] = []
+    url = "https://en.wikipedia.org/wiki/Python_(programming_language)"
+
+    async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
+        created.append(cmd)
+        return _FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_isolated(
+        tmp_path,
+        egress_domains=[],
+        caps=SandboxCaps(),
+        command=["python3", "-c", "print('ok')", url],
+        timeout_s=20,
+    )
+
+    assert created
+    assert created[0][-1] == shlex.quote(url)
+    assert created[0][-1] != url
+
+
+def test_argv_decode_block_is_fail_closed() -> None:
+    """The guest-side argv decode must fail CLOSED, not silently truncate (security BLOCK, 2026-07-03).
+
+    Pins the three guards so a future edit cannot silently reintroduce the fail-open decode:
+    (1) it aborts on a decode pipeline failure, (2) surrogateescape prevents a non-UTF8 argv byte
+    from crashing the decode, (3) it aborts on any argv-count mismatch (truncation). Also pins that
+    the decode is NOT a `< <(python3 ...)` process substitution, whose exit status `set -e` ignores.
+    """
+    assert "abort argv-decode" in _ISOLATE_SCRIPT
+    assert "abort argv-count-mismatch" in _ISOLATE_SCRIPT
+    assert "abort argv-mktemp" in _ISOLATE_SCRIPT
+    assert 'encode("utf-8", "surrogateescape")' in _ISOLATE_SCRIPT
+    # regression pin: the decode must not read from a process substitution (set -e ignores its exit)
+    assert "< <(python3" not in _ISOLATE_SCRIPT
 
 
 @pytest.mark.asyncio
@@ -410,6 +479,27 @@ async def test_live_no_network_default_blocks_egress(live_wsl: None, tmp_path: P
 
     assert code != 0
     assert output
+
+
+@pytest.mark.asyncio
+async def test_live_command_argument_round_trips_shell_metacharacters(
+    live_wsl: None, tmp_path: Path
+) -> None:
+    code, output, _truncated = await run_isolated(
+        tmp_path,
+        egress_domains=[],
+        caps=SandboxCaps(timeout_s=20.0),
+        command=[
+            "python3",
+            "-c",
+            "import sys; print(sys.argv[1])",
+            "a (b) c; echo x",
+        ],
+        timeout_s=30.0,
+    )
+
+    assert code == 0
+    assert output.strip() == "a (b) c; echo x"
 
 
 @pytest.mark.asyncio

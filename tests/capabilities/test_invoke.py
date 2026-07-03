@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -104,9 +105,10 @@ class RecordingSandbox(FetchSandbox):
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        caps_profile: Literal["default", "render"] = "default",
         output_limit: int = 4000,
     ) -> FetchResult:
-        del timeout_s, output_limit
+        del timeout_s, caps_profile, output_limit
         self.calls.append(
             SandboxCall(
                 capability_dir=capability_dir,

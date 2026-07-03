@@ -18,10 +18,16 @@ capability process only, never included in `FetchResult.output`.
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 from pydantic import BaseModel
 
-from artemis.capabilities.sandbox_wsl2 import OUTPUT_LIMIT_DEFAULT, SandboxCaps, run_isolated
+from artemis.capabilities.sandbox_wsl2 import (
+    OUTPUT_LIMIT_DEFAULT,
+    RENDER_CAPS,
+    SandboxCaps,
+    run_isolated,
+)
 from artemis.ports.secrets import SecretStorePort
 
 _MAX_TIMEOUT_S = 300.0
@@ -67,6 +73,7 @@ class FetchSandbox:
         egress_domains: list[str],
         timeout_s: float = 60.0,
         secrets: dict[str, str] | None = None,
+        caps_profile: Literal["default", "render"] = "default",
         output_limit: int = OUTPUT_LIMIT_DEFAULT,
     ) -> FetchResult:
         """Run `entrypoint` inside the isolate and return its raw output.
@@ -76,6 +83,10 @@ class FetchSandbox:
         NO network at all (pure no-network isolate), NOT unrestricted egress (C2).
         `timeout_s` is clamped to `_MAX_TIMEOUT_S` (caller-controlled DoS guard).
 
+        `caps_profile` selects a closed, reviewed resource-caps profile: `"default"`
+        (512MB / 1-CPU, today's behavior) or `"render"` (1.5GB / 4-CPU, for chrome-class
+        workloads — see ADR-041). No arbitrary `SandboxCaps` override is accepted.
+
         Does NOT swallow exceptions from `run_isolated` (for example provisioning/WSL
         errors or asyncio timeouts); they propagate to the caller to handle.
         """
@@ -83,10 +94,11 @@ class FetchSandbox:
         if parts.is_absolute() or ".." in parts.parts:
             raise ValueError(f"entrypoint must be a relative path with no '..': {entrypoint!r}")
 
+        caps = RENDER_CAPS if caps_profile == "render" else SandboxCaps()
         exit_code, output, truncated = await run_isolated(
             capability_dir,
             egress_domains=egress_domains,
-            caps=SandboxCaps(),
+            caps=caps,
             command=["python3", entrypoint, *argv],
             timeout_s=min(timeout_s, _MAX_TIMEOUT_S),
             secrets=secrets,

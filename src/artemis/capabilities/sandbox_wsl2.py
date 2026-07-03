@@ -24,6 +24,7 @@ import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -69,12 +70,42 @@ _PROBE_COMMAND = (
 )
 
 _ISOLATE_SCRIPT = r'''set -euo pipefail    # BLOCK 2: -e so any setup failure ABORTS before the untrusted command runs (fail CLOSED)
+abort() { echo "isolate-setup-failed: $1" >&2; exit 1; }   # BLOCK 2: explicit guard on each security-critical step
+# WSL's interop reconstructs the post-`--` argv into a single command line and re-parses it via `/bin/bash -c`
+# semantics before invoking guest `bash -s`; that shell-reinterpretation is inside `wsl.exe`, invisible to the
+# Python call site, so run_isolated shlex.quote()s every positional. The quotes arrive here literally, so unquote
+# each back to its raw value. FAIL CLOSED (the BLOCK-2 invariant): the decode is a plain pipeline (NOT a process
+# substitution, whose exit status set -e ignores) so a python3 crash/non-zero exit ABORTS; surrogateescape so a
+# non-UTF8 argv byte can never crash the decode; and an explicit count check rejects any truncated decode.
+_ARGC_IN=$#
+_ARGV_FILE="$(mktemp)" || abort argv-mktemp
+{ python3 - "$@" <<'PY'
+import shlex
+import sys
+
+out = sys.stdout.buffer
+for arg in sys.argv[1:]:
+    parts = shlex.split(arg, posix=True)   # ValueError (malformed) => non-zero exit => abort (fail closed)
+    if len(parts) == 0:
+        decoded = ""                       # empty positional (e.g. empty egress CSV = no-network) — legitimate
+    elif len(parts) == 1:
+        decoded = parts[0]
+    else:
+        sys.exit(3)                        # ambiguous token: do NOT guess, fail closed
+    out.write(decoded.encode("utf-8", "surrogateescape") + b"\0")
+PY
+} > "$_ARGV_FILE" || { rm -f "$_ARGV_FILE"; abort argv-decode; }   # no temp-file leak on the abort path
+_DECODED_ARGV=()
+while IFS= read -r -d '' _arg; do _DECODED_ARGV+=("$_arg"); done < "$_ARGV_FILE"
+rm -f "$_ARGV_FILE"
+[ "${#_DECODED_ARGV[@]}" -eq "$_ARGC_IN" ] || abort argv-count-mismatch   # truncated decode => fail closed
+set -- "${_DECODED_ARGV[@]}"
+unset _DECODED_ARGV _arg _ARGV_FILE _ARGC_IN
 SKILL_WSL="$1"; EGRESS_CSV="$2"; RUN_ID="$3"; shift 3   # remaining "$@" = command tokens
 NS="artemis-$RUN_ID"; WORK="/tmp/artemis-$RUN_ID"; CG="/sys/fs/cgroup/artemis-$RUN_ID"
 NGXDIR="/run/artemis-ngx-$RUN_ID"                       # BLOCK 4: ROOT-OWNED firewall-config dir, NEVER chowned
 NGX_HTTPS=8443; NGX_HTTP=8080; UNTRUSTED_UID=4000; NGINX_UID=33   # nginx=www-data; capability de-privileged
 DNS_STUB=127.0.0.1                                      # BLOCK 3: the only resolver the capability may reach
-abort() { echo "isolate-setup-failed: $1" >&2; exit 1; }   # BLOCK 2: explicit guard on each security-critical step
 SID="${RUN_ID:0:8}"; VETH_HOST="vh$SID"; VETH_PEER="vc$SID"; HOST_IF=""
 OUTPUT_LIMIT="${OUTPUT_LIMIT:-4000}"
 [[ "$OUTPUT_LIMIT" =~ ^[0-9]+$ ]] || abort bad-output-limit
@@ -238,6 +269,18 @@ class SandboxCaps(BaseModel):
     cpu_pct: int = 100
     pids_max: int = 128
     timeout_s: float = 60.0
+    # When True, the guest `ulimit -v` (RLIMIT_AS / virtual address space) is set to `unlimited`
+    # instead of `memory_mb*1024` KB. RLIMIT_AS is not a usable control for Chrome/V8, whose mmap-heavy
+    # address-space reservation dwarfs its RSS; the enforced RAM ceiling stays the cgroup `memory.max`
+    # (from `memory_mb`), which this flag does NOT touch. See ADR-041.
+    unlimited_vsz: bool = False
+
+
+# Spike-confirmed chrome-headless-shell profile (1.5GB RAM / 4 CPU / 256 pids / unlimited VSZ). Opt-in only;
+# the default `SandboxCaps()` is unchanged. RENDER_CAPS deliberately relies SOLELY on cgroup `memory.max`
+# for RAM containment — the `ulimit -v` backstop is disabled here because it is incompatible with Chrome/V8's
+# virtual-memory reservation behavior (ADR-041 decision 2, apex-security-reviewed trade-off).
+RENDER_CAPS = SandboxCaps(memory_mb=1536, cpu_pct=400, pids_max=256, unlimited_vsz=True)
 
 
 @dataclass(frozen=True)
@@ -311,7 +354,7 @@ def _caps_env(caps: SandboxCaps) -> dict[str, str]:
         "CPU_MAX": f"{cpu_quota} {_CGROUP_PERIOD_US}",
         "PIDS_MAX": str(max(1, caps.pids_max)),
         "ULIMIT_T": str(max(1, math.ceil(caps.timeout_s))),
-        "ULIMIT_V": str(max(1, caps.memory_mb) * 1024),
+        "ULIMIT_V": "unlimited" if caps.unlimited_vsz else str(max(1, caps.memory_mb) * 1024),
     }
 
 
@@ -372,6 +415,11 @@ async def run_isolated(
     env.update(_caps_env(caps))
     env["OUTPUT_LIMIT"] = str(clamped_output_limit)
     env["WSLENV"] = _wsl_env(env.get("WSLENV"))
+    # WSL's own interop layer reconstructs the post-`--` argv into a single command line and re-parses it via `/bin/bash -c` semantics before invoking guest `bash -s`; that shell-reinterpretation step is inside `wsl.exe`, not visible in this Python call site, so quoting here is not a no-op despite create_subprocess_exec having no shell.  # noqa: E501
+    quoted_skill_wsl_path = shlex.quote(skill_wsl_path)
+    quoted_egress_domains = shlex.quote(",".join(egress_domains))
+    quoted_run_id = shlex.quote(run_id)
+    quoted_command = [shlex.quote(arg) for arg in command]
 
     proc = await asyncio.create_subprocess_exec(
         "wsl.exe",
@@ -381,10 +429,10 @@ async def run_isolated(
         "bash",
         "-s",
         "--",
-        skill_wsl_path,
-        ",".join(egress_domains),
-        run_id,
-        *command,
+        quoted_skill_wsl_path,
+        quoted_egress_domains,
+        quoted_run_id,
+        *quoted_command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

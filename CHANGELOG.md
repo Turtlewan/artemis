@@ -18,4 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Pattern-A `WebTool` (`artemis.reachout.web_tool`): deterministic `search → fetch → quarantined-read (Haiku→Sonnet) → synthesize` lookup over the R1 primitives, with a dual-LLM quarantine (raw pages reach only the reader; the synthesizer sees only spotlighted extracts), cited-only sources, and graceful degradation. (ADR-037)
 
 ### Changed
+- `FetchSandbox.run` gains an opt-in `caps_profile: Literal["default", "render"]` selecting a closed, reviewed resource-caps profile — `"default"` (512MB / 1-CPU, unchanged) or `"render"` (1.5GB / 4-CPU / 256 pids / unlimited VSZ, for chrome-class workloads). `SandboxCaps` gains an `unlimited_vsz` flag; the `render` profile relies solely on cgroup `memory.max` for RAM containment (the `ulimit -v` backstop is incompatible with Chrome/V8's virtual-memory reservation). No arbitrary caps override is accepted. (ADR-041)
 - `ClaudeCodeProvider` now runs `claude -p` in a private, clean `CLAUDE_CONFIG_DIR` (creds-only copy, no CLAUDE.md/hooks) so subscription reads return the model's answer instead of inheriting project context; `cli_support.run_cli` gains an optional `env` passthrough. (ADR-037)
+
+### Fixed
+- WSL2 isolate arg-passing: `run_isolated` now shlex-quotes every positional arg crossing the `wsl.exe` interop boundary and the guest script fail-closed-decodes them back, so a URL/path containing shell metacharacters (parens, spaces) no longer causes a `bash` syntax error before the capability runs. The guest decode aborts (never silently truncates) on any decode failure, non-UTF8 byte, or argv-count mismatch. (ADR-041)
