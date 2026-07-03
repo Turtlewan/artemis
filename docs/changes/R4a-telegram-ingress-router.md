@@ -1,6 +1,6 @@
 ---
 spec: R4a-telegram-ingress-router
-status: draft
+status: ready
 token_profile: lean
 autonomy_level: L5
 coder_effort: high

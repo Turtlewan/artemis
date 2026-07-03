@@ -1,6 +1,6 @@
 ---
 spec: R4c-desktop-bless-ui
-status: draft
+status: ready
 autonomy_level: L5
 coder_effort: medium
 ---
