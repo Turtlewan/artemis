@@ -18,7 +18,8 @@ from artemis.model.codex_provider import CodexProvider
 from artemis.model.router import QuotaAwareRouter
 from artemis.ports.model import ModelPort
 from artemis.reachout.egress import EgressDenied, EgressPolicy, registrable_domain
-from artemis.reachout.fetch import Fetcher, TrafilaturaFetcher
+from artemis.reachout.fetch import FetchedContent, Fetcher, TrafilaturaFetcher
+from artemis.reachout.js_fetch import JsFetcher
 from artemis.reachout.search import SearchProvider, TavilySearch
 from artemis.types import Message
 
@@ -95,6 +96,27 @@ def _shares_query_term(query: str, extract: str) -> bool:
     terms = {word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) > 3}
     lowered = extract.lower()
     return any(term in lowered for term in terms) if terms else True
+
+
+class FallbackFetcher(Fetcher):
+    """Try the primary fetcher first, then a secondary fetcher only for empty text."""
+
+    def __init__(self, primary: Fetcher, secondary: Fetcher) -> None:
+        self.primary = primary
+        self.secondary = secondary
+
+    async def fetch(self, url: str, *, max_chars: int = 20000) -> FetchedContent:
+        content = await self.primary.fetch(url, max_chars=max_chars)
+        if content.text.strip():
+            return content
+        return await self.secondary.fetch(url, max_chars=max_chars)
+
+    async def aclose(self) -> None:
+        """Close both fetchers if they expose ``aclose``."""
+        for fetcher in (self.primary, self.secondary):
+            closer = getattr(fetcher, "aclose", None)
+            if closer is not None:
+                await closer()
 
 
 class WebTool:
@@ -260,9 +282,14 @@ def build_web_tool(
     *,
     tavily_api_key: str,
     allowlist: frozenset[str] = frozenset({"api.tavily.com"}),
+    enable_js_fallback: bool = True,
 ) -> WebTool:
     """Wire real providers with one shared egress policy; single-flight per instance."""
     egress = EgressPolicy(allowlist)
+    primary_fetcher = TrafilaturaFetcher(egress)
+    fetcher: Fetcher = (
+        FallbackFetcher(primary_fetcher, JsFetcher()) if enable_js_fallback else primary_fetcher
+    )
     reader = ModelClient(ClaudeCodeProvider(), model_default="haiku")
     # Heterogeneous synth router: each backend keeps its OWN model_default. WebTool leaves
     # synth_model=None so failover uses per-backend defaults (codex→gpt-5.5, claude_code→sonnet).
@@ -276,7 +303,7 @@ def build_web_tool(
     )
     return WebTool(
         search=TavilySearch(tavily_api_key, egress),
-        fetcher=TrafilaturaFetcher(egress),
+        fetcher=fetcher,
         egress=egress,
         reader=reader,
         synth=synth,

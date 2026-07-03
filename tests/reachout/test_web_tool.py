@@ -13,9 +13,11 @@ from artemis.model.client import ModelClient, ModelOutputError
 from artemis.model.errors import QuotaExhaustedError
 from artemis.model.router import QuotaAwareRouter
 from artemis.reachout.egress import EgressDenied, EgressPolicy
-from artemis.reachout.fetch import FetchedContent
+from artemis.reachout.fetch import FetchedContent, TrafilaturaFetcher
+from artemis.reachout.js_fetch import JsFetcher
 from artemis.reachout.search import SearchHit
 from artemis.reachout.web_tool import (
+    FallbackFetcher,
     _NO_SOURCES,
     _READER_SYSTEM,
     _SYNTH_SYSTEM,
@@ -89,6 +91,23 @@ class FakeFetcher:
         if isinstance(value, Exception):
             raise value
         return FetchedContent(url=url, domain="example.com", text=value)
+
+
+class RecordingFetcher:
+    def __init__(self, text: str = "", exc: Exception | None = None) -> None:
+        self._text = text
+        self._exc = exc
+        self.calls: list[tuple[str, int]] = []
+        self.closed = False
+
+    async def fetch(self, url: str, *, max_chars: int = 20000) -> FetchedContent:
+        self.calls.append((url, max_chars))
+        if self._exc is not None:
+            raise self._exc
+        return FetchedContent(url=url, domain="example.com", text=self._text)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class SpyEgress(EgressPolicy):
@@ -534,6 +553,66 @@ async def test_aclose_closes_owned_clients() -> None:
     await tool.aclose()
 
     assert closed == ["search", "fetcher"]
+
+
+async def test_fallback_fetcher_uses_secondary_when_primary_empty() -> None:
+    primary = RecordingFetcher("")
+    secondary = RecordingFetcher("rendered text")
+    fetcher = FallbackFetcher(primary, secondary)
+
+    result = await fetcher.fetch("https://example.com/page", max_chars=123)
+
+    assert result.text == "rendered text"
+    assert primary.calls == [("https://example.com/page", 123)]
+    assert secondary.calls == [("https://example.com/page", 123)]
+
+
+async def test_fallback_fetcher_skips_secondary_when_primary_has_text() -> None:
+    primary = RecordingFetcher("plain text")
+    secondary = RecordingFetcher("rendered text")
+    fetcher = FallbackFetcher(primary, secondary)
+
+    result = await fetcher.fetch("https://example.com/page")
+
+    assert result.text == "plain text"
+    assert primary.calls == [("https://example.com/page", 20000)]
+    assert secondary.calls == []
+
+
+async def test_fallback_fetcher_propagates_egress_denied() -> None:
+    primary = RecordingFetcher(exc=EgressDenied("blocked"))
+    secondary = RecordingFetcher("rendered text")
+    fetcher = FallbackFetcher(primary, secondary)
+
+    with pytest.raises(EgressDenied):
+        await fetcher.fetch("https://example.com/page")
+
+    assert secondary.calls == []
+
+
+async def test_fallback_fetcher_aclose_closes_both_fetchers() -> None:
+    primary = RecordingFetcher("")
+    secondary = RecordingFetcher("")
+    fetcher = FallbackFetcher(primary, secondary)
+
+    await fetcher.aclose()
+
+    assert primary.closed is True
+    assert secondary.closed is True
+
+
+def test_build_web_tool_wires_js_fallback_by_default() -> None:
+    tool = build_web_tool(tavily_api_key="k")
+
+    assert isinstance(tool._fetcher, FallbackFetcher)
+    assert isinstance(tool._fetcher.primary, TrafilaturaFetcher)
+    assert isinstance(tool._fetcher.secondary, JsFetcher)
+
+
+def test_build_web_tool_can_disable_js_fallback() -> None:
+    tool = build_web_tool(tavily_api_key="k", enable_js_fallback=False)
+
+    assert isinstance(tool._fetcher, TrafilaturaFetcher)
 
 
 async def test_search_failure_degrades_without_crashing() -> None:

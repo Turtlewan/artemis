@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- JS-rendering fallback fetcher for reach-out web lookups: a WSL2-isolated
+  `chrome-headless-shell` renderer is used only when trafilatura returns empty text, with exact-host
+  egress allowlisting and provisioning docs. (ADR-040)
 - Typed `inputs` schema for capabilities (`SkillInputParam` + `build_invoke_argv` in `artemis.types`), persisted through `SKILL.md` frontmatter and the file store; capabilities without an `inputs` key read back as parameterless (zero migration). First of the capability invoke/reuse path. (ADR-039)
 - The capability forge now authors a typed `inputs` schema for each proposed capability (`SKILL_DRAFT_SCHEMA` + `AUTHOR_SYSTEM` require `inputs`; secrets stay separate). Second of the capability invoke/reuse path. (ADR-039)
 - Match-first capability selector (`artemis.capabilities.select`): shortlists via `store.retrieve`, picks one (or none) with a dedicated Haiku port, validates/coerces typed args against the capability's `inputs`, and returns a degrade-safe `SelectionResult` (never runs anything). Re-validates the model's pick against the shortlist (anti-hallucination). Third of the capability invoke/reuse path. (ADR-039)
