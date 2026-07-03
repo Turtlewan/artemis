@@ -23,7 +23,10 @@ keys/
 /opt/artemis/
 # Dev-box runtime root is the repo root (ARTEMIS_DATA_DIR=.): forge + auth + layout artifacts
 .forge-test/
-/capabilities/
+# capabilities/ is runtime storage for model-built capabilities (ignored), EXCEPT builtin/ —
+# spec-built, repo-tracked infrastructure fetchers (ADR-046) that travel with the repo to the Mini.
+/capabilities/*
+!/capabilities/builtin/
 /devices.json
 /devices.json.lock
 secrets_index.json

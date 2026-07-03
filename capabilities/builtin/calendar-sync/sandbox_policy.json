@@ -1,0 +1,9 @@
+{
+  "egress_domains": [
+    "www.googleapis.com"
+  ],
+  "memory_mb": 512,
+  "cpu_pct": 100,
+  "pids_max": 128,
+  "timeout_s": 60
+}
