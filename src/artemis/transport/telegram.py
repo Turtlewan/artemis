@@ -3,15 +3,30 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 
 import httpx
+from pydantic import ConfigDict
 
 from artemis.ports.secrets import SecretStorePort
 from artemis.secrets_store import resolve_secret
 from artemis.types import InboundMessage, OutboundMessage
 
 _API_BASE = "https://api.telegram.org"
+
+
+class InboundCallback(InboundMessage):
+    """Telegram callback from an inline button.
+
+    Telegram exposes both the tapping user (`callback_query.from.id`) and the chat
+    containing the button (`callback_query.message.chat.id`). Artemis gates on the
+    message chat id to match the existing text-message allowlist.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    data: str
+    callback_id: str
 
 
 class TelegramTransport:
@@ -41,6 +56,32 @@ class TelegramTransport:
         )
         resp.raise_for_status()
 
+    async def send_prompt(
+        self,
+        identity: str,
+        text: str,
+        buttons: Sequence[Sequence[tuple[str, str]]],
+    ) -> None:
+        inline_keyboard = [
+            [{"text": label, "callback_data": data} for label, data in row] for row in buttons
+        ]
+        resp = await self._client.post(
+            self._method("sendMessage"),
+            json={
+                "chat_id": identity,
+                "text": text,
+                "reply_markup": {"inline_keyboard": inline_keyboard},
+            },
+        )
+        resp.raise_for_status()
+
+    async def answer_callback(self, callback_id: str) -> None:
+        resp = await self._client.post(
+            self._method("answerCallbackQuery"),
+            json={"callback_query_id": callback_id},
+        )
+        resp.raise_for_status()
+
     def receive(self) -> AsyncIterator[InboundMessage]:
         async def _gen() -> AsyncIterator[InboundMessage]:
             while True:
@@ -51,6 +92,29 @@ class TelegramTransport:
                 resp.raise_for_status()
                 for update in resp.json().get("result", []):
                     self._offset = update["update_id"] + 1
+                    callback = update.get("callback_query")
+                    if callback is not None:
+                        message = callback.get("message")
+                        if message is None:
+                            continue
+                        chat_id = str(message["chat"]["id"])
+                        data = callback.get("data")
+                        callback_id = callback.get("id")
+                        if (
+                            chat_id not in self.allowed_chat_ids
+                            or not isinstance(data, str)
+                            or not isinstance(callback_id, str)
+                        ):
+                            continue
+                        yield InboundCallback(
+                            transport="telegram",
+                            identity=chat_id,
+                            text="",
+                            data=data,
+                            callback_id=callback_id,
+                        )
+                        continue
+
                     message = update.get("message")
                     if message is None:
                         continue
