@@ -10,11 +10,12 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
-from artemis.api import ask_routes, capability_routes, domain_routes, secret_routes
+from artemis.api import ask_routes, bless_routes, capability_routes, domain_routes, secret_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
 from artemis.api.layout_store import LayoutDTO, LayoutStore, default_layout
+from artemis.capabilities.bless import BlessStore
 from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.forge import CapabilityForge
 from artemis.capabilities.sandbox import SandboxRunner
@@ -62,6 +63,7 @@ def create_app(
     resolved_sandbox: SandboxRunner = sandbox if sandbox is not None else default_sandbox()
     capability_store = FileCapabilityStore(resolved_data_dir / "capabilities")
     app.state.capability_store = capability_store
+    app.state.bless = BlessStore(resolved_data_dir / "bless.json")
     app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
     app.state.builds = {}  # build_id -> capability_routes.BuildState (in-memory, interim)
     app.state.capability_selector = build_capability_selector(capability_store)
@@ -74,6 +76,7 @@ def create_app(
 
     app.include_router(app_router)
     app.include_router(ask_routes.router)
+    app.include_router(bless_routes.router)
     app.include_router(capability_routes.router)
     app.include_router(domain_routes.router)
     app.include_router(secret_routes.router)

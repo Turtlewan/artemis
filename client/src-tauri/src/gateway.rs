@@ -106,6 +106,19 @@ pub(crate) struct SecretNamesResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct BlessEntry {
+    name: String,
+    current_version: Option<i64>,
+    blessed_version: Option<i64>,
+    blessed: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct BlessListResponse {
+    capabilities: Vec<BlessEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct InstalledCard {
     name: String,
     version: i64,
@@ -268,6 +281,19 @@ fn base_url(state: &AppState) -> Result<String, GatewayError> {
 
 fn bearer(state: &AppState) -> Result<String, GatewayError> {
     state.token().ok_or(GatewayError::Unauthenticated)
+}
+
+fn path_segment(raw: &str) -> String {
+    let mut encoded = String::new();
+    for byte in raw.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(char::from(byte));
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 async fn request_json<T, B>(
@@ -598,6 +624,34 @@ pub(crate) async fn secret_delete(state: &AppState, name: String) -> Result<(), 
         state,
         Method::DELETE,
         &format!("/app/secrets/{name}"),
+        None,
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn bless_list(state: &AppState) -> Result<Vec<BlessEntry>, GatewayError> {
+    let response: BlessListResponse =
+        request_json::<BlessListResponse, ()>(state, Method::GET, "/app/bless", None, true).await?;
+    Ok(response.capabilities)
+}
+
+pub(crate) async fn bless_set(state: &AppState, name: String) -> Result<BlessEntry, GatewayError> {
+    request_json::<BlessEntry, ()>(
+        state,
+        Method::POST,
+        &format!("/app/bless/{}", path_segment(&name)),
+        None,
+        true,
+    )
+    .await
+}
+
+pub(crate) async fn bless_clear(state: &AppState, name: String) -> Result<(), GatewayError> {
+    request_empty::<()>(
+        state,
+        Method::DELETE,
+        &format!("/app/bless/{}", path_segment(&name)),
         None,
         true,
     )
@@ -935,6 +989,29 @@ pub(crate) async fn app_secret_delete(
 }
 
 #[tauri::command]
+pub(crate) async fn app_bless_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<BlessEntry>, GatewayError> {
+    bless_list(&state).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_bless_set(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<BlessEntry, GatewayError> {
+    bless_set(&state, name).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_bless_clear(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), GatewayError> {
+    bless_clear(&state, name).await
+}
+
+#[tauri::command]
 pub(crate) async fn app_lock(state: State<'_, AppState>) -> Result<OkResponse, GatewayError> {
     lock(&state).await
 }
@@ -1048,6 +1125,11 @@ mod tests {
         state.set_token("secret-token".to_string());
         state.clear_token();
         assert!(state.token().is_none());
+    }
+
+    #[test]
+    fn path_segment_encodes_capability_names_for_routes() {
+        assert_eq!(path_segment("Date Utility/v2"), "Date%20Utility%2Fv2");
     }
 
     #[tokio::test]
@@ -1415,6 +1497,61 @@ mod tests {
         let response = actions_reject(&state, "act-1".to_string()).await.unwrap();
 
         assert!(response.ok);
+    }
+
+    #[tokio::test]
+    async fn bless_commands_use_session_bearer_and_expected_routes() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("GET"))
+            .and(path("/app/bless"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "capabilities": [{
+                    "name": "Echo",
+                    "current_version": 2,
+                    "blessed_version": 2,
+                    "blessed": true
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let listed = bless_list(&state).await.unwrap();
+        assert_eq!(listed[0].name, "Echo");
+        assert!(listed[0].blessed);
+
+        Mock::given(method("POST"))
+            .and(path("/app/bless/Date%20Utility"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "Date Utility",
+                "current_version": 2,
+                "blessed_version": 2,
+                "blessed": true
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(
+            bless_set(&state, "Date Utility".to_string())
+                .await
+                .unwrap()
+                .blessed
+        );
+
+        Mock::given(method("DELETE"))
+            .and(path("/app/bless/Date%20Utility"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        bless_clear(&state, "Date Utility".to_string())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

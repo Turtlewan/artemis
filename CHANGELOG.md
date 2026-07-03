@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Telegram inbound (R4): the always-on runner now routes allowlisted inbound Telegram messages
+  through the intent router — chat + web questions answer inline (quarantined), and capability
+  **invokes** are consent-gated by a version-scoped "bless" grant. A blessed capability runs on a
+  plain text; an un-blessed one sends an inline `[Run once]/[Always allow]/[Cancel]` card showing its
+  egress domains + secret names + inputs (never values). Bless from chat (`[Always allow]`) or the
+  desktop, revoke via `/blessed` or the desktop list; a rebuild resets the grant. Dual-pass
+  apex-security reviewed. (ADR-043)
 - JS-rendering fallback fetcher for reach-out web lookups: a WSL2-isolated
   `chrome-headless-shell` renderer is used only when trafilatura returns empty text, with exact-host
   egress allowlisting and provisioning docs. (ADR-040)

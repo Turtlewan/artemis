@@ -8,12 +8,19 @@ const gatewayMocks = vi.hoisted(() => ({
   secretSet: vi.fn(),
   secretList: vi.fn(),
   secretDelete: vi.fn(),
+  blessList: vi.fn(),
+  blessClear: vi.fn(),
 }));
 
 vi.mock("../api/gateway", () => ({
   secretSet: gatewayMocks.secretSet,
   secretList: gatewayMocks.secretList,
   secretDelete: gatewayMocks.secretDelete,
+}));
+
+vi.mock("../api/bless", () => ({
+  blessList: gatewayMocks.blessList,
+  blessClear: gatewayMocks.blessClear,
 }));
 
 import { KeysPanel } from "./KeysPanel";
@@ -75,6 +82,9 @@ describe("KeysPanel", () => {
     gatewayMocks.secretSet.mockReset();
     gatewayMocks.secretList.mockReset();
     gatewayMocks.secretDelete.mockReset();
+    gatewayMocks.blessList.mockReset();
+    gatewayMocks.blessClear.mockReset();
+    gatewayMocks.blessList.mockResolvedValue([]);
   });
 
   it("renders secret names without rendering values", async () => {
@@ -126,6 +136,28 @@ describe("KeysPanel", () => {
     expect(gatewayMocks.secretDelete).toHaveBeenCalledWith("DELETE_ME");
     expect(gatewayMocks.secretList).toHaveBeenCalledTimes(2);
     expect(container.textContent).not.toContain("DELETE_ME");
+  });
+
+  it("revokes a Telegram-blessed capability and refreshes the list", async () => {
+    gatewayMocks.secretList.mockResolvedValue([]);
+    gatewayMocks.blessList
+      .mockResolvedValueOnce([
+        { name: "Echo", current_version: 2, blessed_version: 2, blessed: true },
+      ])
+      .mockResolvedValueOnce([]);
+    gatewayMocks.blessClear.mockResolvedValueOnce(undefined);
+    const { container } = render(<KeysPanel open={true} onClose={vi.fn()} />);
+    await flush();
+
+    await act(async () => {
+      byLabel<HTMLButtonElement>(container, /revoke echo/i).click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(gatewayMocks.blessClear).toHaveBeenCalledWith("Echo");
+    expect(gatewayMocks.blessList).toHaveBeenCalledTimes(2);
+    expect(container.textContent).not.toContain("Echo");
   });
 
   it("masks the value input by default", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { blessClear, blessList, blessSet, type BlessEntry } from "../api/bless";
 import type { DomainId } from "../domains";
 import { domainLabel } from "../domains";
 import { firstLastInvert, morphKeyframes } from "./morph";
@@ -18,7 +19,11 @@ const styles = `
 .card-overlay__dialog.card-overlay__dialog--ready{opacity:1;visibility:visible}
 .card-overlay__header{display:flex;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid var(--hair)}
 .card-overlay__title{margin:0;font-size:18px;line-height:1.2}
+.card-overlay__bless{display:flex;align-items:center;gap:10px;margin-left:auto;color:var(--muted);font-size:12px}
+.card-overlay__bless input{width:18px;height:18px;accent-color:var(--p)}
+.card-overlay__bless strong{color:var(--text);font-size:12px}
 .card-overlay__close{margin-left:auto;border:1px solid var(--hair);border-radius:8px;background:color-mix(in srgb,var(--p) 12%,transparent);color:var(--text);font:inherit;font-size:20px;line-height:1;width:34px;height:34px;cursor:pointer}
+.card-overlay__bless+.card-overlay__close{margin-left:0}
 .card-overlay__close:hover,.card-overlay__close:focus-visible{border-color:var(--focus-ring)}
 .card-overlay__body{min-height:0;flex:1;overflow:auto;padding:20px}
 .card-overlay__fallback h2{margin:0 0 8px;font-size:16px}
@@ -53,6 +58,64 @@ const finishAnimation = (animation: Animation, onDone: () => void): void => {
   animation.onfinish = onDone;
   animation.oncancel = onDone;
 };
+
+function CapabilityBlessToggle({ capabilityName }: { capabilityName: string }) {
+  const [entry, setEntry] = useState<BlessEntry | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    const entries = await blessList();
+    setEntry(entries.find((candidate) => candidate.name === capabilityName) ?? null);
+  }, [capabilityName]);
+
+  useEffect(() => {
+    let active = true;
+    void blessList()
+      .then((entries) => {
+        if (active) setEntry(entries.find((candidate) => candidate.name === capabilityName) ?? null);
+      })
+      .catch(() => {
+        if (active) setEntry(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [capabilityName]);
+
+  if (entry === null || entry.current_version === null) return null;
+
+  const toggle = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      if (entry.blessed) {
+        await blessClear(capabilityName);
+      } else {
+        await blessSet(capabilityName);
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <label className="card-overlay__bless">
+      <input
+        aria-label={`Allow ${capabilityName} from Telegram`}
+        checked={entry.blessed}
+        disabled={busy}
+        onChange={() => void toggle()}
+        type="checkbox"
+      />
+      <span>
+        Allow from Telegram{" "}
+        <strong>
+          {entry.blessed ? `blessed (v${entry.blessed_version ?? entry.current_version})` : "off"}
+        </strong>
+      </span>
+    </label>
+  );
+}
 
 /** Top-most focus-trapped card detail dialog with FLIP open/close morphs. */
 export function DetailOverlay({ openId, onClose, originRef }: DetailOverlayProps) {
@@ -188,6 +251,7 @@ export function DetailOverlay({ openId, onClose, originRef }: DetailOverlayProps
           <h2 className="card-overlay__title" id="card-overlay-title">
             {domainLabel(renderedId)}
           </h2>
+          <CapabilityBlessToggle capabilityName={renderedId} />
           <button className="card-overlay__close" type="button" aria-label="Close" onClick={close}>
             ×
           </button>

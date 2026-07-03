@@ -41,6 +41,6 @@ const clusters: Record<DomainId, DomainCluster> = {
   finance: "Self",
 };
 
-export const domainLabel = (id: DomainId): string => labels[id];
+export const domainLabel = (id: DomainId): string => (labels as Record<string, string>)[id] ?? id;
 
 export const domainCluster = (id: DomainId): DomainCluster => clusters[id];

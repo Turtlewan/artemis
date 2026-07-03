@@ -1,5 +1,6 @@
 import { type CSSProperties, type FormEvent, useCallback, useEffect, useState } from "react";
 
+import { blessClear, blessList, type BlessEntry } from "../api/bless";
 import * as gateway from "../api/gateway";
 
 export interface KeysPanelProps {
@@ -140,19 +141,23 @@ const styles = {
 
 export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
   const [names, setNames] = useState<string[]>([]);
+  const [blessed, setBlessed] = useState<BlessEntry[]>([]);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
+  const [revokingName, setRevokingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      setNames(await gateway.secretList());
+      const [nextNames, nextBlessed] = await Promise.all([gateway.secretList(), blessList()]);
+      setNames(nextNames);
+      setBlessed(nextBlessed.filter((entry) => entry.blessed));
     } catch (_error: unknown) {
       setError("Unable to load saved keys.");
     } finally {
@@ -202,6 +207,19 @@ export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
     }
   };
 
+  const revokeBless = async (capabilityName: string): Promise<void> => {
+    setRevokingName(capabilityName);
+    setError(null);
+    try {
+      await blessClear(capabilityName);
+      await refresh();
+    } catch (_error: unknown) {
+      setError("Unable to revoke Telegram access.");
+    } finally {
+      setRevokingName(null);
+    }
+  };
+
   return (
     <div style={styles.backdrop}>
       <section
@@ -240,6 +258,34 @@ export function KeysPanel({ open, onClose, pendingKey }: KeysPanelProps) {
                     style={styles.button}
                   >
                     Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h3 style={styles.sectionTitle}>Telegram allowed capabilities</h3>
+            {loading ? <p style={styles.subtle}>Loading capabilities...</p> : null}
+            {!loading && blessed.length === 0 ? (
+              <p style={styles.subtle}>No capabilities allowed.</p>
+            ) : null}
+            <ul style={styles.list}>
+              {blessed.map((entry) => (
+                <li key={entry.name} style={styles.row}>
+                  <span style={styles.keyName}>
+                    {entry.name}{" "}
+                    <span style={styles.subtle}>
+                      v{entry.blessed_version ?? entry.current_version ?? "-"}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Revoke ${entry.name}`}
+                    disabled={revokingName === entry.name}
+                    onClick={() => void revokeBless(entry.name)}
+                    style={styles.button}
+                  >
+                    Revoke
                   </button>
                 </li>
               ))}

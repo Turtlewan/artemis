@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../api/bless", () => ({
+  blessList: vi.fn().mockResolvedValue([]),
+  blessSet: vi.fn(),
+  blessClear: vi.fn(),
+}));
+
 import { CardSlot } from "../world/CardSlot";
 import { defaultPlacements } from "../world/clusters";
 import { DetailOverlay } from "./DetailOverlay";
