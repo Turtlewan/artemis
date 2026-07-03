@@ -119,6 +119,23 @@ def test_egress_validation_accepts_empty_list() -> None:
     assert _skill().egress_domains == []
 
 
+def test_author_schema_lets_the_model_declare_oauth_scopes() -> None:
+    """Without oauth_scopes in the structured-output schema the forge cannot author a
+    Google capability at all (the field silently never reaches SkillDraft)."""
+
+    from artemis.capabilities.forge import AUTHOR_SYSTEM, SKILL_DRAFT_SCHEMA
+
+    properties = SKILL_DRAFT_SCHEMA["properties"]
+    assert isinstance(properties, dict)
+    assert "oauth_scopes" in properties
+    required = SKILL_DRAFT_SCHEMA["required"]
+    assert isinstance(required, list)
+    assert "oauth_scopes" in required
+    # The prompt must teach the runtime convention the invoke path implements.
+    assert "GOOGLE_ACCESS_TOKEN" in AUTHOR_SYSTEM
+    assert "www.googleapis.com" in AUTHOR_SYSTEM
+
+
 def test_egress_validation_accepts_and_normalizes_valid_domains() -> None:
     assert _draft(egress_domains=["API.Example.COM.", "sub.good.io"]).egress_domains == [
         "api.example.com",

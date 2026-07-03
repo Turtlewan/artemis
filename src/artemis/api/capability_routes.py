@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from artemis.api.auth import Principal, require_session
 from artemis.capabilities.forge import CapabilityForge
@@ -48,6 +48,9 @@ class PlanCard(BaseModel):
     # Network domains the capability is granted (empty = no network) — shown at the gate so the
     # owner consents to network scope before the build/verify runs.
     egress_domains: list[str]
+    # Google OAuth scope URLs the capability declares (empty = none) — shown at the gate so the
+    # owner consents to the Google data access before the build/verify runs.
+    oauth_scopes: list[str] = Field(default_factory=list)
     # Subset of `secrets` NOT yet in the credential store — surfaced so the client can prompt for
     # them (the end-of-build pending item deep-links into the keys panel to capture each).
     missing_secrets: list[str]
@@ -153,6 +156,7 @@ async def propose(
         summary=draft.body,
         secrets=draft.secrets,
         egress_domains=draft.egress_domains,
+        oauth_scopes=draft.oauth_scopes,
         missing_secrets=missing_secrets,
         blocked=proposal.blocked,
         block_reason=proposal.block_reason,

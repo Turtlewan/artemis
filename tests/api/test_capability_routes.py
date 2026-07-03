@@ -77,6 +77,14 @@ def _result_json(stream_text: str) -> dict[str, object]:
     raise AssertionError("missing result event")
 
 
+def test_plan_card_carries_oauth_scopes_for_consent(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+
+    plan = client.post("/app/capabilities/propose", json={"goal": "sync calendar"}).json()
+
+    assert plan["oauth_scopes"] == ["calendar.read"]
+
+
 def test_capability_summary_and_installed_card_carry_metadata(tmp_path: Path) -> None:
     client = _client(tmp_path)
     build_id = client.post("/app/capabilities/propose", json={"goal": "sync calendar"}).json()[
