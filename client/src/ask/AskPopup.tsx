@@ -390,7 +390,7 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
       message.kind === "plan" &&
       message.plan !== undefined &&
       successfulBuildIds.has(message.plan.build_id) &&
-      message.plan.missing_secrets.length > 0
+      (message.plan.missing_secrets ?? []).length > 0
     ) {
       return [message.plan];
     }
@@ -443,7 +443,13 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                   const body =
                     !isUser && message.text === "" ? snapshot.streaming : message.text;
                   if (message.kind === "plan" && message.plan !== undefined) {
-                    const plan = message.plan;
+                    // Normalize optional arrays defensively so a missing field never crashes the popup.
+                    const plan = {
+                      ...message.plan,
+                      egress_domains: message.plan.egress_domains ?? [],
+                      secrets: message.plan.secrets ?? [],
+                      missing_secrets: message.plan.missing_secrets ?? [],
+                    };
                     const missingSecrets = new Set(plan.missing_secrets);
                     return (
                       <div key={message.id} className="ask-msg ask-msg--bot">
@@ -505,8 +511,14 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                     );
                   }
                   if (message.kind === "invoke_confirm" && message.invoke !== undefined) {
-                    const invoke = message.invoke;
-                    const argEntries = Object.entries(invoke.args);
+                    // Normalize optional arrays defensively so a missing field never crashes the popup.
+                    const invoke = {
+                      ...message.invoke,
+                      egressDomains: message.invoke.egressDomains ?? [],
+                      secrets: message.invoke.secrets ?? [],
+                      missingSecrets: message.invoke.missingSecrets ?? [],
+                    };
+                    const argEntries = Object.entries(invoke.args ?? {});
                     return (
                       <div key={message.id} className="ask-msg ask-msg--bot">
                         <span className="ask-msg__who">Artemis</span>
