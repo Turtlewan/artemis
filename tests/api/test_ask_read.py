@@ -101,7 +101,8 @@ def _app_with_read(tmp_path: Path, *, phraser: FakePhraser, seed: Record | None)
         app.state.data_store = DataStore(str(tmp_path / "spine.db"))
         if seed is not None:
             app.state.data_store.upsert(seed)
-        return ReadService(app.state.data_store, phraser=phraser)
+        # now matches the seed's fetched_at so seeded data is fresh under the freshness gate
+        return ReadService(app.state.data_store, phraser=phraser, now=lambda: 100.0)
 
     app.dependency_overrides[ask_routes._read_service] = read_service
     app.dependency_overrides[ask_routes._selector] = lambda: FixedSelector(_no_match())

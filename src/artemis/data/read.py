@@ -46,13 +46,15 @@ class _Phrased(BaseModel):
 
 
 class DomainSpec(BaseModel):
-    """A synced domain the read path can answer from. `keywords` route an ask to this domain."""
+    """A synced domain the read path can answer from. `keywords` route an ask to this domain;
+    `freshness_s` is the max age of stored data still answered locally (older -> live path)."""
 
     model_config = ConfigDict(frozen=True)
 
     domain: str
     keywords: tuple[str, ...]
     limit: int = 50
+    freshness_s: float = 900.0
 
 
 class ReadResult(BaseModel):
@@ -111,6 +113,10 @@ class ReadService:
         fails (degrade to the normal path rather than return a wrong local answer)."""
         spec = self.resolve_domain(text)
         if spec is None:
+            return None
+        latest = self._store.latest_fetched_at(spec.domain)
+        if latest is None or (self._now() - latest) > spec.freshness_s:
+            # empty or stale -> fall through to the live path (don't answer from stale local data)
             return None
         rows = self._store.query(domain=spec.domain, limit=spec.limit)
         if not rows:

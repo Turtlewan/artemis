@@ -78,7 +78,7 @@ async def test_read_phrases_from_rows() -> None:
     store = DataStore()
     _seed(store)
     phraser = FakePhraser(answer="You have Standup at 9am.")
-    svc = ReadService(store, phraser=phraser)
+    svc = ReadService(store, phraser=phraser, now=lambda: 100.0)
     result = await svc.read("what's on my calendar")
     assert result is not None
     assert result.domain == "calendar"
@@ -91,7 +91,7 @@ async def test_phraser_sees_sanitized_text_not_payload() -> None:
     store = DataStore()
     _seed(store)  # payload has secret_marker=PAYLOAD_ONLY; sanitized_text does not
     phraser = FakePhraser()
-    svc = ReadService(store, phraser=phraser)
+    svc = ReadService(store, phraser=phraser, now=lambda: 100.0)
     await svc.read("what's on my calendar")
     user_content = phraser.calls[0][1].content
     assert "Standup at 9am on 2026-08-22" in user_content  # sanitized_text is present
@@ -99,10 +99,30 @@ async def test_phraser_sees_sanitized_text_not_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_read_fresh_data_answers_locally() -> None:
+    store = DataStore()
+    _seed(store, fetched_at=1000.0)
+    phraser = FakePhraser(answer="You have Standup at 9am.")
+    svc = ReadService(store, phraser=phraser, now=lambda: 1300.0)  # 300s old < 900s threshold
+    result = await svc.read("what's on my calendar")
+    assert result is not None and result.answer == "You have Standup at 9am."
+
+
+@pytest.mark.asyncio
+async def test_read_stale_data_falls_through() -> None:
+    store = DataStore()
+    _seed(store, fetched_at=1000.0)
+    svc = ReadService(
+        store, phraser=FakePhraser(), now=lambda: 2500.0
+    )  # 1500s old > 900s threshold
+    assert await svc.read("what's on my calendar") is None  # stale -> live path
+
+
+@pytest.mark.asyncio
 async def test_phraser_failure_returns_none() -> None:
     store = DataStore()
     _seed(store)
-    svc = ReadService(store, phraser=FakePhraser(raises=RuntimeError("down")))
+    svc = ReadService(store, phraser=FakePhraser(raises=RuntimeError("down")), now=lambda: 100.0)
     assert await svc.read("what's on my calendar") is None  # degrade to fall-through
 
 
