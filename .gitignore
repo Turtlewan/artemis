@@ -26,6 +26,12 @@ keys/
 /capabilities/
 /devices.json
 /devices.json.lock
+secrets_index.json
+# Stray runtime artifacts from a brain instance run with cwd=client/ (see session-8 findings)
+/client/capabilities/
+/client/devices.json
+/client/devices.json.lock
+/client/docs/
 /layout.json
 
 # --- Python (forward-looking — code is built on the Mini) ---
