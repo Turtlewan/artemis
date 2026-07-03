@@ -52,7 +52,7 @@ All green on `v2-rebuild` — brain (mypy --strict 88 files · 155 tests · ruff
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| _(none)_ | | | | | |
+| js-rendering-fetcher | coding | 🔴 blocked | docs/changes/js-rendering-fetcher.md | build-time live smoke fails — 2 isolate defects. Owner chose **B (2026-07-03): planning writes a "chrome-capable FetchSandbox" spec first** (arg-quoting + opt-in render caps profile, apex-security review of the enlarged envelope), then finish spec 2. Diagnosis: docs/progress/js-rendering-fetcher.md + handoff 2026-07-03 + memory fetchsandbox-caps-fatal-to-chrome. | src/artemis/reachout/{render_script,js_fetch}.py, web_tool.py, tests/reachout/*, docs/technical/setup/js-fetcher-provisioning.md, CHANGELOG.md (all uncommitted — preserved on disk) |
 
 _(**Tree clean at HEAD `6dcb447`, nothing mid-build. ▶ RESUME TOMORROW = start build (coding mode).** Two ready, review-clean specs in `docs/changes/`, build in order: **1. `js-fetch-output-limit`** (prerequisite — parametrize the isolate output cap) **→ 2. `js-rendering-fetcher`** (chrome-headless-shell fallback fetcher, ADR-040). Both Deep specs, 3 domain reviews folded, all BLOCKs resolved; userns spike done (Chrome sandbox retained, no `--no-sandbox`). **Reminder for the build:** `js-rendering-fetcher` needs a BUILD-TIME live smoke (`ARTEMIS_JS_SMOKE=1`) on the provisioned WSL2 host — chrome-headless-shell is currently provisioned at `/opt/chromium_headless_shell/`. Host-verify per usual = full `uv run mypy` + `uv run pytest -q`. Say "start build" to go.)_
 >

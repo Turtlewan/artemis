@@ -1,10 +1,16 @@
 ---
 spec: js-rendering-fetcher
-status: ready
+status: blocked
 token_profile: lean
 autonomy_level: L5
 coder_effort: high
 ---
+
+<!-- BLOCKED 2026-07-03: Codex built all 4 tasks (unit-green), but the required build-time live
+     smoke fails — chrome cannot run in the PRODUCTION isolate due to two substrate defects outside
+     this spec's scope (sandbox_wsl2.py + fetch_sandbox.py). Both fixes diagnosed + confirmed. See
+     docs/progress/js-rendering-fetcher.md. Awaiting owner fork decision (fix isolate now vs new spec). -->
+
 
 # Spec: JS-rendering fallback fetcher
 

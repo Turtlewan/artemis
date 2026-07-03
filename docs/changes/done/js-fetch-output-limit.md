@@ -101,4 +101,8 @@ Larger returned output = more host memory per fetch (bounded by `OUTPUT_LIMIT_MA
 - [ ] `uv run mypy` clean; `uv run ruff check` clean; `uv run pytest -q` green (no regression in the existing sandbox/fetch suites).
 
 ## Progress
-_(Coding mode writes here — do not edit manually)_
+- [x] Task 1: Parametrize the output cap in `sandbox_wsl2.py` (Codex, `high` effort)
+- [x] Task 2: Thread `output_limit` through `FetchSandbox.run`
+- [x] Task 3: Tests for both layers
+- Host-verify: ruff clean · format clean · mypy clean (132 files) · pytest 397 passed / 4 skipped.
+- Deviation (scope): the `FetchSandbox.run` signature change broke `[override]` type-compat of two out-of-spec test stubs (`tests/capabilities/test_invoke.py`, `tests/api/test_ask_routes.py`) — synced their `run` overrides with `output_limit`. Spec's Files-to-Change under-listed these. Also reverted a spurious `@no_type_check` Codex added to blind mypy on the production method instead.
