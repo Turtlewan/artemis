@@ -16,7 +16,10 @@ Boundaries verified to HOLD: payload isolation (raw `payload` never reaches an L
 - **NOTE:** `ScheduleLedger(check_same_thread=False)` for the sync ledger — latent data-race if a 2nd writer thread is ever added; not exploitable today.
 
 ## Blocked Actions
-- **Wave 3 blocked on two owner forks** (surfaced, awaiting decision): (1) which curated domains to seed first (notes / projects / tasks / none-yet); (2) build the cross-domain briefing now (calendar-only) or defer until >1 synced domain exists.
+- **Wave 3 paused — owner revisits next session to decide Fork 1.** Session-10 ended on a functional-design discussion of the curated-domain machinery (not spec'd — owner will decide first). Full capture: **`docs/v2/curated-domains-machinery.md`**.
+  - **Fork 1 (which/how curated domains):** reframed from "which to seed" to A (pure machinery, domains emerge from conversation) / B (pre-seed tasks+notes) / C (machinery + dynamic domain discovery). **Recommended: A→C.** Key realization: a curated *domain* is just a tag (ADR-046 #7), so we build the generic machinery once, not per-domain.
+  - **Design correction to fold in:** curated writes are TRUSTED (owner-typed / already-sanitized) → must BYPASS the ingest quarantine and `store.upsert` verbatim. The Wave-1a `save_row` (runs the quarantine) is the wrong primitive for curated saves.
+  - **Fork 2 (briefing now vs defer): DEFERRED by owner**, revisit after Fork 1.
 
 ## What's Next (discoveries)
 - **The whole spine has NEVER run live** — unit-tested + host-verified only. Per the live-smoke rule it needs a real run: **owner enables the Calendar API** (console toggle, still pending from session 9) → `artemis serve` (sync auto-on) → the `*/15` loop syncs → ask "what's on my calendar" → real events via the ~2–4s local read. Until enabled, fetches **fail-soft (403)**, the store stays empty, and the read path falls through to the old invoke path (graceful).
