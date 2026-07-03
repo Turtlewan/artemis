@@ -54,3 +54,24 @@ export const pairDevice = async (pairingCode: string): Promise<void> => {
     throw toPairingError(error);
   }
 };
+
+/**
+ * Re-establish a session from the already-stored device key — no pairing code.
+ *
+ * On app startup (after a webview reload or a brain restart) the device key persists
+ * in the keystore and the brain still has the device registered, so only the session
+ * bootstrap + unlock are needed; pairing is only for a brand-new device. Returns false
+ * when there is no stored device (never paired) or the reconnect is rejected — the
+ * caller then shows the pairing screen. Never throws.
+ */
+export const reconnectDevice = async (): Promise<boolean> => {
+  try {
+    await invoke("auth_connect");
+    connectionStore.onConnected();
+    await invoke("auth_unlock");
+    connectionStore.onUnlocked();
+    return true;
+  } catch {
+    return false;
+  }
+};

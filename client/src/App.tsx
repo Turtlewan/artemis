@@ -6,6 +6,7 @@ import { AskPopup } from "./ask/AskPopup";
 import { askStore } from "./ask/askStore";
 import { useAskHotkey } from "./ask/useAskHotkey";
 import { PairingScreen } from "./auth/PairingScreen";
+import { reconnectDevice } from "./auth/pairing";
 import { DetailOverlay } from "./card/DetailOverlay";
 import { useCardOverlay } from "./card/useCardOverlay";
 import type { DomainId } from "./domains";
@@ -52,6 +53,22 @@ const useViewportSize = (): { width: number; height: number } => {
 function WorldShell() {
   const connection = useConnection();
   const connected = connection.state === "connectedLocked" || connection.state === "unlocked";
+  // On startup, silently re-establish a session from the already-stored device key
+  // (reload / brain restart lose only the in-memory session). Only fall back to the
+  // pairing screen when there is no stored device or the reconnect is rejected.
+  const [reconnecting, setReconnecting] = useState(true);
+  const reconnectStarted = useRef(false);
+  useEffect(() => {
+    if (reconnectStarted.current) return;
+    reconnectStarted.current = true;
+    let active = true;
+    void reconnectDevice().finally(() => {
+      if (active) setReconnecting(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const { placements, updatePlacement, resetToDefault } = useLayoutBridge(connected);
   const viewport = useViewportSize();
   const overlay = useCardOverlay();
@@ -146,6 +163,17 @@ function WorldShell() {
     }
   }, [overlayOpen, setBackgroundInert]);
 
+  if (!connected && reconnecting) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", color: "#f4f7fb" }}
+      >
+        Connecting…
+      </div>
+    );
+  }
   if (!connected) return <PairingScreen state={connection.state} />;
 
   return (

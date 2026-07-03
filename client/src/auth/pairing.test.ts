@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { connectionStore } from "../state/connection";
-import { pairDevice, toPairingError } from "./pairing";
+import { pairDevice, reconnectDevice, toPairingError } from "./pairing";
 import { recoverWithPassphrase } from "./recovery";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -45,6 +45,34 @@ describe("pairDevice", () => {
     mockedInvoke.mockRejectedValueOnce({ kind: "biometricCancelled" });
 
     await expect(pairDevice("123456")).rejects.toEqual({ kind: "biometricCancelled" });
+  });
+});
+
+describe("reconnectDevice", () => {
+  beforeEach(() => {
+    connectionStore.resetForTest();
+    mockedInvoke.mockReset();
+  });
+
+  test("re-establishes a session from the stored device without pairing", async () => {
+    mockedInvoke.mockResolvedValue({});
+
+    const ok = await reconnectDevice();
+
+    expect(ok).toBe(true);
+    expect(mockedInvoke).toHaveBeenNthCalledWith(1, "auth_connect");
+    expect(mockedInvoke).toHaveBeenNthCalledWith(2, "auth_unlock");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("auth_pair", expect.anything());
+    expect(connectionStore.getSnapshot().state).toBe("unlocked");
+  });
+
+  test("returns false and stays unpaired when no device is stored", async () => {
+    mockedInvoke.mockRejectedValueOnce({ kind: "keyNotFound" });
+
+    const ok = await reconnectDevice();
+
+    expect(ok).toBe(false);
+    expect(connectionStore.getSnapshot().state).toBe("unpaired");
   });
 });
 

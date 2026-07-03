@@ -202,9 +202,19 @@ describe("PairingScreen", () => {
     expect(input.value).toBe("");
   });
 
-  test("App mounts the pairing code input while unpaired", () => {
+  test("App attempts a device reconnect on startup, then shows pairing if it fails", async () => {
+    mockedInvoke.mockRejectedValue({ kind: "keyNotFound" });
     const { container } = render(<App />);
 
-    expect(getByLabelText(container, /pairing code/i)).toBeTruthy();
+    // Startup reconnect is attempted from the stored device (no pairing code)...
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("auth_connect");
+    });
+    // ...and only when it fails do we fall back to the pairing screen.
+    await waitFor(() => {
+      expect(getByLabelText(container, /pairing code/i)).toBeTruthy();
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("auth_pair", expect.anything());
+    expect(connectionStore.getSnapshot().state).toBe("unpaired");
   });
 });
