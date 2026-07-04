@@ -30,13 +30,17 @@ _DEFAULT_MAX_TOKENS = 1024  # cap every driver completion - no runaway turn cost
 _MAX_OBS_CHARS = 4000  # per-observation transcript ceiling (full text still reaches tool caller)
 _DEFAULT_SPIN_THRESHOLD = 3  # N identical consecutive (tool, args) steps = a spin
 _DEFAULT_FAIL_STREAK = 3  # N consecutive failed steps = thrashing
+_DEFAULT_STALL_THRESHOLD = 3  # N consecutive IDENTICAL observations = a semantic stall
 
-StopReason = Literal["answered", "budget_exhausted", "driver_error", "spinning", "thrashing"]
+StopReason = Literal[
+    "answered", "budget_exhausted", "driver_error", "spinning", "thrashing", "stalling"
+]
 Verdict = Literal["passed", "flagged", "unjudged"]
 
 _STOP_LEAD: dict[str, str] = {
     "spinning": "I kept repeating the same step",
     "thrashing": "my steps kept failing",
+    "stalling": "I kept getting back the same information",
 }
 
 _ACTION_SCHEMA: dict[str, Any] = {
@@ -101,6 +105,14 @@ class LoopResult:
     judge_tokens_total: int = (
         0  # total judge tokens (telemetry for AL-6; 0 when unjudged/unreported)
     )
+    escalated: bool = False  # AL-3: True iff this result came from the cross-family escalation pass
+    escalation_of: StopReason | None = (
+        None  # the primary pass's stop_reason that triggered escalation
+    )
+    primary_driver_turns: int = 0  # AL-3: the failed primary pass's turns (set only when escalated)
+    primary_driver_tokens_total: int = (
+        0  # AL-3: the failed primary pass's tokens (set only when escalated)
+    )
 
 
 class AgentLoop:
@@ -116,6 +128,7 @@ class AgentLoop:
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         spin_threshold: int = _DEFAULT_SPIN_THRESHOLD,
         fail_streak_threshold: int = _DEFAULT_FAIL_STREAK,
+        stall_threshold: int = _DEFAULT_STALL_THRESHOLD,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self._driver = driver
@@ -125,6 +138,7 @@ class AgentLoop:
         self._max_tokens = max(1, max_tokens)
         self._spin_threshold = max(2, spin_threshold)
         self._fail_streak_threshold = max(2, fail_streak_threshold)
+        self._stall_threshold = max(2, stall_threshold)
         self._clock = clock
 
     async def run(self, request: str) -> LoopResult:
@@ -260,7 +274,7 @@ class AgentLoop:
                 Message(role="user", content=f"OBSERVATION [{record.tool}]: {capped}")
             )
             if turns < self._budget:
-                stop = self._tiered_stop(steps)
+                stop = self._tiered_stop(steps, observations)
                 if stop is not None:
                     return LoopResult(
                         answer=self._partial(steps, _STOP_LEAD[stop]),
@@ -343,10 +357,13 @@ class AgentLoop:
     def _ms(self, t0: float) -> int:
         return max(0, int((self._clock() - t0) * 1000))
 
-    def _tiered_stop(self, steps: Sequence[StepRecord]) -> StopReason | None:
-        """Cheap DETERMINISTIC degeneracy checks - NO model call. Run each turn so a degenerate
-        driver cannot burn the remaining budget. Spin = the last `spin_threshold` steps are an
-        identical (tool, args); thrashing = the last `fail_streak_threshold` steps all failed."""
+    def _tiered_stop(
+        self, steps: Sequence[StepRecord], observations: Sequence[str]
+    ) -> StopReason | None:
+        """Cheap DETERMINISTIC degeneracy checks - NO model call. Spin = last `spin_threshold`
+        steps share an identical (tool, args); thrashing = last `fail_streak_threshold` steps all
+        failed; stalling = last `stall_threshold` OBSERVATIONS are byte-identical (the driver keeps
+        getting the same data regardless of differing args)."""
         if len(steps) >= self._spin_threshold:
             tail = steps[-self._spin_threshold :]
             sig = _sig(tail[0])
@@ -355,6 +372,10 @@ class AgentLoop:
         if len(steps) >= self._fail_streak_threshold:
             if all(not s.ok for s in steps[-self._fail_streak_threshold :]):
                 return "thrashing"
+        if len(observations) >= self._stall_threshold:
+            obs_tail = observations[-self._stall_threshold :]
+            if all(obs == obs_tail[0] for obs in obs_tail):
+                return "stalling"
         return None
 
     async def _run_judge(

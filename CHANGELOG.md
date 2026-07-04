@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Add agent-loop escalation (AL-3b): semantic-stall detection + cross-family one-retry with a deterministic state-summary handoff (`escalated`/`escalation_of` ride LoopResult).
+- Add `escalation_driver` model-role (default codex/gpt-5.5) with a cross-family loop_driver invariant (AL-3a).
 - Add agent-loop core (AL-1): local-read tool chaining under a step budget.
 - Add agent-loop stop-discipline (AL-2): tiered spin/thrashing detection + verify-on-stop judge (verdict rides LoopResult).
 - Client Google OAuth connect/status/disconnect controls now let owners link, inspect, refresh, and
