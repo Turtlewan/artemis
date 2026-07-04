@@ -1,98 +1,92 @@
-# AGENTS.md — Artemis (Codex build instructions)
+# AGENTS.md — Artemis v2 (Codex build instructions)
 
-Standing instructions for the **Codex CLI** when building Artemis specs. Auto-loaded by Codex
-each session. Builds run **inside apex-code mechanic A** (ADR-026 §Refinement 2026-06-24 — Codex
-dispatched as a `codex exec -p apex-coder` subprocess; the standalone `CODEX-BUILD-RUNBOOK.md` is retired).
+Standing instructions for the **Codex CLI** when building Artemis specs. Auto-loaded by Codex each
+session. Builds run inside apex-code mechanic A (`codex exec -p apex-coder` subprocess, dispatched
+per spec by the host session).
 
 ## What this repo is
-Artemis — a local-first personal assistant with a RAG second brain. The brain spine is pure
-Python (`src/artemis/`), tested with `uv` + pytest + mypy + ruff. Specs in `docs/changes/` are
-self-contained execution scripts.
+Artemis **v2** — a multi-provider, subscription-first agent harness: a Python "brain"
+(`src/artemis/`, FastAPI on 127.0.0.1:8030) + a Tauri desktop client (`client/`). Capabilities are
+SKILL.md-packaged tools run in a WSL2 isolate. Specs in `docs/changes/` are self-contained
+execution scripts. (v1 — the RAG second brain — is archived at tag `archive/v1`; ignore any
+doc that mentions `openhands`, an `agentic` dependency group, or `/Users/artemis-build/` paths.)
 
 ## How to build a spec
 When asked to implement `docs/changes/<name>.md`:
-1. **Read the whole spec first.** Implement `## Exact changes` precisely — signatures, file
-   contents, edit locations.
-2. **Surgical scope:** only create/modify files listed in the spec's `## Files to change`.
-   Touch nothing else. `git diff --stat` must show only those files.
-3. **Run the spec's `## Commands to run`** and make every `## Acceptance criteria` item pass.
+1. **Read the whole spec first**, including header banners (review rulings are folded into tasks).
+   Implement `## Exact changes` precisely — signatures, file contents, edit locations.
+2. **Surgical scope:** only create/modify files listed in the spec's `## Files to change` (or the
+   dispatch prompt's scope line). `git diff --stat` must show only those files.
+3. **Run the spec's `## Commands to run`** — the spec's commands are authoritative — and make
+   every `## Acceptance criteria` item pass.
 4. **Tests are the contract:** if a check fails, fix the *code* and re-run until green.
    NEVER weaken, skip, or delete a test to make it pass.
-5. **Stop and ask** if a spec's acceptance criteria cannot be met as written — that is a planning
-   question. Note it; do not improvise around the spec.
+5. **Stop and ask** only if a spec's acceptance criteria cannot be met as written — that is a
+   planning question. Note it precisely; do not improvise around the spec.
 
-## Building a queue of specs
-On **"build specs"** (or "build the queue" / "build docs/changes"): work through every spec in
-`docs/changes/` (not `done/`):
-1. **Dependency order** — honour each spec's `## Prerequisites`; if order is unclear, ask once then proceed.
-2. **One spec fully at a time** — implement → run the verify recipe → green — before starting the next.
-3. **STOP on the first failure** — if verify won't go green or a criterion can't be met, stop, leave the tree as-is, and report which spec + why. Never continue onto a red tree.
-4. **After a spec passes, move it to `docs/changes/done/`** (a file move, not a commit).
-5. **Never commit** (hard rule) — leave all built work dirty for owner review at the end.
-6. **End with a summary** — specs passed, specs blocked, final verify status.
-
-## Verify commands (run after each spec)
+## Verify commands (brain default — the spec may extend these)
 ```
-uv sync --group agentic
-uv run --frozen ruff format --check .
-uv run --frozen ruff check .
-uv run --frozen mypy
-uv run --frozen pytest -q
+uv sync
+uv run ruff check . && uv run ruff format --check .
+uv run mypy
+uv run pytest -q
 ```
-Green on all + correct `git diff --stat` = spec done.
+- **Plain `uv sync`. There is NO `agentic` dependency group in v2** — `uv sync --group agentic`
+  errors. Dev tools (mypy/pytest/ruff) are in `[dependency-groups]` dev; no extras flags needed.
+- `uv run mypy` is strict over `files = ["src", "evals", "tests"]` (~169 files). Full
+  `uv run pytest -q` runs ~600 tests in <1 min (`live`-marked tests are deselected by default).
+- Client-half specs carry their own commands (tsc / eslint / vitest / cargo) — use exactly what
+  the spec lists; do not invent npm script names.
 
-**Always `uv sync --group agentic`, never bare `uv sync`.** The agentic subsystem
-(`src/artemis/agentic/coder/`) imports `openhands.sdk`, which lives in the `agentic` dependency
-group. Plain `uv sync` *uninstalls* that group, so `uv run --frozen mypy` reports a **false red**
-(`Cannot find implementation or library stub for module named "openhands.sdk"`). The full
-`pytest -q` suite can exceed the Codex command timeout (~5 min); if the host has already reported
-the baseline green, scope baseline tests to the spec's files and let the host run the full suite.
+## Sandbox environment quirks (do these FIRST, they hit every run)
+- Default user cache/temp paths are permission-blocked in the Codex sandbox. Immediately redirect
+  to workspace-local scratch: `UV_CACHE_DIR`, `TEMP`/`TMP`, and `TLDEXTRACT_CACHE`. Remove the
+  scratch dirs when done (if deletion is policy-blocked, say so in the final report).
+- **In-sandbox pytest may skip environment-dependent tests** (e.g. 13 skipped vs the host's 6).
+  Do not chase the extra skips — the host re-runs the full recipe outside the sandbox as the
+  arbiter. Report your counts honestly.
+- **Never create `.venv` or `node_modules` inside the sandbox** — dependency installs are done by
+  the host as the normal user (Windows sandbox-SID file-ownership rule). If a spec needs a new
+  package, stop and report it instead of installing.
 
 ## Hard rules
-- **Never `git commit` and never `git push`.** Commits are owner-controlled. Pushing to `main` is
-  a permanent hard block. Build + verify only; leave the working tree dirty for owner review.
-- **Sandbox:** building needs `--sandbox workspace-write`. (Artemis's *runtime* use of Codex is
-  read-only — that is a different mode, not for building.)
-- **Baseline before building:** run the **full** verify recipe once first — **including `uv sync --group agentic`** (it installs the `artemis` project + dev group + the agentic group; bare `uv sync` drops `openhands.sdk` and reads as a false red — see Verify commands above); never run the `--frozen` check-only commands against an un-synced venv, since a missing project install reads as a **false red** (`ModuleNotFoundError: artemis`). If the baseline is genuinely **red**, stop and report — never build on a broken base. **Do NOT stop merely because the working tree has uncommitted changes** — that is the owner's normal state by design (this file forbids committing, so the tree is *expected* to be dirty). Note what is already modified, then proceed.
+- **Never `git commit`, never `git push`.** Build + verify only; leave work dirty for host review.
+- **Sandbox:** builds run `--sandbox workspace-write`; stay repo-confined.
+- **Baseline:** the host dispatches on a green baseline. If your first full verify is red in a way
+  the dispatch prompt did not pre-authorize you to fix, stop and report — never build on red.
+- **A dirty working tree is NORMAL** (concurrent host/docs work; this file forbids committing).
+  Leave out-of-scope modified/untracked files strictly untouched; note them in the report.
 
-## Build gotchas (Artemis-specific)
-Hard-won from the 2026-06-24 cluster build — apex-code carries the generic Codex mechanics; these
-are the Artemis-specific ones:
-- **Pre-flight every original-corpus spec against the live tree before building.** The corpus is older
-  than the code: specs carry stale `/Users/artemis-build/` paths and many "modify X" tasks are actually
-  CREATE (the base module was never built — the "stub-never-built" pattern, e.g. `hooks.py`, the whole
-  `calendar/` module). Reconcile the Files-table against `src/` first; adapt paths in place.
-- **CAL specs (and other large specs) are slow** — `CAL-a` (~2500 lines) hit the 10-min Codex timeout.
-  Budget a longer timeout or split. **On timeout, recover by re-verifying the tree, not re-dispatching**
-  — Codex usually finished writing before the timeout fired.
-- **Install deps as the normal user, never inside the Codex sandbox** (Windows artifact-ownership rule):
-  `uv add <pkg>` host-side before/after the build, so the verify reads an unlocked tree.
-
-## Setup
-`uv sync --group agentic` installs the `artemis` project, the `dev` dependency-group
-(mypy/pytest/ruff), **and** the `agentic` group (`openhands.sdk`, required for a clean mypy) — it is
-the first line of the verify recipe, so a normal verify run prepares the env. Dev tools live in
-`[dependency-groups]`, **not** extras — do **not** use `--all-extras`.
-
-## Project layout (src/artemis/) — ports & adapters (hexagonal)
-Implement against ports; put concrete tech in adapters. A new integration = a new adapter implementing
-an existing port — never leak tech (DB/HTTP/model SDK) into a port.
-- `ports/`     interfaces only: `memory`, `retrieval`, `model`, `routing`, `voice`, `types`
-- `adapters/`  concrete impls of ports (e.g. `model_adapters.py`)
-- `memory/`    memory subsystem: `schema.py` (Pydantic models), `repository.py` (persistence)
-- `knowledge/` RAG "second brain": `vector_store.py` (lancedb / sqlite-vec)
-- `registry/`  capability/tool registry (`registry.py`, `index.py`)
-- `tools/`     agent tools (e.g. `time_tool.py`)
-- top level:   `api.py` (FastAPI), `brain.py`, `router.py`, `gateway.py`, `cli.py`/`main.py`
-               (entrypoints), `config.py` (pydantic-settings), `manifest.py`, `heartbeat.py`, `paths.py`
+## Project layout (v2)
+- `src/artemis/api/` — FastAPI app + routes (auth handshake, ask, capabilities, oauth, secrets)
+- `src/artemis/data/` — local data spine (ADR-046/048): `store` (generic record store),
+  `ingest` (quarantine-at-ingest), `read` (local read + phrasing), `curate` (owner CRUD),
+  `fetcher` (scheduled sync runner)
+- `src/artemis/capabilities/` — forge (build-by-chat), store, select, WSL2 sandboxes
+  (`sandbox_wsl2`, `fetch_sandbox`)
+- `src/artemis/model/` — providers (codex / claude_code / anthropic / ollama), `ModelClient`,
+  `QuotaAwareRouter` (subscription-first; per-provider schema down-conversion)
+- `src/artemis/oauth/` — Google OAuth broker (loopback+PKCE, keychain-backed)
+- `src/artemis/scheduler/` — durable scheduler + ledger; `src/artemis/reachout/` — web fetch/tool
+- `src/artemis/memory/`, `src/artemis/ports/`, `src/artemis/expiry.py`, `src/artemis/types.py`
+- `capabilities/builtin/` — git-tracked builtin capabilities (e.g. `calendar-sync`); the REST of
+  `capabilities/` is runtime storage (gitignored, ruff-excluded — never lint or edit it)
+- `client/` — Tauri desktop app (TS webview + Rust gateway in `client/src-tauri/`)
+- `poc/` — spike PoCs (in lint scope but not production; don't touch unless spec'd)
 
 ## Conventions
-- Python 3.12, fully typed — `mypy --strict` must pass (pydantic.mypy plugin on). No `Any` escapes, no untyped defs.
-- Pydantic v2 for all models / IO boundaries; `pydantic-settings` for config — no scattered `os.getenv`.
+- Python 3.12, fully typed — strict mypy must pass (pydantic.mypy plugin on). No untyped defs.
+- Pydantic v2 at all IO boundaries; frozen models for value objects.
 - Async I/O throughout (FastAPI + httpx; tests `asyncio_mode=auto`) — never block the event loop.
-- `ruff` owns style (line-length 100, import-order, naming, pyupgrade) — let it; don't hand-format.
+- `ruff` owns style (line-length 100) — let it; don't hand-format.
+- Client DTO rule: every brain JSON field the client consumes needs a matching field in the Rust
+  gateway structs (`client/src-tauri/.../gateway.rs`) — serde silently drops undeclared fields.
+- Security invariants you must never relax in passing: raw external `payload` never reaches an
+  LLM (only `sanitized_text`); quarantine readers are no-tools; secrets/OAuth tokens go to the
+  isolate env only (never argv, never logs); guest-side decodes fail closed.
 
 ## Tests
-- Fast unit loop:  `uv run --frozen pytest -q -m "not integration"`
-- Full (incl. integration, needs external deps):  `uv run --frozen pytest -q` (this is the verify-recipe default)
-- Tests live in `tests/` as `test_*.py`, `asyncio_mode=auto`.
+- `tests/` mirrors `src/` (`tests/data/`, `tests/api/`, `tests/capabilities/`, …), `test_*.py`,
+  `asyncio_mode=auto`. Hermetic by default: fake model ports (see `tests/data/test_read.py`),
+  `httpx.MockTransport`, in-memory stores. `live`-marked tests need real services and are
+  excluded by default — never required for a spec unless it says so.

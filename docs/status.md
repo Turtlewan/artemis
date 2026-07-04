@@ -10,7 +10,8 @@ token_profile: lean
 autonomy_level: L5
 specialists_default: [apex-security, apex-ai-systems]
 stack_skills: [apex-python, apex-tauri]   # v2 Python harness + kept Tauri client; apex-swift dropped (v1 Swift app + audio sidecar scrapped)
-coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Dogfood: Opus plans/specs/reviews, Codex builds; host re-verifies full mypy --strict + pytest.
+coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Host re-verifies full mypy + pytest.
+apex_model_roles: reason=opus · orchestrate=sonnet (AFK build hosts) · draft=opus · code=codex gpt-5.5   # owner-assigned 2026-07-04 (ADR-049 #6); revisit as models improve. /model per session for the host role.
 max_parallel_codex: 3
 
 _Last updated by planning mode:_ 2026-07-04
@@ -52,7 +53,7 @@ All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| _(empty — nothing mid-build)_ | | | | | |
+| hardening pair (AFK): sandbox-policy-caps-bound → argv-base64-side-channel | coding | 🔄 in-progress | docs/changes/ | caps-bound dispatched to codex; argv-base64 queued (shared sandbox_wsl2.py, sequential; dual-pass security review at build) | — |
 
 _(**✅ CURATED-MACHINERY CLUSTER COMPLETE (2026-07-04, AFK session 11) — clean stop.** All three ADR-048 specs drafted (Opus) → domain-reviewed → built (Codex) → host-verified → committed on `v2-rebuild`: `curate-extract` (`3ca8a58`) → `curate-write-referent` (`e2af8da`) → `dynamic-domain-routing` (`0f61074`); all archived to `done/`. Live haiku calibration 22/24 gate passed (`docs/findings/curate-extract-calibration-2026-07-04.md`). Brain restarted from HEAD `0f61074` with the machinery live. **✅ LIVE-PROVEN same day (owner dogfood): the passport-task loop ran in the real app — add → read → forget worked.** ADR-048 is fully closed: decided, spec'd, built, verified, and live in one session.)_
 
