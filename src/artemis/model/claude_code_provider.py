@@ -12,7 +12,8 @@ from pathlib import Path
 
 import artemis.model.cli_support as cli_support
 from artemis.model.errors import ProviderUnavailableError, QuotaExhaustedError
-from artemis.types import Message
+from artemis.model.codex_provider import Generation
+from artemis.types import Message, Usage
 
 
 class ClaudeCodeProvider:
@@ -34,7 +35,7 @@ class ClaudeCodeProvider:
         messages: Sequence[Message],
         model: str,
         schema: dict | None,  # type: ignore[type-arg]
-    ) -> str:
+    ) -> Generation:
         prompt = cli_support.render_messages(messages)
         if schema is not None:
             prompt += "\n\nReturn ONLY a JSON value conforming to this JSON Schema:\n" + json.dumps(
@@ -71,7 +72,8 @@ class ClaudeCodeProvider:
         # CLI models wrap structured output in a whole-output ```json fence; strip it so the
         # caller's json.loads / model_validate_json sees clean JSON. Only for schema calls, and
         # only when the ENTIRE output is one fenced block (leaves prose / inline code untouched).
-        return _strip_code_fence(result) if schema is not None else result
+        final_text = _strip_code_fence(result) if schema is not None else result
+        return Generation(text=final_text, usage=_extract_usage(text))
 
     async def _run_cli(self, argv: list[str]) -> tuple[int, bytes, bytes]:
         env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self._ensure_clean_config_dir())}
@@ -160,6 +162,39 @@ def _extract_result(stdout: str) -> str:
         if isinstance(result, str):
             return result
     return stdout.strip()
+
+
+def _extract_usage(stdout: str) -> Usage:
+    """Read the ``usage`` sibling of the claude JSON envelope; fail-soft to zeros.
+
+    Cache tokens stay distinct: prompt is non-cached input only; total is all input plus output.
+    """
+    zero = Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+    try:
+        value = json.loads(stdout)
+    except json.JSONDecodeError:
+        return zero
+    if not isinstance(value, dict):
+        return zero
+    raw = value.get("usage")
+    if not isinstance(raw, dict):
+        return zero
+
+    def _int(key: str) -> int:
+        v = raw.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+    prompt = _int("input_tokens")
+    cache_read = _int("cache_read_input_tokens")
+    cache_creation = _int("cache_creation_input_tokens")
+    completion = _int("output_tokens")
+    return Usage(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=prompt + cache_read + cache_creation + completion,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_creation,
+    )
 
 
 def _strip_code_fence(text: str) -> str:

@@ -5,9 +5,9 @@ from collections.abc import Sequence
 import pytest
 
 from artemis.model.client import ModelClient, ModelOutputError
-from artemis.model.codex_provider import RawProvider
+from artemis.model.codex_provider import Generation, RawProvider
 from artemis.ports.model import ModelPort
-from artemis.types import Message
+from artemis.types import Message, Usage
 
 
 class FakeProvider(RawProvider):
@@ -29,6 +29,15 @@ class FakeProvider(RawProvider):
         return self.responses[-1]
 
 
+class UsageProvider(RawProvider):
+    async def generate(self, *, messages, model, schema):  # type: ignore[no-untyped-def]
+        del messages, model, schema
+        return Generation(
+            text='{"answer": "ok"}',
+            usage=Usage(prompt_tokens=11, completion_tokens=7, total_tokens=18),
+        )
+
+
 def test_model_client_satisfies_model_port() -> None:
     assert isinstance(ModelClient(FakeProvider()), ModelPort)
 
@@ -44,6 +53,28 @@ async def test_schema_path_returns_structured_output() -> None:
 
     assert response.structured == {"answer": "ok"}
     assert response.text == '{"answer": "ok"}'
+
+
+@pytest.mark.asyncio
+async def test_generation_usage_flows_into_response() -> None:
+    client = ModelClient(UsageProvider())
+    resp = await client.complete(
+        messages=[Message(role="user", content="q")], response_schema=_answer_schema()
+    )
+    assert resp.structured == {"answer": "ok"}
+    assert (resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens) == (
+        11,
+        7,
+        18,
+    )
+
+
+@pytest.mark.asyncio
+async def test_str_provider_yields_zero_usage() -> None:
+    resp = await ModelClient(FakeProvider(['{"answer": "ok"}'])).complete(
+        messages=[Message(role="user", content="q")], response_schema=_answer_schema()
+    )
+    assert resp.usage.total_tokens == 0
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,10 +15,11 @@ from artemis.model.codex_provider import (
     CODEX_SPAWN_MARKER,
     CodexProvider,
     CodexProviderError,
+    Generation,
     reap_stale_codex,
 )
 from artemis.model.errors import ProviderUnavailableError, QuotaExhaustedError
-from artemis.types import Message
+from artemis.types import Message, Usage
 
 
 def test_codex_provider_resolves_binary_and_builds_expected_argv() -> None:
@@ -40,6 +42,7 @@ def test_codex_provider_resolves_binary_and_builds_expected_argv() -> None:
         "--skip-git-repo-check",
         "--color",
         "never",
+        "--json",
         "-o",
         "out.txt",
         "--output-schema",
@@ -129,9 +132,90 @@ async def test_codex_provider_strictifies_schema_internally(
         },
     )
 
-    assert result == '{"answer":"ok"}'
+    assert result.text == '{"answer":"ok"}'
+    assert result.usage.total_tokens == 0
     assert captured_schema is not None
     assert captured_schema["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+async def test_codex_provider_parses_usage_from_json_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = (
+        b'{"id":"0","msg":{"type":"agent_message","text":"hi"}}\n'
+        b'{"id":"1","msg":{"type":"token_count","info":{"total_token_usage":'
+        b'{"input_tokens":1200,"cached_input_tokens":256,"output_tokens":340,'
+        b'"total_tokens":1540}}}}\n'
+    )
+
+    async def fake_run_cli(argv, *, stdin, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        del stdin, env, timeout
+        Path(argv[argv.index("-o") + 1]).write_text("hi", encoding="utf-8")
+        return (0, stream, b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    result = await CodexProvider(binary="codex-test").generate(
+        messages=[Message(role="user", content="hello")], model="", schema=None
+    )
+    assert result.text == "hi"
+    assert (result.usage.prompt_tokens, result.usage.completion_tokens) == (1200, 340)
+    assert result.usage.total_tokens == 1540
+
+
+@pytest.mark.asyncio
+async def test_codex_provider_usage_falls_back_to_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_cli(argv, *, stdin, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        del stdin, env, timeout
+        Path(argv[argv.index("-o") + 1]).write_text("hi", encoding="utf-8")
+        return (0, b'{"id":"0","msg":{"type":"agent_message","text":"hi"}}\n', b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    result = await CodexProvider(binary="codex-test").generate(
+        messages=[Message(role="user", content="hello")], model="", schema=None
+    )
+    assert result.text == "hi"
+    assert result.usage.total_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_codex_provider_negative_tokens_degrade_to_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = (
+        b'{"id":"1","msg":{"type":"token_count","info":{"total_token_usage":'
+        b'{"input_tokens":-5,"output_tokens":340}}}}\n'
+    )
+
+    async def fake_run_cli(argv, *, stdin, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        del stdin, env, timeout
+        Path(argv[argv.index("-o") + 1]).write_text("hi", encoding="utf-8")
+        return (0, stream, b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    result = await CodexProvider(binary="codex-test").generate(
+        messages=[Message(role="user", content="hello")], model="", schema=None
+    )
+    assert result.text == "hi"
+    assert result.usage == Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+
+
+@pytest.mark.skipif(
+    os.environ.get("ARTEMIS_LIVE_SMOKE") != "1",
+    reason=(
+        "live smoke (set ARTEMIS_LIVE_SMOKE=1): runs one real codex call to verify the --json "
+        "token-event field path -- usage.total_tokens must be > 0"
+    ),
+)
+@pytest.mark.asyncio
+async def test_codex_provider_usage_live_smoke() -> None:
+    result = await CodexProvider().generate(
+        messages=[Message(role="user", content="say OK")], model="gpt-5.5", schema=None
+    )
+    assert isinstance(result, Generation)
+    assert result.usage.total_tokens > 0
 
 
 @pytest.mark.asyncio

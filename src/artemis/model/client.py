@@ -8,7 +8,7 @@ from typing import Any
 
 import jsonschema  # type: ignore[import-untyped]
 
-from artemis.model.codex_provider import RawProvider
+from artemis.model.codex_provider import Generation, RawProvider
 from artemis.types import Message, ModelResponse, Usage
 
 
@@ -42,13 +42,14 @@ class ModelClient:
         model_id = model or self._model_default
 
         if response_schema is None:
-            text = await self._provider.generate(messages=messages, model=model_id, schema=None)
+            raw = await self._provider.generate(messages=messages, model=model_id, schema=None)
+            text, usage = _split(raw)
             return ModelResponse(
                 text=text,
                 model_id=model_id,
                 structured=None,
                 finish_reason="stop",
-                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                usage=usage,
             )
 
         attempt_messages = list(messages)
@@ -59,16 +60,17 @@ class ModelClient:
                 model=model_id,
                 schema=response_schema,
             )
+            text, usage = _split(raw)
             try:
-                parsed = json.loads(raw)
+                parsed = json.loads(text)
                 jsonschema.validate(instance=parsed, schema=response_schema)
                 structured = _ensure_structured(parsed)
                 return ModelResponse(
-                    text=raw,
+                    text=text,
                     model_id=model_id,
                     structured=structured,
                     finish_reason="stop",
-                    usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                    usage=usage,
                 )
             except (json.JSONDecodeError, jsonschema.ValidationError) as exc:
                 last_error = exc
@@ -83,6 +85,12 @@ class ModelClient:
                 )
 
         raise ModelOutputError("Provider did not return valid structured output") from last_error
+
+
+def _split(result: str | Generation) -> tuple[str, Usage]:
+    if isinstance(result, Generation):
+        return result.text, result.usage
+    return result, Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
 
 
 def _ensure_structured(value: Any) -> dict[str, Any]:

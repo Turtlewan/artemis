@@ -88,14 +88,14 @@ async def test_generate_defences_structured_output(
         model="opus",
         schema={"type": "object"},
     )
-    assert json.loads(with_schema) == {"answer": "ok"}  # clean JSON, fence stripped
+    assert json.loads(with_schema.text) == {"answer": "ok"}  # clean JSON, fence stripped
 
     without_schema = await provider.generate(
         messages=[Message(role="user", content="q")],
         model="opus",
         schema=None,
     )
-    assert without_schema.startswith("```json")  # text path untouched
+    assert without_schema.text.startswith("```json")  # text path untouched
 
 
 @pytest.mark.asyncio
@@ -166,7 +166,7 @@ async def test_claude_provider_argv_json_output_and_clean_config(
 
     argv = captured["argv"]
     assert isinstance(argv, list)
-    assert result == "hi"
+    assert result.text == "hi"
     assert "-p" in argv
     assert "--output-format" in argv
     assert "json" in argv
@@ -182,6 +182,54 @@ async def test_claude_provider_argv_json_output_and_clean_config(
     assert cfg_dir.name.startswith("artemis-claude-clean-")
     assert cfg_dir != home / ".claude"
     assert _only_credentials(cfg_dir) == [".credentials.json"]
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_parses_usage_from_envelope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+
+    async def fake_run_cli(argv, *, stdin, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        del argv, stdin, env, timeout
+        return (
+            0,
+            b'{"result":"hi","usage":{"input_tokens":90,"cache_read_input_tokens":10,'
+            b'"output_tokens":25}}',
+            b"",
+        )
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    result = await ClaudeCodeProvider(binary="claude-test").generate(
+        messages=[Message(role="user", content="hi")], model="", schema=None
+    )
+    assert result.text == "hi"
+    assert (result.usage.prompt_tokens, result.usage.completion_tokens) == (90, 25)
+    assert result.usage.cache_read_tokens == 10
+    assert result.usage.cache_creation_tokens == 0
+    assert result.usage.total_tokens == 125
+
+
+@pytest.mark.asyncio
+async def test_claude_provider_usage_missing_falls_back_to_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    _write_dummy_credentials(home)
+    _patch_home(monkeypatch, home)
+
+    async def fake_run_cli(argv, *, stdin, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        del argv, stdin, env, timeout
+        return (0, b'{"result":"hi"}', b"")
+
+    monkeypatch.setattr(cli_support, "run_cli", fake_run_cli)
+    result = await ClaudeCodeProvider(binary="claude-test").generate(
+        messages=[Message(role="user", content="hi")], model="", schema=None
+    )
+    assert result.text == "hi"
+    assert result.usage.total_tokens == 0
 
 
 @pytest.mark.asyncio
