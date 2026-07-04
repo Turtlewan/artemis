@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Add agent-loop core (AL-1): local-read tool chaining under a step budget.
+- Add agent-loop stop-discipline (AL-2): tiered spin/thrashing detection + verify-on-stop judge (verdict rides LoopResult).
 - Client Google OAuth connect/status/disconnect controls now let owners link, inspect, refresh, and
   disconnect the brokered Google account without exposing token material to the webview. (ADR-044)
 - OAuth-scoped capabilities now mint and inject a fresh Google access token at confirmed invoke

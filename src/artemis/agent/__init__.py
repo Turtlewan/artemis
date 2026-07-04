@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from artemis.agent.judge import JudgeVerdict, VerifyJudge
 from artemis.agent.loop import AgentLoop, LoopResult, StepRecord
 from artemis.agent.tools import (
     LoopTool,
@@ -12,6 +13,8 @@ from artemis.agent.tools import (
 
 __all__ = [
     "AgentLoop",
+    "VerifyJudge",
+    "JudgeVerdict",
     "LoopResult",
     "StepRecord",
     "LoopTool",
