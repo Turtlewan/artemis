@@ -29,7 +29,6 @@ import json
 import math
 import os
 import re
-import shlex
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -80,36 +79,29 @@ _PROBE_COMMAND = (
 
 _ISOLATE_SCRIPT = r'''set -euo pipefail    # BLOCK 2: -e so any setup failure ABORTS before the untrusted command runs (fail CLOSED)
 abort() { echo "isolate-setup-failed: $1" >&2; exit 1; }   # BLOCK 2: explicit guard on each security-critical step
-# WSL's interop reconstructs the post-`--` argv into a single command line and re-parses it via `/bin/bash -c`
-# semantics before invoking guest `bash -s`; that shell-reinterpretation is inside `wsl.exe`, invisible to the
-# Python call site, so run_isolated shlex.quote()s every positional. The quotes arrive here literally, so unquote
-# each back to its raw value. FAIL CLOSED (the BLOCK-2 invariant): the decode is a plain pipeline (NOT a process
-# substitution, whose exit status set -e ignores) so a python3 crash/non-zero exit ABORTS; surrogateescape so a
-# non-UTF8 argv byte can never crash the decode; and an explicit count check rejects any truncated decode.
-_ARGC_IN=$#
+# Argv crosses WSL via the same stdin-script base64 channel as secrets, superseding the ADR-041
+# shlex argv mechanism. FAIL CLOSED (the BLOCK-2 invariant): the decode is a plain pipeline
+# (NOT a process substitution, whose exit status set -e ignores) so base64/json/python3 failure
+# ABORTS; surrogateescape prevents non-UTF8 bytes from crashing; and an explicit count check
+# rejects any truncated decode.
+ARTEMIS_ARGV_B64='__ARTEMIS_ARGV_B64__'
+ARTEMIS_ARGC='__ARTEMIS_ARGC__'
 _ARGV_FILE="$(mktemp)" || abort argv-mktemp
-{ python3 - "$@" <<'PY'
-import shlex
-import sys
-
+{ printf '%s' "$ARTEMIS_ARGV_B64" | base64 -d | python3 -c '
+import json, sys
 out = sys.stdout.buffer
-for arg in sys.argv[1:]:
-    parts = shlex.split(arg, posix=True)   # ValueError (malformed) => non-zero exit => abort (fail closed)
-    if len(parts) == 0:
-        decoded = ""                       # empty positional (e.g. empty egress CSV = no-network) — legitimate
-    elif len(parts) == 1:
-        decoded = parts[0]
-    else:
-        sys.exit(3)                        # ambiguous token: do NOT guess, fail closed
-    out.write(decoded.encode("utf-8", "surrogateescape") + b"\0")
-PY
+data = json.load(sys.stdin)
+assert isinstance(data, list)
+for item in data:
+    out.write(item.encode("utf-8", "surrogateescape") + b"\0")
+'
 } > "$_ARGV_FILE" || { rm -f "$_ARGV_FILE"; abort argv-decode; }   # no temp-file leak on the abort path
-_DECODED_ARGV=()
-while IFS= read -r -d '' _arg; do _DECODED_ARGV+=("$_arg"); done < "$_ARGV_FILE"
+_ARGV=()
+while IFS= read -r -d '' _a; do _ARGV+=("$_a"); done < "$_ARGV_FILE"
 rm -f "$_ARGV_FILE"
-[ "${#_DECODED_ARGV[@]}" -eq "$_ARGC_IN" ] || abort argv-count-mismatch   # truncated decode => fail closed
-set -- "${_DECODED_ARGV[@]}"
-unset _DECODED_ARGV _arg _ARGV_FILE _ARGC_IN
+[ "${#_ARGV[@]}" -eq "$ARTEMIS_ARGC" ] || abort argv-count-mismatch   # truncated decode => fail closed
+set -- "${_ARGV[@]}"
+unset _ARGV _a _ARGV_FILE
 SKILL_WSL="$1"; EGRESS_CSV="$2"; RUN_ID="$3"; shift 3   # remaining "$@" = command tokens
 NS="artemis-$RUN_ID"; WORK="/tmp/artemis-$RUN_ID"; CG="/sys/fs/cgroup/artemis-$RUN_ID"
 NGXDIR="/run/artemis-ngx-$RUN_ID"                       # BLOCK 4: ROOT-OWNED firewall-config dir, NEVER chowned
@@ -431,16 +423,18 @@ async def run_isolated(
     clamped_output_limit = min(max(1, output_limit), OUTPUT_LIMIT_MAX)
     skill_wsl_path = _to_wsl_path(skill_dir)
     blob = _secrets_b64(secrets)
-    script = _ISOLATE_SCRIPT.replace("__ARTEMIS_SECRETS_B64__", blob)
+    argv_list = [skill_wsl_path, ",".join(egress_domains), run_id, *command]
+    argv_b64 = base64.b64encode(json.dumps(argv_list).encode()).decode()
+    argc = str(len(argv_list))
+    script = (
+        _ISOLATE_SCRIPT.replace("__ARTEMIS_SECRETS_B64__", blob)
+        .replace("__ARTEMIS_ARGV_B64__", argv_b64)
+        .replace("__ARTEMIS_ARGC__", argc)
+    )
     env = os.environ.copy()
     env.update(_caps_env(caps))
     env["OUTPUT_LIMIT"] = str(clamped_output_limit)
     env["WSLENV"] = _wsl_env(env.get("WSLENV"))
-    # WSL's own interop layer reconstructs the post-`--` argv into a single command line and re-parses it via `/bin/bash -c` semantics before invoking guest `bash -s`; that shell-reinterpretation step is inside `wsl.exe`, not visible in this Python call site, so quoting here is not a no-op despite create_subprocess_exec having no shell.  # noqa: E501
-    quoted_skill_wsl_path = shlex.quote(skill_wsl_path)
-    quoted_egress_domains = shlex.quote(",".join(egress_domains))
-    quoted_run_id = shlex.quote(run_id)
-    quoted_command = [shlex.quote(arg) for arg in command]
 
     proc = await asyncio.create_subprocess_exec(
         "wsl.exe",
@@ -449,11 +443,6 @@ async def run_isolated(
         "--",
         "bash",
         "-s",
-        "--",
-        quoted_skill_wsl_path,
-        quoted_egress_domains,
-        quoted_run_id,
-        *quoted_command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

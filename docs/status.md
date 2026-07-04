@@ -11,7 +11,7 @@ autonomy_level: L5
 specialists_default: [apex-security, apex-ai-systems]
 stack_skills: [apex-python, apex-tauri]   # v2 Python harness + kept Tauri client; apex-swift dropped (v1 Swift app + audio sidecar scrapped)
 coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Host re-verifies full mypy + pytest.
-apex_model_roles: reason=opus · orchestrate=sonnet (AFK build hosts) · draft=opus · code=codex gpt-5.5   # owner-assigned 2026-07-04 (ADR-049 #6); revisit as models improve. /model per session for the host role.
+apex_model_roles: reason=fable (session host; opus acceptable) · orchestrate=sonnet (AFK build hosts) · draft=opus · code=codex gpt-5.5   # owner-assigned 2026-07-04, re-confirmed same day (ADR-049 #6); revisit as models improve. /model per session for the host role.
 max_parallel_codex: 3
 
 _Last updated by planning mode:_ 2026-07-04

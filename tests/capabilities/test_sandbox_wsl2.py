@@ -5,6 +5,7 @@ import base64
 import json
 import shlex
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -44,6 +45,28 @@ class _FakeProcess:
 
     def kill(self) -> None:
         self.killed = True
+
+
+def _argv_from_stdin_payload(payload: bytes) -> list[str]:
+    text = payload.decode()
+    prefix = "ARTEMIS_ARGV_B64='"
+    start = text.index(prefix) + len(prefix)
+    end = text.index("'", start)
+    blob = text[start:end]
+    decoded: object = json.loads(base64.b64decode(blob).decode())
+    assert isinstance(decoded, list)
+    items: list[str] = []
+    for item in decoded:
+        assert isinstance(item, str)
+        items.append(item)
+    return items
+
+
+def _argv_decoder_source() -> str:
+    prefix = "base64 -d | python3 -c '\n"
+    start = _ISOLATE_SCRIPT.index(prefix) + len(prefix)
+    end = _ISOLATE_SCRIPT.index("\n'\n}", start)
+    return _ISOLATE_SCRIPT[start:end]
 
 
 def test_sandbox_caps_defaults() -> None:
@@ -165,13 +188,18 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
     # _to_wsl_path is pure Python now (wslpath mangles backslashes over the interop layer)
     expected_wsl_path = _to_wsl_path(tmp_path)
     assert created
-    assert created[0][:7] == ("wsl.exe", "-u", "root", "--", "bash", "-s", "--")
-    assert created[0][7] == expected_wsl_path
-    assert created[0][8] == "api.example.com"
-    assert created[0][10:] == ("python3", "-m", "pytest")
+    assert created[0] == ("wsl.exe", "-u", "root", "--", "bash", "-s")
     assert fake_process.stdin_payload is not None
     assert b"set -euo pipefail" in fake_process.stdin_payload
+    argv = _argv_from_stdin_payload(fake_process.stdin_payload)
+    assert argv[0] == expected_wsl_path
+    assert argv[1] == "api.example.com"
+    assert len(argv[2]) == 32
+    int(argv[2], 16)
+    assert argv[3:] == ["python3", "-m", "pytest"]
     payload = fake_process.stdin_payload.decode()
+    assert "__ARTEMIS_ARGV_B64__" not in payload
+    assert "__ARTEMIS_ARGC__" not in payload
     assert "ARTEMIS_SECRETS_B64=''" in payload
     marker = 'eval "$(printf \'%s\' "$ARTEMIS_SECRETS_B64" | base64 -d'
     assert payload.count(marker) == 1
@@ -184,15 +212,16 @@ async def test_run_isolated_converts_wslpath_and_exports_caps(
 
 
 @pytest.mark.asyncio
-async def test_run_isolated_quotes_command_tokens_for_wsl_interop(
+async def test_run_isolated_preserves_command_tokens_via_argv_blob(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     created: list[tuple[str, ...]] = []
+    fake_process = _FakeProcess()
     url = "https://en.wikipedia.org/wiki/Python_(programming_language)"
 
     async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
         created.append(cmd)
-        return _FakeProcess()
+        return fake_process
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
 
@@ -205,8 +234,10 @@ async def test_run_isolated_quotes_command_tokens_for_wsl_interop(
     )
 
     assert created
-    assert created[0][-1] == shlex.quote(url)
-    assert created[0][-1] != url
+    assert created[0] == ("wsl.exe", "-u", "root", "--", "bash", "-s")
+    assert fake_process.stdin_payload is not None
+    argv = _argv_from_stdin_payload(fake_process.stdin_payload)
+    assert argv[-1] == url
 
 
 def test_argv_decode_block_is_fail_closed() -> None:
@@ -221,8 +252,23 @@ def test_argv_decode_block_is_fail_closed() -> None:
     assert "abort argv-count-mismatch" in _ISOLATE_SCRIPT
     assert "abort argv-mktemp" in _ISOLATE_SCRIPT
     assert 'encode("utf-8", "surrogateescape")' in _ISOLATE_SCRIPT
+    assert "base64 -d | python3" in _ISOLATE_SCRIPT
     # regression pin: the decode must not read from a process substitution (set -e ignores its exit)
     assert "< <(python3" not in _ISOLATE_SCRIPT
+
+
+@pytest.mark.parametrize("payload", [{"0": "python3"}, "python3"])
+def test_argv_decode_aborts_on_non_list_json(payload: object) -> None:
+    proc = subprocess.run(
+        [sys.executable, "-c", _argv_decoder_source()],
+        input=json.dumps(payload).encode(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert proc.stdout == b""
 
 
 @pytest.mark.asyncio
@@ -555,6 +601,7 @@ async def test_live_no_network_default_blocks_egress(live_wsl: None, tmp_path: P
 async def test_live_command_argument_round_trips_shell_metacharacters(
     live_wsl: None, tmp_path: Path
 ) -> None:
+    value = "space ' $VAR `tick`\nline"
     code, output, _truncated = await run_isolated(
         tmp_path,
         egress_domains=[],
@@ -562,14 +609,14 @@ async def test_live_command_argument_round_trips_shell_metacharacters(
         command=[
             "python3",
             "-c",
-            "import sys; print(sys.argv[1])",
-            "a (b) c; echo x",
+            "import sys; sys.stdout.buffer.write(sys.argv[1].encode())",
+            value,
         ],
         timeout_s=30.0,
     )
 
     assert code == 0
-    assert output.strip() == "a (b) c; echo x"
+    assert output == value
 
 
 @pytest.mark.asyncio
