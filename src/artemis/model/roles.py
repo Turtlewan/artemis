@@ -17,12 +17,13 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from artemis.model.anthropic_provider import AnthropicAPIProvider
 from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.client import ModelClient
 from artemis.model.codex_provider import CodexProvider, RawProvider
+from artemis.model.meter import ModelMeter, MeteredPort
 from artemis.model.ollama_provider import OllamaProvider
 from artemis.ports.model import ModelPort
 from artemis.types import Message, ModelResponse
@@ -64,6 +65,27 @@ class RoleConstraints:
 
     no_tools: bool
     temperature: float | None
+
+
+DropReason = Literal[
+    "malformed_entry",
+    "unknown_provider",
+    "no_tools_ineligible",
+    "router_restricted",
+    "judge_conflict",
+]
+
+
+@dataclass(frozen=True)
+class DroppedOverride:
+    """A persisted override the fail-closed load path discarded, with a panel-surfaceable reason.
+
+    role is ALWAYS a member of ROLES (non-ROLES file keys are never emitted); reason is a static
+    enum value -- tampered file content can never reach the API response through this type.
+    """
+
+    role: str
+    reason: DropReason
 
 
 def constraints_for(role: str) -> RoleConstraints:
@@ -125,9 +147,11 @@ class ModelRoleRegistry:
         router_factory: Callable[[], ModelPort],
         anthropic_api_key: str | None = None,
         provider_factory: ProviderFactory | None = None,
+        meter: ModelMeter | None = None,
     ) -> None:
         self._path = path
         self._router_factory = router_factory
+        self._meter = meter
         self._provider_factory: ProviderFactory = provider_factory or {
             "claude_code": lambda: ClaudeCodeProvider(),
             "codex": lambda: CodexProvider(),
@@ -179,6 +203,8 @@ class ModelRoleRegistry:
                 f"({sorted(_NO_TOOLS_PROVIDERS)}); {binding.provider!r} has no verified "
                 "no-tools invocation path"
             )
+        if binding.provider != "router" and not binding.model.strip():
+            raise RoleRegistryError("model must be non-empty for a non-router provider")
 
     def _validate(self, role: str, binding: RoleBinding) -> None:
         self._validate_entry(role, binding)
@@ -190,12 +216,67 @@ class ModelRoleRegistry:
     def for_role(self, role: str) -> ModelPort:
         binding = self.get(role)
         if binding.provider == "router":
-            return self._router_factory()
-        factory = self._provider_factory.get(binding.provider)
-        if factory is None:
-            raise RoleRegistryError(f"no provider factory for {binding.provider!r}")
-        client = ModelClient(factory(), model_default=binding.model)
-        return _RoleConstrainedPort(client, force_temperature=constraints_for(role).temperature)
+            port: ModelPort = self._router_factory()
+        else:
+            factory = self._provider_factory.get(binding.provider)
+            if factory is None:
+                raise RoleRegistryError(f"no provider factory for {binding.provider!r}")
+            client = ModelClient(factory(), model_default=binding.model)
+            port = _RoleConstrainedPort(client, force_temperature=constraints_for(role).temperature)
+        if self._meter is None:
+            return port
+        return MeteredPort(port, meter=self._meter, role=role, provider=binding.provider)
+
+    def eligible_providers(self, role: str) -> list[str]:
+        """Providers a put(role, ...) would accept."""
+        if role not in ROLES:
+            raise RoleRegistryError(f"unknown role: {role!r}")
+        no_tools = constraints_for(role).no_tools
+        out: list[str] = []
+        for provider in PROVIDERS:
+            if provider == "router":
+                if role in _ROUTER_ROLES:
+                    out.append(provider)
+                continue
+            if no_tools and provider not in _NO_TOOLS_PROVIDERS:
+                continue
+            out.append(provider)
+        return out
+
+    def dropped_overrides(self) -> list[DroppedOverride]:
+        """Persisted entries the fail-closed load path discarded, with static enum reasons."""
+        dropped: list[DroppedOverride] = []
+        for role, entry in self._load_raw().items():
+            if role not in ROLES:
+                continue
+            reason = self._classify_drop(role, entry)
+            if reason is not None:
+                dropped.append(DroppedOverride(role=role, reason=reason))
+        sanitized = self._sanitized_overrides()
+        merged = dict(_DEFAULTS)
+        merged.update(sanitized)
+        if "judge" in sanitized and merged["judge"] == merged["loop_driver"]:
+            dropped.append(DroppedOverride(role="judge", reason="judge_conflict"))
+        return dropped
+
+    def _classify_drop(self, role: str, entry: object) -> DropReason | None:
+        """Static drop reason for a raw persisted entry of a known role; None = valid."""
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("provider"), str)
+            or not isinstance(entry.get("model"), str)
+        ):
+            return "malformed_entry"
+        provider, model = entry["provider"], entry["model"]
+        if provider not in PROVIDERS:
+            return "unknown_provider"
+        if provider == "router" and role not in _ROUTER_ROLES:
+            return "router_restricted"
+        if constraints_for(role).no_tools and provider not in _NO_TOOLS_PROVIDERS:
+            return "no_tools_ineligible"
+        if provider != "router" and not model.strip():
+            return "malformed_entry"
+        return None
 
     def _sanitized_overrides(self) -> dict[str, RoleBinding]:
         valid: dict[str, RoleBinding] = {}

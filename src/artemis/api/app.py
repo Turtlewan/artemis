@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel
 
 from artemis.api import ask_routes, bless_routes, capability_routes, domain_routes, oauth_routes
-from artemis.api import secret_routes
+from artemis.api import model_routes, secret_routes
 from artemis.api.auth import AppAuth, ChallengeStore, DeviceRegistry, Principal, SessionStore
 from artemis.api.auth import require_session
 from artemis.api.auth_routes import PairingCodeStore, RateLimiter, app_router
@@ -28,6 +28,7 @@ from artemis.data.fetcher import FetcherRunner
 from artemis.data.ingest import IngestService
 from artemis.data.store import DataStore
 from artemis.model.compose import build_model_router
+from artemis.model.meter import ModelMeter
 from artemis.model.roles import ModelRoleRegistry
 from artemis.oauth.broker import OAuthBroker
 from artemis.ports.model import ModelPort
@@ -108,9 +109,13 @@ def create_app(
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
+    app.state.model_meter = ModelMeter(
+        str(resolved_data_dir / "model_meter.db"), check_same_thread=False
+    )
     app.state.model_roles = ModelRoleRegistry(
         resolved_data_dir / "model_roles.json",
         router_factory=lambda: app.state.model,
+        meter=app.state.model_meter,
     )
     app.state.secrets = (
         secrets
@@ -150,6 +155,7 @@ def create_app(
     app.include_router(bless_routes.router)
     app.include_router(capability_routes.router)
     app.include_router(domain_routes.router)
+    app.include_router(model_routes.router)
     app.include_router(oauth_routes.router)
     app.include_router(secret_routes.router)
     return app
