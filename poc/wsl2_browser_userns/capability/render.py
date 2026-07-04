@@ -139,10 +139,12 @@ def main() -> int:
     try:
         html = render(url, chromium_bin)
     except subprocess.TimeoutExpired as exc:
-        partial_err = (exc.stderr or b"")
+        partial_err = exc.stderr or b""
         if isinstance(partial_err, bytes):
             partial_err = partial_err.decode(errors="replace")
-        sys.stderr.write(f"timeout after render attempt on {url}\nPARTIAL STDERR:\n{partial_err[-3000:]}\n")
+        sys.stderr.write(
+            f"timeout after render attempt on {url}\nPARTIAL STDERR:\n{partial_err[-3000:]}\n"
+        )
         return 124
     text = extract_text(html)
     print(text)

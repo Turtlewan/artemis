@@ -16,7 +16,11 @@ def probe(name: str, url: str) -> None:
             text=True,
             timeout=5,
         )
-        status = "REACHED" if result.returncode == 0 else f"BLOCKED (curl exit {result.returncode}: {result.stderr.strip()[:200]})"
+        status = (
+            "REACHED"
+            if result.returncode == 0
+            else f"BLOCKED (curl exit {result.returncode}: {result.stderr.strip()[:200]})"
+        )
     except subprocess.TimeoutExpired:
         status = "BLOCKED (timeout)"
     print(f"PROBE_RESULT {name} {url} {status}")
