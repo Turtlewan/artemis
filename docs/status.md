@@ -52,7 +52,7 @@ All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| _(empty — nothing mid-build)_ | | | | | |
+| curated-machinery cluster (AFK, owner-greenlit 2026-07-04: Fable orchestrates, Opus drafts, Codex builds) | coding | 🔄 in-progress | docs/changes/curate-extract.md (+2 to draft) | spec 1 dispatched to codex; spec 2 drafting | — |
 
 _(**✅ OAuth cluster COMPLETE (session 8, 2026-07-03) — clean stop, nothing mid-build.** Reviewed→promoted→built→committed all four on `v2-rebuild`: **oauth-1** broker (`c01e747`) → **oauth-2** routes (`64a0a9f`) → **oauth-3** invoke-token-inject (`fd72820`) → **opener flip** brain-opens (`bc632ab`) → **oauth-4** Connect-Google UI (`5ab8fab`); all specs archived to `done/`. Codex-built, host-verified each (brain: mypy 152 / pytest 487 / ruff; client: tsc / eslint / vitest 125 / cargo 28). oauth-1 + oauth-3 got Opus cross-model reviews (both FLAG-clean; email-guard + mint-log hardening applied; multi-scope + oauth-only-mark_auth_verified follow-ups filed in Open Questions). Planning pass ran the 4 domain reviews (apex-security ×2 / auth / google) — 2 BLOCKs (7-day-expiry→publish-to-Production; state CSPRNG) + ~12 FLAGs all folded pre-build._
 > _**Owner Google-side status:** consent screen PUBLISHED to Production ✓ + `calendar.readonly` scope added ✓ (unverified-app warning is expected/fine for sole user). **Remaining owner step:** paste client ID/secret into the keys panel as `google_oauth_client_id` / `google_oauth_client_secret`._

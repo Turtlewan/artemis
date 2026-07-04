@@ -1,14 +1,17 @@
 import importlib.util
 import io
+import types
 from contextlib import redirect_stdout
 from pathlib import Path
+
+import pytest
 
 from artemis.data.ingest import FetcherOutput
 
 _TOOL = Path("capabilities/builtin/calendar-sync/tool.py")
 
 
-def _load_tool():
+def _load_tool() -> types.ModuleType:
     spec = importlib.util.spec_from_file_location("calendar_sync_tool", _TOOL)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -16,7 +19,7 @@ def _load_tool():
     return mod
 
 
-def test_main_output_conforms_to_fetcher_contract(monkeypatch):
+def test_main_output_conforms_to_fetcher_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     mod = _load_tool()
     # Avoid network + token: stub the fetch to return two raw Google items.
     monkeypatch.setattr(

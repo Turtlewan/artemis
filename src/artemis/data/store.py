@@ -122,6 +122,12 @@ class DataStore:
             return None
         return cast("float | None", row[0])
 
+    def domains(self) -> list[str]:
+        """Distinct domain labels present in the store -- the live domain list (ADR-048 #2).
+        A domain exists iff it has rows; there is no registry."""
+        rows = self._conn.execute("SELECT DISTINCT domain FROM records ORDER BY domain").fetchall()
+        return [cast(str, row[0]) for row in rows]
+
     def delete(self, domain: str, kind: str, key: str) -> None:
         self._conn.execute(
             "DELETE FROM records WHERE domain=? AND kind=? AND key=?", (domain, kind, key)
