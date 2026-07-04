@@ -53,7 +53,9 @@ All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| model-roster cluster (AFK, ADR-049): registry → metering → panel (+ usage-parse micro-spec) | coding | 🔄 in-progress | docs/changes/model-role-*.md | hardening pair ✅ SHIPPED (caps-bound `73435a5`, argv-b64 `71559dc` w/ dual-pass FLAGs folded); registry part 1 building (codex); part 2 promoted; part 3 panel + usage-parse drafting (opus) | — |
+| _(empty — nothing mid-build)_ | | | | | |
+
+_(**✅ MODEL-ROSTER CLUSTER COMPLETE (2026-07-04, AFK session 11 cont.) — clean stop.** ADR-049 built end-to-end + 2 hardening specs, all Codex-built + host-verified + committed on `v2-rebuild`: caps-bound (`73435a5`) → argv-base64 (`71559dc`, dual-pass security) → AGENTS.md v2 (`1c4f8b7`) → registry part 1 (`cc2cbb6`) → metering part 2 (`a310fba`) → panel-A part 3 (`9452054`, client) → usage-parse (`6ec673d`, live-smoke-confirmed). All specs archived to `done/`. Every spec security/ai-systems-reviewed pre-build (4 BLOCKs + 7 FLAGs folded, 0 shipped open). **Runtime models are now role-bound + owner-toggleable via `/app/models`; the client Models PANEL UI (part 3B) is NOT built — deferred, brain+data-layer ready.** Brain restarted from HEAD.)_
 
 _(**✅ CURATED-MACHINERY CLUSTER COMPLETE (2026-07-04, AFK session 11) — clean stop.** All three ADR-048 specs drafted (Opus) → domain-reviewed → built (Codex) → host-verified → committed on `v2-rebuild`: `curate-extract` (`3ca8a58`) → `curate-write-referent` (`e2af8da`) → `dynamic-domain-routing` (`0f61074`); all archived to `done/`. Live haiku calibration 22/24 gate passed (`docs/findings/curate-extract-calibration-2026-07-04.md`). Brain restarted from HEAD `0f61074` with the machinery live. **✅ LIVE-PROVEN same day (owner dogfood): the passport-task loop ran in the real app — add → read → forget worked.** ADR-048 is fully closed: decided, spec'd, built, verified, and live in one session.)_
 
@@ -76,15 +78,17 @@ _Ready build queue. Dependency order matters — the metadata/invoke cluster sha
 | 4 | ~~oauth-2-connect-routes~~ | ✅ SHIPPED | **Session 8** (`64a0a9f`, done/). connect/status/disconnect routes + broker wiring + `account_status` + background listener. |
 | 5 | ~~oauth-3-invoke-integration~~ | ✅ SHIPPED | **Session 8** (`fd72820`, done/). Mint+inject `GOOGLE_ACCESS_TOKEN` at invoke, fail-closed. Opus cross-model FLAG-clean (multi-scope + mark_auth_verified follow-ups filed in Open Questions). |
 | 6 | ~~oauth-4-client-ui~~ | ✅ SHIPPED | **Session 8** (`5ab8fab`, done/). Connect-Google section in `KeysPanel` + gateway commands. Brain opens consent browser (`bc632ab`); client opens no URL (no opener plugin). |
-| 7 | cb5b-2-map-nodes-ui | 📝 | Capability nodes (name+pending badge/"99+") + brain-persisted placement + full-page overlay (ADR-045; dep: #1). Phase-1 visible map. Also needs the 1-line forge `draft.goal = proposal.goal` population. |
-| 8 | cb5b-3-refresh-backend | 📝 | Scheduler-driven consent-gated pending-count refresh (JSON `{count,items}` stdout, fail-soft). `cross_model_review`, security-review-before-build. Phase-2. |
+| 7 | cb5b-2-map-nodes-ui | 📝 | Capability nodes (name+pending badge/"99+") + brain-persisted placement + full-page overlay (ADR-045; dep: #1). **NEEDS REVISION before build — ADR-047 #10 made map nodes DOMAIN-primary, capability satellites.** Phase-1 visible map. |
+| 8 | cb5b-3-refresh-backend | 📝 | Scheduler-driven consent-gated pending-count refresh (JSON `{count,items}` stdout, fail-soft). `cross_model_review`, security-review-before-build. Phase-2. **Same ADR-047 #10 revision needed.** |
 | 9 | cb5b-4-refresh-ui | 📝 | Overlay refresh toggle + live badge (dep: #8). Phase-2. |
+| 13 | models-panel (part 3B) | 📝 | **NOT DRAFTED.** The Models settings UI (per-role dropdowns over `eligible_providers`, constraint badges, PUT-422 inline, dropped_overrides notice, usage columns). Brain endpoints + client data layer (part 3A) SHIPPED — this is the visible panel. Baseline CSS; owner refines. Commission when ready. |
 | 10 | ~~curate-extract~~ | ✅ SHIPPED | **Session 11** (`3ca8a58`, done/). Verb-gated haiku extractor + `store.domains()`. Reviewed (security+ai-systems) + live-calibrated 22/24. |
 | 11 | ~~curate-write-referent~~ | ✅ SHIPPED | **Session 11** (`e2af8da`, done/). Trusted curated CRUD (quarantine bypass) + referent + ask wiring; synced-domain guard, ambiguous-forget refusal, upsert normalization chokepoint. Dual-reviewed, 2 BLOCKs folded pre-build. |
 | 12 | ~~dynamic-domain-routing~~ | ✅ SHIPPED | **Session 11** (`0f61074`, done/). Live-label routing + curated-always-fresh + tracking meta-query + reserved synced names. **ADR-048 machinery COMPLETE — domains now emerge from conversation.** |
 | — | ~~plan-gate-egress~~ | ✅ SHIPPED | **Session 9** (`e853b98`, done/). Gateway passes egress_domains (+ missing_secrets, oauth_scopes — same silent-drop class) to the plan card. |
-| — | sandbox-policy-caps-bound | ✅ | Standalone. Clamp the untrusted `sandbox_policy.json` caps path (ceilings safely above RENDER_CAPS). Sequence with argv-base64 (shared sandbox_wsl2.py). |
-| — | argv-base64-side-channel | ✅ | Optional durability refactor (ADR-042) — base64 WSL argv side-channel. Not a bug fix; dual-pass review at build. |
+| — | ~~sandbox-policy-caps-bound~~ | ✅ SHIPPED | **Session 11** (`73435a5`, done/). Clamped policy-supplied caps to ceilings. |
+| — | ~~argv-base64-side-channel~~ | ✅ SHIPPED | **Session 11** (`71559dc`, done/). Base64 WSL argv side-channel (ADR-042); dual-pass security FLAG-union, both findings folded. |
+| — | ~~model-role-registry / metering / models-panel-3A / provider-usage-parse~~ | ✅ SHIPPED | **Session 11** (`cc2cbb6`/`a310fba`/`9452054`/`6ec673d`, done/). ADR-049 roster: roles-in-code + owner-toggleable registry + per-role metering + client data layer + real token parsing. Part 3B (panel UI) = row #13. |
 
 > **Follow-up folded into the invoke cluster (#2/#5):** pin the resolved version in `confirm_invoke` (invoke.py) to close the negligible concurrent-promote micro-race noted in the R4b dual-pass review (affects both invoke paths).
 
