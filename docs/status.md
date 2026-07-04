@@ -16,7 +16,23 @@ max_parallel_codex: 3
 
 _Last updated by planning mode:_ 2026-07-04
 
-## Current state — Slices 0–2 complete
+## ▶ RESUME HERE (2026-07-04, end of session 11) — nothing mid-build, tree clean
+HEAD after session 11: data spine (ADR-046) live-proven + curated machinery (ADR-048) live-proven +
+model-role roster (ADR-049) built & endpoint-live. All green (mypy 175 · 639 tests · client cargo/vitest).
+Brain running from HEAD; **client needs Ctrl+R**. Latest handoffs: `docs/handoff/2026-07-04-session11b-model-roster.md`
+(roster) + `docs/handoff/2026-07-04.md` (curated machinery). Full ADR list: 046 (data doctrine), 047
+(agent loop — accepted, NOT built), 048 (curated domains), 049 (model roster).
+
+**Next actions, in priority order:**
+1. **Two owner decisions unblock the agent-loop arc (ADR-047)** — see Open Questions "MODEL-ROLE REGISTRY ARC":
+   (a) loop driver tier, (b) escalation ladder + judge. Recommended: sonnet drives / haiku grunt-work;
+   in-family Sonnet→Opus escalation; independent no-tools haiku judge. **These block agent-loop spec drafting.**
+2. **Models panel UI (part 3B)** — Pending Specs #13. Brain + client data layer shipped; only the visible
+   panel remains (owner visual eye needed).
+3. **cb5b map specs (#7/8/9) need ADR-047 #10 revision** (domain-primary nodes) before build.
+4. Standing dogfood: use the app (save tasks/notes, ask things) — feeds the real-usage calibration corpus.
+
+## Current state — Slices 0–2 complete + spine/curated/roster (session 11)
 
 All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 153 files · 507 tests · ruff clean, session 9) + client (tsc/eslint clean · 130 vitest · cargo 28, session 9). HEAD `bcf370f`. **▶ BUILD-BY-CHAT LOOP PROVEN END-TO-END LIVE (session 9, 2026-07-03).** From a plain-English request in the real app — *"build me a tool that shows today's calendar"* — the full Path-A loop closed: **propose** (forge auto-declared the OAuth convention: single `calendar.readonly` scope + `www.googleapis.com` egress + reads `GOOGLE_ACCESS_TOKEN`, authored in stdlib `urllib`) → **plan gate** (scope+egress shown) → **build** → **WSL2 isolate verify** (hermetic tests, green) → **promote to `capabilities/library/today-calendar/`** (#6 FIXED — landed on disk, `version:1`) → **invoke** (match-select → confirm → mint token → isolate run → reply; `/app/ask/invoke/…/confirm 200`, zero failure warnings). All 5 session-9 fixes held live (#1 `e86902a`, #2 `11bf8ab`, #3 `8fa4734`, #4 `5ec9f45`, #5 `6a319d4`) + `plan-gate-egress` (`e853b98`). Build cadence = incremental (memory `artemis-v2-build-cadence`).
 
