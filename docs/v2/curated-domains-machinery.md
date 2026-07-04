@@ -19,7 +19,7 @@ and has **no outside to sandbox** (curated data never leaves the box).
 (ADR-046 #7 — domains are labels, not schemas). So we don't "build tasks/notes" — we build the
 generic machinery **once**; a domain is a near-free registration (or emerges from conversation).
 
-## ▶ OPEN FORK 1 (owner decides next session)
+## ✅ FORK 1 RESOLVED (2026-07-04): A→C — see ADR-048
 - **A — Pure machinery, domains emerge from conversation.** Nothing pre-seeded; "start tracking my
   workouts" → the domain exists. Truest dogfood.
 - **B — Machinery + pre-seed a couple** (tasks/notes). Minor polish + guaranteed briefing inputs;
@@ -28,8 +28,15 @@ generic machinery **once**; a domain is a near-free registration (or emerges fro
   exist (live `SELECT DISTINCT domain`).
 - **Recommendation: A converging to C** (pure machinery + dynamic domain routing) — matches the
   dogfood thesis + end-state-scope preference. Owner never "builds a capability" to track something new.
+- **RESOLVED: owner chose A→C (2026-07-04).** Decision + anti-fragmentation rule (extractor gets
+  the live domain list, reuses existing labels) recorded in
+  `docs/technical/adr/ADR-048-curated-domain-machinery.md`. B also rejected on a new argument:
+  empty domains are invisible to `SELECT DISTINCT`, so pre-seeding would need an extra registry
+  mechanism — B is *more* machinery, not less.
 
-**Fork 2 (briefing now vs defer) — DEFERRED by owner. Revisit after Fork 1.**
+**Fork 2 RESOLVED (2026-07-04): DEFER — dogfood first.** Build the machinery, save real curated
+data for a few days, then design the briefing from observed use (what's actually in the store +
+what the owner found themselves asking for). Decision returns to the queue after that dogfood window.
 
 ## The machinery — 4 small parts on top of the built spine
 Flow: `utterance → verb-prefilter → [①extract] → [③resolve referent] → ②trusted write → confirm`;

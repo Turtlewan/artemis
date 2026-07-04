@@ -46,3 +46,12 @@ canonical record.
   mooted by decision 4 when the read path lands.
 - Design note with the concrete shape: `docs/v2/local-data-spine.md`. Memory:
   `local-first-data-doctrine`.
+
+## Security — accepted residual
+
+- **Quarantine-once (#3) is a single soft gate — accepted residual (recorded 2026-07-04, from the
+  session-10 data-spine security review):** the read path trusts stored `sanitized_text` verbatim
+  (hardened by spotlight-wrapping records as data-only in the phrasing prompt, `48899ba`, at zero
+  extra latency). A jailbroken ingest sanitizer could therefore smuggle attacker *text* into an
+  answer. Bounded: the phrasing call is no-tools, so there is no exec/exfil path — worst case is a
+  misleading sentence in a reply. Accepted as this ADR's latency trade (#3/#4).
