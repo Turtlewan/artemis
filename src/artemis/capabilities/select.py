@@ -58,11 +58,13 @@ class CapabilitySelector:
         *,
         store: CapabilityStore,
         model: ModelPort,
+        model_override: str | None = "haiku",
         k: int = 5,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
     ) -> None:
         self._store = store
         self._model = model
+        self._model_override = model_override
         self._k = k
         self._confidence_threshold = confidence_threshold
 
@@ -79,7 +81,7 @@ class CapabilitySelector:
                     Message(role="system", content=_SYSTEM),
                     Message(role="user", content=_build_user_prompt(request, candidates)),
                 ],
-                model="haiku",
+                model=self._model_override,
                 response_schema=_PICK_SCHEMA,
                 temperature=0.0,
                 max_tokens=400,
@@ -107,8 +109,13 @@ class CapabilitySelector:
         )
 
 
-def build_capability_selector(store: CapabilityStore) -> CapabilitySelector:
-    """Build the selector with a dedicated Haiku port, never the shared quota-aware router."""
+def build_capability_selector(
+    store: CapabilityStore, *, model: ModelPort | None = None
+) -> CapabilitySelector:
+    """Build the selector over an injected role-resolved port when provided."""
+
+    if model is not None:
+        return CapabilitySelector(store=store, model=model, model_override=None)
 
     return CapabilitySelector(
         store=store,

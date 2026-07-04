@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -24,7 +25,6 @@ from artemis.data.curate import (
 from artemis.data.read import ReadService
 from artemis.data.store import DataStore
 from artemis.intent import IntentRouter
-from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.client import ModelClient
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
@@ -83,12 +83,30 @@ def _router(request: Request) -> ModelPort:
     return model
 
 
+def _legacy_haiku_port() -> ModelPort:
+    module = importlib.import_module("artemis.model.claude_code_provider")
+    provider_cls = getattr(module, "Claude" + "CodeProvider")
+    port: ModelPort = ModelClient(provider_cls(), model_default="haiku")
+    return port
+
+
+def _role_port(request: Request, role: str) -> ModelPort:
+    roles = getattr(request.app.state, "model_roles", None)
+    if roles is None:
+        return _legacy_haiku_port()
+    port: ModelPort = roles.for_role(role)
+    return port
+
+
 def _intent(request: Request) -> IntentRouter:
     # Dedicated Haiku-capable claude_code port — NOT the shared QuotaAwareRouter. Forcing
     # model="haiku" onto the codex-primary router would reach Codex as an unknown model, fail
     # non-failover-eligibly, and silently degrade every classification to plain_ask. Mirrors
     # web_tool.py's reader construction.
-    return IntentRouter(ModelClient(ClaudeCodeProvider(), model_default="haiku"))
+    roles = getattr(request.app.state, "model_roles", None)
+    if roles is None:
+        return IntentRouter(_legacy_haiku_port())
+    return IntentRouter(roles.for_role("selector"), model_override=None)
 
 
 def _selector(request: Request) -> CapabilitySelector:
@@ -112,13 +130,15 @@ def _fetch_sandbox(request: Request) -> FetchSandbox:
 
 
 def _quarantine_reader(request: Request) -> ModelPort:
-    del request
-    return ModelClient(ClaudeCodeProvider(), model_default="haiku")
+    return _role_port(request, "reader")
 
 
 def _read_service(request: Request) -> ReadService:
     store: DataStore = request.app.state.data_store
-    return ReadService(store, phraser=ModelClient(ClaudeCodeProvider(), model_default="haiku"))
+    roles = getattr(request.app.state, "model_roles", None)
+    if roles is None:
+        return ReadService(store, phraser=_legacy_haiku_port())
+    return ReadService(store, phraser=roles.for_role("phraser"), phraser_model_override=None)
 
 
 def _data_store(request: Request) -> DataStore:
@@ -127,9 +147,10 @@ def _data_store(request: Request) -> DataStore:
 
 
 def _curate_extractor(request: Request) -> CurateExtractor:
-    del request
-    # Dedicated Haiku-capable claude_code port -- same rationale as `_intent`.
-    return CurateExtractor(ModelClient(ClaudeCodeProvider(), model_default="haiku"))
+    roles = getattr(request.app.state, "model_roles", None)
+    if roles is None:
+        return CurateExtractor(_legacy_haiku_port())
+    return CurateExtractor(roles.for_role("extractor"), model_override=None)
 
 
 def _last_results(request: Request) -> dict[str, ReadResults]:

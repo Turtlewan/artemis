@@ -79,8 +79,9 @@ def has_curate_verb(text: str) -> bool:
 class CurateExtractor:
     """Turn an owner utterance into a curate decision via one gated haiku-class call."""
 
-    def __init__(self, model: ModelPort) -> None:
+    def __init__(self, model: ModelPort, *, model_override: str | None = "haiku") -> None:
         self._model = model
+        self._model_override = model_override
 
     async def extract(self, text: str, *, existing_domains: Sequence[str]) -> CurateDecision:
         """Return the curate decision for ``text``.
@@ -99,7 +100,7 @@ class CurateExtractor:
                         content=f"EXISTING DOMAINS: {domains}\n\nMESSAGE: {text}",
                     ),
                 ],
-                model="haiku",
+                model=self._model_override,
                 response_schema=_CURATE_SCHEMA,
                 temperature=0.0,
                 max_tokens=1000,

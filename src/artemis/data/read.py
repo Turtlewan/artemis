@@ -108,11 +108,13 @@ class ReadService:
         store: DataStore,
         *,
         phraser: ModelPort,
+        phraser_model_override: str | None = "haiku",
         domains: Sequence[DomainSpec] = DEFAULT_DOMAINS,
         now: Callable[[], float] = time.time,
     ) -> None:
         self._store = store
         self._phraser = phraser
+        self._phraser_model_override = phraser_model_override
         self._domains = tuple(domains)
         self._now = now
 
@@ -182,7 +184,7 @@ class ReadService:
                     Message(role="system", content=_PHRASER_SYSTEM),
                     Message(role="user", content=user),
                 ],
-                model="haiku",
+                model=self._phraser_model_override,
                 response_schema=_PHRASE_SCHEMA,
             )
             answer = _Phrased.model_validate_json(response.text).answer.strip()

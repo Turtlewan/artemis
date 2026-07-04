@@ -27,9 +27,8 @@ from artemis.capabilities.store import FileCapabilityStore, builtin_capabilities
 from artemis.data.fetcher import FetcherRunner
 from artemis.data.ingest import IngestService
 from artemis.data.store import DataStore
-from artemis.model.claude_code_provider import ClaudeCodeProvider
-from artemis.model.client import ModelClient
 from artemis.model.compose import build_model_router
+from artemis.model.roles import ModelRoleRegistry
 from artemis.oauth.broker import OAuthBroker
 from artemis.ports.model import ModelPort
 from artemis.ports.secrets import SecretStorePort
@@ -57,7 +56,7 @@ def _calendar_sync_job() -> ScheduledJob:
 
 def _build_sync(app: FastAPI, resolved_data_dir: Path) -> None:
     """Construct the background sync components onto app.state (no async work here)."""
-    reader = ModelClient(ClaudeCodeProvider(), model_default="haiku")
+    reader = app.state.model_roles.for_role("reader")
     ingest = IngestService(app.state.data_store, reader=reader)
     fetcher = FetcherRunner(
         capability_store=app.state.capability_store,
@@ -109,6 +108,10 @@ def create_app(
     app.state.rate_limiter = RateLimiter()
     app.state.layout_store = LayoutStore(resolved_data_dir / "layout.json")
     app.state.model = model if model is not None else build_model_router()
+    app.state.model_roles = ModelRoleRegistry(
+        resolved_data_dir / "model_roles.json",
+        router_factory=lambda: app.state.model,
+    )
     app.state.secrets = (
         secrets
         if secrets is not None
@@ -124,9 +127,13 @@ def create_app(
     )
     app.state.capability_store = capability_store
     app.state.bless = BlessStore(resolved_data_dir / "bless.json")
-    app.state.forge = CapabilityForge(app.state.model, capability_store, resolved_sandbox)
+    app.state.forge = CapabilityForge(
+        app.state.model_roles.for_role("forge_author"), capability_store, resolved_sandbox
+    )
     app.state.builds = {}  # build_id -> capability_routes.BuildState (in-memory, interim)
-    app.state.capability_selector = build_capability_selector(capability_store)
+    app.state.capability_selector = build_capability_selector(
+        capability_store, model=app.state.model_roles.for_role("selector")
+    )
     app.state.fetch_sandbox = FetchSandbox()
     app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
     app.state.last_results = {}  # session_key -> curate.ReadResults (last read's rows; referent)

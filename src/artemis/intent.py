@@ -39,8 +39,9 @@ _INTENT_SCHEMA: dict[str, Any] = Intent.model_json_schema()
 class IntentRouter:
     """Classify user text into the small set of brain-side execution routes."""
 
-    def __init__(self, model: ModelPort) -> None:
+    def __init__(self, model: ModelPort, *, model_override: str | None = "haiku") -> None:
         self._model = model
+        self._model_override = model_override
 
     async def classify(self, text: str) -> Intent:
         """Return the Haiku-classified intent for ``text``."""
@@ -50,7 +51,7 @@ class IntentRouter:
                     Message(role="system", content=_SYSTEM),
                     Message(role="user", content=text),
                 ],
-                model="haiku",
+                model=self._model_override,
                 response_schema=_INTENT_SCHEMA,
                 temperature=0.0,
                 max_tokens=200,
