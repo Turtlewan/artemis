@@ -107,6 +107,29 @@ def test_policy_present_parses_egress_and_caps(tmp_path: Path) -> None:
     )
 
 
+def test_policy_caps_are_clamped_to_ceiling(tmp_path: Path) -> None:
+    (tmp_path / "sandbox_policy.json").write_text(
+        json.dumps(
+            {
+                "memory_mb": 999999,
+                "cpu_pct": 99999,
+                "pids_max": 99999,
+                "timeout_s": 99999,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    policy = _policy_for(tmp_path)
+
+    assert policy.caps == SandboxCaps(
+        memory_mb=4096,
+        cpu_pct=800,
+        pids_max=1024,
+        timeout_s=300.0,
+    )
+
+
 @pytest.mark.asyncio
 async def test_run_isolated_converts_wslpath_and_exports_caps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

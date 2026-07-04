@@ -42,6 +42,10 @@ from artemis.capabilities.sandbox import SandboxRunner, SubprocessSandbox, Verif
 OUTPUT_LIMIT_DEFAULT = 4000
 OUTPUT_LIMIT_MAX = 1_000_000
 _CGROUP_PERIOD_US = 100_000
+_POLICY_MAX_MEMORY_MB = 4096
+_POLICY_MAX_CPU_PCT = 800
+_POLICY_MAX_PIDS = 1024
+_POLICY_MAX_TIMEOUT_S = 300.0
 _SAFE_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _RESERVED_ENV_NAMES = frozenset(
     {
@@ -318,10 +322,22 @@ def _policy_for(skill_dir: Path) -> _SandboxPolicy:
 
     default_caps = SandboxCaps()
     caps = SandboxCaps(
-        memory_mb=_int_from_policy(raw.get("memory_mb"), default_caps.memory_mb),
-        cpu_pct=_int_from_policy(raw.get("cpu_pct"), default_caps.cpu_pct),
-        pids_max=_int_from_policy(raw.get("pids_max"), default_caps.pids_max),
-        timeout_s=_float_from_policy(raw.get("timeout_s"), default_caps.timeout_s),
+        memory_mb=min(
+            _int_from_policy(raw.get("memory_mb"), default_caps.memory_mb),
+            _POLICY_MAX_MEMORY_MB,
+        ),
+        cpu_pct=min(
+            _int_from_policy(raw.get("cpu_pct"), default_caps.cpu_pct),
+            _POLICY_MAX_CPU_PCT,
+        ),
+        pids_max=min(
+            _int_from_policy(raw.get("pids_max"), default_caps.pids_max),
+            _POLICY_MAX_PIDS,
+        ),
+        timeout_s=min(
+            _float_from_policy(raw.get("timeout_s"), default_caps.timeout_s),
+            _POLICY_MAX_TIMEOUT_S,
+        ),
     )
     return _SandboxPolicy(egress_domains=egress_domains, caps=caps)
 
