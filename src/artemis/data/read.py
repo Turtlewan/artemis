@@ -60,10 +60,11 @@ class DomainSpec(BaseModel):
 
 
 class ReadResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     domain: str
     answer: str
+    rows: tuple[Record, ...] = ()
 
 
 # The synced-domain registry. A new synced domain adds an entry here (freshness config joins in
@@ -126,7 +127,7 @@ class ReadService:
         answer = await self._phrase(text, rows)
         if answer is None:
             return None
-        return ReadResult(domain=spec.domain, answer=answer)
+        return ReadResult(domain=spec.domain, answer=answer, rows=tuple(rows))
 
     async def _phrase(self, text: str, rows: Sequence[Record]) -> str | None:
         records = _render_rows(rows)  # sanitized_text ONLY — never raw payload

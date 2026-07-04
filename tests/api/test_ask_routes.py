@@ -19,6 +19,9 @@ from artemis.api.auth import Principal, require_session
 from artemis.capabilities.fetch_sandbox import FetchResult, FetchSandbox
 from artemis.capabilities.invoke import InvokeState
 from artemis.capabilities.select import CapabilitySelector, SelectionResult
+from artemis.data.curate import CurateExtractor
+from artemis.data.read import ReadService
+from artemis.data.store import DataStore, Record
 from artemis.intent import Intent, IntentRouter, Route
 from artemis.model.claude_code_provider import ClaudeCodeProvider
 from artemis.model.client import ModelClient
@@ -56,6 +59,49 @@ class FakeModel:
             structured=None,
             finish_reason="stop",
             usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        )
+
+
+class FakeCurateModel:
+    def __init__(self, reply: dict[str, str]) -> None:
+        self._reply = reply
+
+    async def complete(
+        self,
+        *,
+        messages: Sequence[Message],
+        model: str | None = None,
+        response_schema: dict | None = None,  # type: ignore[type-arg]
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> ModelResponse:
+        del messages, response_schema, temperature, max_tokens
+        return ModelResponse(
+            text=json.dumps(self._reply),
+            model_id=model or "fake",
+            structured=None,
+            finish_reason="stop",
+            usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        )
+
+
+class FakePhraser:
+    async def complete(
+        self,
+        *,
+        messages: Sequence[Message],
+        model: str | None = None,
+        response_schema: dict | None = None,  # type: ignore[type-arg]
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> ModelResponse:
+        del messages, response_schema, temperature, max_tokens
+        return ModelResponse(
+            text=json.dumps({"answer": "calendar answer"}),
+            model_id=model or "fake",
+            structured=None,
+            finish_reason="stop",
+            usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
         )
 
 
@@ -187,6 +233,25 @@ def client_for(
     app.dependency_overrides[ask_routes._intent] = lambda: FixedIntentRouter(route)
     app.dependency_overrides[ask_routes._selector] = lambda: FixedSelector(_no_match())
     return TestClient(app)
+
+
+def client_for_curate(
+    tmp_path: Path,
+    reply: dict[str, str],
+    *,
+    model: FakeModel | None = None,
+    route: Route = "plain_ask",
+) -> tuple[TestClient, FastAPI]:
+    app = create_app(data_dir=tmp_path, model=model or FakeModel("unused"))
+    app.dependency_overrides[require_session] = lambda: Principal(
+        device_id="dev", person_id="owner"
+    )
+    app.dependency_overrides[ask_routes._intent] = lambda: FixedIntentRouter(route)
+    app.dependency_overrides[ask_routes._selector] = lambda: FixedSelector(_no_match())
+    app.dependency_overrides[ask_routes._curate_extractor] = lambda: CurateExtractor(
+        FakeCurateModel(reply)
+    )
+    return TestClient(app), app
 
 
 @pytest.mark.parametrize(
@@ -335,6 +400,130 @@ def test_create_app_wires_selector_sandbox_and_invokes(tmp_path: Path) -> None:
     assert isinstance(app.state.capability_selector, CapabilitySelector)
     assert isinstance(app.state.fetch_sandbox, FetchSandbox)
     assert app.state.invokes == {}
+    assert app.state.last_results == {}
+
+
+def test_curate_save_writes_and_confirms(tmp_path: Path) -> None:
+    client, app = client_for_curate(
+        tmp_path,
+        {"op": "save", "domain": "tasks", "content": "renew passport", "referent": ""},
+    )
+
+    response = client.post("/app/ask", json={"text": "add a task: renew passport"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["text"] == "Saved to tasks."
+    assert body["path"] == "curate"
+    rows = app.state.data_store.query(domain="tasks")
+    assert len(rows) == 1
+    assert rows[0].sanitized_text == "renew passport"
+
+
+def test_curate_none_falls_through_to_ask(tmp_path: Path) -> None:
+    client, _app = client_for_curate(
+        tmp_path,
+        {"op": "none", "domain": "", "content": "", "referent": ""},
+        model=FakeModel("plain answer"),
+    )
+
+    response = client.post("/app/ask", json={"text": "hi"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] in {"codex", "local"}
+    assert body["text"] == "plain answer"
+
+
+def test_curate_runs_before_read(tmp_path: Path) -> None:
+    client, app = client_for_curate(
+        tmp_path,
+        {"op": "save", "domain": "tasks", "content": "buy milk", "referent": ""},
+    )
+    store: DataStore = app.state.data_store
+    store.upsert(
+        Record(
+            domain="calendar",
+            kind="event",
+            key="e1",
+            payload={},
+            sanitized_text="Standup at 9am",
+            source="calendar-sync",
+            fetched_at=100.0,
+        )
+    )
+
+    response = client.post("/app/ask", json={"text": "add my calendar note: buy milk"})
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "curate"
+
+
+def test_curate_unresolved_referent_no_write(tmp_path: Path) -> None:
+    client, app = client_for_curate(
+        tmp_path,
+        {"op": "save", "domain": "tasks", "content": "", "referent": "the second one"},
+    )
+
+    response = client.post("/app/ask", json={"text": "save the second one to tasks"})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "I couldn't find what you're referring to -- nothing changed."
+    assert response.json()["path"] == "curate"
+    assert app.state.data_store.query(domain="tasks") == []
+
+
+def test_read_then_referent_save_end_to_end(tmp_path: Path) -> None:
+    client, app = client_for_curate(
+        tmp_path,
+        {"op": "none", "domain": "", "content": "", "referent": ""},
+    )
+    store: DataStore = app.state.data_store
+    first = "Dentist at 3pm"
+    second = "Gym session at 5pm"
+    store.upsert(
+        Record(
+            domain="calendar",
+            kind="event",
+            key="e1",
+            payload={"secret": "PAYLOAD_ONLY"},
+            sanitized_text=first,
+            source="calendar-sync",
+            fetched_at=200.0,
+        )
+    )
+    store.upsert(
+        Record(
+            domain="calendar",
+            kind="event",
+            key="e2",
+            payload={"secret": "PAYLOAD_ONLY"},
+            sanitized_text=second,
+            source="calendar-sync",
+            fetched_at=100.0,
+        )
+    )
+    app.dependency_overrides[ask_routes._read_service] = lambda: ReadService(
+        store, phraser=FakePhraser(), now=lambda: 200.0
+    )
+
+    read_response = client.post("/app/ask", json={"text": "what's on my calendar"})
+
+    assert read_response.status_code == 200
+    assert read_response.json()["path"] == "local_read"
+
+    app.dependency_overrides[ask_routes._curate_extractor] = lambda: CurateExtractor(
+        FakeCurateModel(
+            {"op": "save", "domain": "tasks", "content": "", "referent": "the second one"}
+        )
+    )
+    save_response = client.post("/app/ask", json={"text": "save the second one to tasks"})
+
+    assert save_response.status_code == 200
+    assert save_response.json()["text"] == "Saved to tasks."
+    rows = store.query(domain="tasks")
+    assert len(rows) == 1
+    assert rows[0].sanitized_text == second
 
 
 def test_ask_returns_invoke_confirm_on_full_match(tmp_path: Path) -> None:

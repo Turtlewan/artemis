@@ -14,6 +14,13 @@ from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.invoke import InvokeState, build_invoke_proposal, confirm_invoke
 from artemis.capabilities.select import CapabilitySelector
 from artemis.capabilities.store import FileCapabilityStore
+from artemis.data.curate import (
+    CurateExtractor,
+    ReadResults,
+    apply_curate,
+    stash_results,
+    stashed_rows,
+)
 from artemis.data.read import ReadService
 from artemis.data.store import DataStore
 from artemis.intent import IntentRouter
@@ -114,6 +121,22 @@ def _read_service(request: Request) -> ReadService:
     return ReadService(store, phraser=ModelClient(ClaudeCodeProvider(), model_default="haiku"))
 
 
+def _data_store(request: Request) -> DataStore:
+    store: DataStore = request.app.state.data_store
+    return store
+
+
+def _curate_extractor(request: Request) -> CurateExtractor:
+    del request
+    # Dedicated Haiku-capable claude_code port -- same rationale as `_intent`.
+    return CurateExtractor(ModelClient(ClaudeCodeProvider(), model_default="haiku"))
+
+
+def _last_results(request: Request) -> dict[str, ReadResults]:
+    results: dict[str, ReadResults] = request.app.state.last_results
+    return results
+
+
 def _invokes(request: Request) -> dict[str, InvokeState]:
     invokes: dict[str, InvokeState] = request.app.state.invokes
     return invokes
@@ -173,12 +196,25 @@ async def _invoke_or_routed_answer(
     intent_router: IntentRouter,
     secrets: SecretStorePort,
     text: str,
+    data_store: DataStore,
+    curate: CurateExtractor,
+    last_results: dict[str, ReadResults],
+    session_key: str,
 ) -> AskResponse:
+    # Curated-write check first: op=none falls through to the read path unchanged.
+    decision = await curate.extract(text, existing_domains=data_store.domains())
+    if decision.op != "none":
+        outcome = apply_curate(
+            decision, store=data_store, last_rows=stashed_rows(last_results, session_key)
+        )
+        return AskResponse(text=outcome.reply, path="curate", tool_used=None, escalated=False)
+
     try:
         local = await read_service.read(text)
     except Exception:
         local = None
     if local is not None:
+        stash_results(last_results, session_key, local.rows)
         return AskResponse(text=local.answer, path="local_read", tool_used=None, escalated=False)
 
     selection = await selector.select(text)
@@ -216,7 +252,7 @@ router = APIRouter(prefix="/app")
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     req: AskRequest,
-    _principal: Principal = Depends(require_session),
+    principal: Principal = Depends(require_session),
     model: ModelPort = Depends(_router),
     intent_router: IntentRouter = Depends(_intent),
     selector: CapabilitySelector = Depends(_selector),
@@ -224,6 +260,9 @@ async def ask(
     invokes: dict[str, InvokeState] = Depends(_invokes),
     secrets: SecretStorePort = Depends(_secrets),
     read_service: ReadService = Depends(_read_service),
+    data_store: DataStore = Depends(_data_store),
+    curate: CurateExtractor = Depends(_curate_extractor),
+    last_results: dict[str, ReadResults] = Depends(_last_results),
 ) -> AskResponse:
     return await _invoke_or_routed_answer(
         read_service=read_service,
@@ -234,13 +273,17 @@ async def ask(
         intent_router=intent_router,
         secrets=secrets,
         text=req.text,
+        data_store=data_store,
+        curate=curate,
+        last_results=last_results,
+        session_key=principal.device_id,
     )
 
 
 @router.post("/ask/stream")
 async def ask_stream(
     req: AskRequest,
-    _principal: Principal = Depends(require_session),
+    principal: Principal = Depends(require_session),
     model: ModelPort = Depends(_router),
     intent_router: IntentRouter = Depends(_intent),
     selector: CapabilitySelector = Depends(_selector),
@@ -248,6 +291,9 @@ async def ask_stream(
     invokes: dict[str, InvokeState] = Depends(_invokes),
     secrets: SecretStorePort = Depends(_secrets),
     read_service: ReadService = Depends(_read_service),
+    data_store: DataStore = Depends(_data_store),
+    curate: CurateExtractor = Depends(_curate_extractor),
+    last_results: dict[str, ReadResults] = Depends(_last_results),
 ) -> StreamingResponse:
     async def event_stream() -> AsyncIterator[str]:
         response = await _invoke_or_routed_answer(
@@ -259,6 +305,10 @@ async def ask_stream(
             intent_router=intent_router,
             secrets=secrets,
             text=req.text,
+            data_store=data_store,
+            curate=curate,
+            last_results=last_results,
+            session_key=principal.device_id,
         )
         yield _sse_event(response.text)
         yield "data: [DONE]\n\n"

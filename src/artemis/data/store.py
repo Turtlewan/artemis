@@ -37,7 +37,7 @@ class DataStore:
 
     def __init__(self, db_path: str = ":memory:", *, now: Callable[[], float] = time.time) -> None:
         self._now = now
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS records ("
             " domain TEXT, kind TEXT, key TEXT,"
@@ -51,7 +51,10 @@ class DataStore:
         self._conn.commit()
 
     def upsert(self, record: Record) -> None:
-        """Insert, or on (domain,kind,key) conflict update feed fields only -- owner_fields survive."""
+        """Insert, or on (domain,kind,key) conflict update feed fields only -- owner_fields survive.
+        The domain label is normalized (strip+lower) HERE -- the one chokepoint every write path
+        goes through, so labels cannot fragment (ADR-048 #5)."""
+        domain = record.domain.strip().lower()
         self._conn.execute(
             "INSERT INTO records"
             " (domain, kind, key, payload, sanitized_text, source, fetched_at, owner_fields)"
@@ -60,7 +63,7 @@ class DataStore:
             "  payload=excluded.payload, sanitized_text=excluded.sanitized_text,"
             "  source=excluded.source, fetched_at=excluded.fetched_at",
             (
-                record.domain,
+                domain,
                 record.kind,
                 record.key,
                 json.dumps(record.payload),
@@ -127,6 +130,16 @@ class DataStore:
         A domain exists iff it has rows; there is no registry."""
         rows = self._conn.execute("SELECT DISTINCT domain FROM records ORDER BY domain").fetchall()
         return [cast(str, row[0]) for row in rows]
+
+    def has_foreign_source(self, domain: str, *, own_source: str = "curate") -> bool:
+        """True iff `domain` holds any row written by a non-curate source -- the synced-domain
+        guard (review BLOCK 2): curated CRUD must refuse such domains. A curated fetched_at=now()
+        in a synced domain would fake-fresh a stale sync; a forget would silently resurrect on
+        the next sync."""
+        row = self._conn.execute(
+            "SELECT 1 FROM records WHERE domain=? AND source != ? LIMIT 1", (domain, own_source)
+        ).fetchone()
+        return row is not None
 
     def delete(self, domain: str, kind: str, key: str) -> None:
         self._conn.execute(

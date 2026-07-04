@@ -129,6 +129,7 @@ def create_app(
     app.state.capability_selector = build_capability_selector(capability_store)
     app.state.fetch_sandbox = FetchSandbox()
     app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
+    app.state.last_results = {}  # session_key -> curate.ReadResults (last read's rows; referent)
     app.state.data_store = DataStore(str(resolved_data_dir / "spine.db"))
     if enable_sync:
         _build_sync(app, resolved_data_dir)
