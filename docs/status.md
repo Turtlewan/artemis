@@ -13,7 +13,7 @@ stack_skills: [apex-python, apex-tauri]   # v2 Python harness + kept Tauri clien
 coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Dogfood: Opus plans/specs/reviews, Codex builds; host re-verifies full mypy --strict + pytest.
 max_parallel_codex: 3
 
-_Last updated by planning mode:_ 2026-07-03
+_Last updated by planning mode:_ 2026-07-04
 
 ## Current state — Slices 0–2 complete
 
@@ -52,7 +52,9 @@ All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 
 ## In-Flight
 | What | Mode | State | File | Stopped at | Uncommitted |
 |------|------|-------|------|------------|-------------|
-| curated-machinery cluster (AFK, owner-greenlit 2026-07-04: Fable orchestrates, Opus drafts, Codex builds) | coding | 🔄 in-progress | docs/changes/dynamic-domain-routing.md | spec 1 ✅ `3ca8a58` + calibration ✅ 22/24; spec 2 ✅ built+verified (committing); spec 3 ✅ reviewed+promoted, building next | — |
+| _(empty — nothing mid-build)_ | | | | | |
+
+_(**✅ CURATED-MACHINERY CLUSTER COMPLETE (2026-07-04, AFK session 11) — clean stop.** All three ADR-048 specs drafted (Opus) → domain-reviewed → built (Codex) → host-verified → committed on `v2-rebuild`: `curate-extract` (`3ca8a58`) → `curate-write-referent` (`e2af8da`) → `dynamic-domain-routing` (`0f61074`); all archived to `done/`. Live haiku calibration 22/24 gate passed (`docs/findings/curate-extract-calibration-2026-07-04.md`). Brain restarted from HEAD `0f61074` with the machinery live; **client needs a Ctrl+R to reconnect**. First dogfood: "add a task: …" → "what are my tasks" → "forget the … one".)_
 
 _(**✅ OAuth cluster COMPLETE (session 8, 2026-07-03) — clean stop, nothing mid-build.** Reviewed→promoted→built→committed all four on `v2-rebuild`: **oauth-1** broker (`c01e747`) → **oauth-2** routes (`64a0a9f`) → **oauth-3** invoke-token-inject (`fd72820`) → **opener flip** brain-opens (`bc632ab`) → **oauth-4** Connect-Google UI (`5ab8fab`); all specs archived to `done/`. Codex-built, host-verified each (brain: mypy 152 / pytest 487 / ruff; client: tsc / eslint / vitest 125 / cargo 28). oauth-1 + oauth-3 got Opus cross-model reviews (both FLAG-clean; email-guard + mint-log hardening applied; multi-scope + oauth-only-mark_auth_verified follow-ups filed in Open Questions). Planning pass ran the 4 domain reviews (apex-security ×2 / auth / google) — 2 BLOCKs (7-day-expiry→publish-to-Production; state CSPRNG) + ~12 FLAGs all folded pre-build._
 > _**Owner Google-side status:** consent screen PUBLISHED to Production ✓ + `calendar.readonly` scope added ✓ (unverified-app warning is expected/fine for sole user). **Remaining owner step:** paste client ID/secret into the keys panel as `google_oauth_client_id` / `google_oauth_client_secret`._
@@ -76,7 +78,9 @@ _Ready build queue. Dependency order matters — the metadata/invoke cluster sha
 | 7 | cb5b-2-map-nodes-ui | 📝 | Capability nodes (name+pending badge/"99+") + brain-persisted placement + full-page overlay (ADR-045; dep: #1). Phase-1 visible map. Also needs the 1-line forge `draft.goal = proposal.goal` population. |
 | 8 | cb5b-3-refresh-backend | 📝 | Scheduler-driven consent-gated pending-count refresh (JSON `{count,items}` stdout, fail-soft). `cross_model_review`, security-review-before-build. Phase-2. |
 | 9 | cb5b-4-refresh-ui | 📝 | Overlay refresh toggle + live badge (dep: #8). Phase-2. |
-| 10 | curate-extract | ✅ | Curated machinery spec 1/3 (ADR-048): verb-gated haiku extractor + `store.domains()` + tests; dead until spec 2 wires it. Domain-reviewed 2026-07-04 (security + ai-systems, no BLOCKs, findings folded). Next after it: `curate-write + referent` → `dynamic-domain-routing`. |
+| 10 | ~~curate-extract~~ | ✅ SHIPPED | **Session 11** (`3ca8a58`, done/). Verb-gated haiku extractor + `store.domains()`. Reviewed (security+ai-systems) + live-calibrated 22/24. |
+| 11 | ~~curate-write-referent~~ | ✅ SHIPPED | **Session 11** (`e2af8da`, done/). Trusted curated CRUD (quarantine bypass) + referent + ask wiring; synced-domain guard, ambiguous-forget refusal, upsert normalization chokepoint. Dual-reviewed, 2 BLOCKs folded pre-build. |
+| 12 | ~~dynamic-domain-routing~~ | ✅ SHIPPED | **Session 11** (`0f61074`, done/). Live-label routing + curated-always-fresh + tracking meta-query + reserved synced names. **ADR-048 machinery COMPLETE — domains now emerge from conversation.** |
 | — | ~~plan-gate-egress~~ | ✅ SHIPPED | **Session 9** (`e853b98`, done/). Gateway passes egress_domains (+ missing_secrets, oauth_scopes — same silent-drop class) to the plan card. |
 | — | sandbox-policy-caps-bound | ✅ | Standalone. Clamp the untrusted `sandbox_policy.json` caps path (ceilings safely above RENDER_CAPS). Sequence with argv-base64 (shared sandbox_wsl2.py). |
 | — | argv-base64-side-channel | ✅ | Optional durability refactor (ADR-042) — base64 WSL argv side-channel. Not a bug fix; dual-pass review at build. |
