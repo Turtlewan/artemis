@@ -40,6 +40,20 @@ _PHRASE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# Meta discoverability (ADR-048 consequence): "what are you tracking for me?" answers from the
+# live domain list directly -- no domain match, no phrasing call.
+_TRACKING_PREFIX = "I'm currently tracking: "
+_TRACKING_PATTERNS: tuple[str, ...] = (
+    "what are you tracking",
+    "what do you track",
+    "what are you keeping track of",
+    "what are you storing for me",
+)
+
+
+def _is_tracking_query(text: str) -> bool:
+    return any(p in text.lower() for p in _TRACKING_PATTERNS)
+
 
 class _Phrased(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -104,22 +118,45 @@ class ReadService:
 
     def resolve_domain(self, text: str) -> DomainSpec | None:
         lowered = text.lower()
+        # Static synced-domain registry first (calendar's rich keyword set + freshness config).
         for spec in self._domains:
             if any(kw in lowered for kw in spec.keywords):
                 return spec
+        # Then the LIVE domain list (ADR-048 #2): any conversationally-created domain is matchable
+        # by its own label (+ naive singular/plural) with zero code change. Curated domains use the
+        # DomainSpec defaults (limit=50); their freshness gate is bypassed in read() below.
+        static = {spec.domain for spec in self._domains}
+        for label in self._store.domains():
+            if label in static:
+                continue
+            keywords = _label_keywords(label)
+            if any(kw in lowered for kw in keywords):
+                return DomainSpec(domain=label, keywords=keywords)
         return None
 
     async def read(self, text: str) -> ReadResult | None:
-        """Answer from local synced data, or None to fall through to the normal ask path.
+        """Answer from local data, or None to fall through to the normal ask path.
 
-        None when: no domain keyword matches, the domain has no stored rows, or the phrasing call
-        fails (degrade to the normal path rather than return a wrong local answer)."""
+        None when: no domain keyword matches, the domain is empty, a synced domain is stale, or the
+        phrasing call fails. Curated domains (all rows source="curate") have no upstream and are
+        never stale (ADR-048). "what are you tracking?" answers from the live domain list."""
+        if _is_tracking_query(text):
+            labels = self._store.domains()
+            if not labels:
+                return None  # nothing tracked yet -> fall through to the normal ask path
+            return ReadResult(domain="tracking", answer=_TRACKING_PREFIX + ", ".join(labels) + ".")
         spec = self.resolve_domain(text)
         if spec is None:
             return None
         latest = self._store.latest_fetched_at(spec.domain)
-        if latest is None or (self._now() - latest) > spec.freshness_s:
-            # empty or stale -> fall through to the live path (don't answer from stale local data)
+        if latest is None:
+            return None  # empty domain -> nothing local to answer
+        # Synced domains gate on freshness (ADR-046 #5; stale -> live path). Curated domains (no
+        # foreign source) have no fetcher/upstream -> never stale -> bypass the gate (ADR-048).
+        if (
+            self._store.has_foreign_source(spec.domain)
+            and (self._now() - latest) > spec.freshness_s
+        ):
             return None
         rows = self._store.query(domain=spec.domain, limit=spec.limit)
         if not rows:
@@ -157,3 +194,12 @@ class ReadService:
 
 def _render_rows(rows: Sequence[Record]) -> str:
     return "\n".join(f"- [{r.kind}] {r.sanitized_text}" for r in rows)
+
+
+def _label_keywords(label: str) -> tuple[str, ...]:
+    """Matchable keywords for a live domain label (ADR-048 #2): the label itself plus a naive
+    singular/plural partner (tasks<->task, workouts<->workout). Deterministic -- not a model call.
+    Naive: irregular plurals (status, categories) are accepted v1 behavior."""
+    label = label.strip().lower()
+    variants = {label, label[:-1] if label.endswith("s") else label + "s"}
+    return tuple(sorted(v for v in variants if v))

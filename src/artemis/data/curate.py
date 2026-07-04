@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from artemis.data.read import DEFAULT_DOMAINS
 from artemis.data.store import DataStore, Record
 from artemis.expiry import evict_expired
 from artemis.ports.model import ModelPort
@@ -188,8 +189,12 @@ class ReadResults:
 
 def stash_results(store: dict[str, ReadResults], session_key: str, rows: Sequence[Record]) -> None:
     """Hold this session's last-read rows for referent resolution (lazy TTL/size eviction).
-    Rows are stashed payload-STRIPPED (review FLAG 4): only sanitized_text is ever copied out, so
-    the stash must not retain raw payloads at rest either."""
+    NO-OP on an empty row-set: the stash keeps the last NON-EMPTY list the owner actually saw --
+    a tracking meta-query (rows=()) must not clobber a live referent. Rows are stashed
+    payload-STRIPPED (review FLAG 4): only sanitized_text is ever copied out, so the stash must
+    not retain raw payloads at rest either."""
+    if not rows:
+        return
     evict_expired(store, ttl_seconds=_RESULTS_TTL_SECONDS, max_entries=_RESULTS_MAX_ENTRIES)
     store[session_key] = ReadResults(rows=tuple(replace(row, payload={}) for row in rows))
 
@@ -225,6 +230,18 @@ def resolve_referent(referent: str, rows: Sequence[Record]) -> Record | None:
     return matches[0] if len(matches) == 1 else None
 
 
+# The static synced roster's names are RESERVED for curated CRUD regardless of row presence --
+# has_foreign_source is row-based, so without this a curated save could squat "calendar" on an
+# empty store and later commingle with the sync (data review, name-squat FLAG).
+_RESERVED_SYNCED_DOMAINS: frozenset[str] = frozenset(spec.domain for spec in DEFAULT_DOMAINS)
+
+
+def _is_synced_domain(store: DataStore, domain: str) -> bool:
+    """True iff curated CRUD must refuse `domain`: on the static synced roster (reserved even
+    before the first sync lands) OR holding any foreign-source row (spec-2 guard)."""
+    return domain in _RESERVED_SYNCED_DOMAINS or store.has_foreign_source(domain)
+
+
 def apply_curate(
     decision: CurateDecision,
     *,
@@ -241,7 +258,7 @@ def apply_curate(
         return _apply_forget(decision, domain, store, last_rows)
     if not domain:
         return CurateOutcome(ok=False, reply=_SAVE_WHERE)
-    if store.has_foreign_source(domain):
+    if _is_synced_domain(store, domain):
         return CurateOutcome(ok=False, reply=_SYNCED_READONLY.format(domain=domain))
     return _apply_save(decision, domain, store, last_rows, now, new_key)
 
@@ -287,7 +304,7 @@ def _apply_forget(
         row = resolve_referent(decision.referent, last_rows)
         if row is None:
             return CurateOutcome(ok=False, reply=_NOT_FOUND)
-        if store.has_foreign_source(row.domain):
+        if _is_synced_domain(store, row.domain):
             return CurateOutcome(ok=False, reply=_SYNCED_READONLY.format(domain=row.domain))
         store.delete(row.domain, row.kind, row.key)
         return CurateOutcome(ok=True, reply=_CONFIRM_FORGET)
@@ -303,7 +320,7 @@ def _apply_forget(
     if not matches:
         return CurateOutcome(ok=False, reply=_NOT_FOUND)
     row = matches[0]
-    if store.has_foreign_source(row.domain):
+    if _is_synced_domain(store, row.domain):
         return CurateOutcome(ok=False, reply=_SYNCED_READONLY.format(domain=row.domain))
     store.delete(row.domain, row.kind, row.key)
     return CurateOutcome(ok=True, reply=_CONFIRM_FORGET)

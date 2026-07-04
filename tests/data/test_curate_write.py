@@ -268,6 +268,44 @@ def test_stash_strips_payload() -> None:
     assert stashed_rows(state, "other") == ()
 
 
+def test_stash_empty_rows_noop() -> None:
+    state: dict[str, ReadResults] = {}
+
+    stash_results(state, "dev", (_row(key="a"),))
+    stash_results(state, "dev", ())
+
+    rows = stashed_rows(state, "dev")
+    assert len(rows) == 1
+    assert rows[0].key == "a"
+
+    stash_results(state, "fresh", ())
+    assert stashed_rows(state, "fresh") == ()
+
+
+async def test_tracking_result_rows_do_not_clobber_stash() -> None:
+    state: dict[str, ReadResults] = {}
+    stash_results(state, "dev", (_row(key="a"),))
+    store = DataStore()
+    store.upsert(
+        _row(
+            domain="notes",
+            kind="note",
+            key="n1",
+            sanitized_text="buy milk",
+            payload={},
+            source="curate",
+        )
+    )
+    result = await ReadService(store, phraser=FakePhraser()).read("what are you tracking for me?")
+
+    assert result is not None
+    assert result.rows == ()
+
+    stash_results(state, "dev", result.rows)
+
+    assert stashed_rows(state, "dev")[0].key == "a"
+
+
 async def test_read_exposes_rows() -> None:
     store = DataStore()
     _seed(store)
@@ -325,6 +363,20 @@ def test_save_into_synced_domain_refused() -> None:
     assert not outcome.ok
     assert outcome.reply == "calendar is synced read-only -- try 'add a task' instead."
     assert len(store.query(domain="calendar")) == 1
+
+
+def test_save_into_reserved_synced_name_refused_on_empty_store() -> None:
+    store = DataStore()
+
+    outcome = apply_curate(
+        CurateDecision(op="save", domain="calendar", content="fake event"),
+        store=store,
+        last_rows=(),
+    )
+
+    assert not outcome.ok
+    assert outcome.reply == "calendar is synced read-only -- try 'add a task' instead."
+    assert store.query(domain="calendar") == []
 
 
 def test_forget_referent_synced_row_refused() -> None:

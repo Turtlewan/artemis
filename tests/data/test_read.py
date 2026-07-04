@@ -54,11 +54,64 @@ def _seed(store: DataStore, **over: object) -> None:
     store.upsert(Record(**base))  # type: ignore[arg-type]
 
 
+def _seed_curated(store: DataStore, *, domain: str, text: str, fetched_at: float = 1.0) -> None:
+    store.upsert(
+        Record(
+            domain=domain,
+            kind="note",
+            key=f"{domain}-1",
+            payload={},
+            sanitized_text=text,
+            source="curate",
+            fetched_at=fetched_at,
+            owner_fields={},
+        )
+    )
+
+
 def test_resolve_domain() -> None:
     svc = ReadService(DataStore(), phraser=FakePhraser())
     assert svc.resolve_domain("what's on my CALENDAR today").domain == "calendar"  # type: ignore[union-attr]
     assert svc.resolve_domain("any meetings tomorrow?").domain == "calendar"  # type: ignore[union-attr]
     assert svc.resolve_domain("what's the weather") is None
+
+
+def test_resolve_domain_live_label() -> None:
+    store = DataStore()
+    _seed_curated(store, domain="workouts", text="Ran 5k")
+    svc = ReadService(store, phraser=FakePhraser())
+
+    spec = svc.resolve_domain("what workouts have I logged")
+
+    assert spec is not None
+    assert spec.domain == "workouts"
+    assert svc.resolve_domain("what recipes do I have") is None
+
+
+def test_resolve_domain_singular_plural() -> None:
+    store = DataStore()
+    _seed_curated(store, domain="tasks", text="renew passport")
+    _seed_curated(store, domain="workouts", text="Ran 5k")
+    svc = ReadService(store, phraser=FakePhraser())
+
+    tasks = svc.resolve_domain("show my task list")
+    workouts = svc.resolve_domain("did I log a workout today")
+
+    assert tasks is not None
+    assert tasks.domain == "tasks"
+    assert workouts is not None
+    assert workouts.domain == "workouts"
+
+
+def test_resolve_domain_static_wins_and_survives() -> None:
+    store = DataStore()
+    _seed(store)
+    svc = ReadService(store, phraser=FakePhraser())
+
+    spec = svc.resolve_domain("any meetings tomorrow?")
+
+    assert spec is not None
+    assert spec.domain == "calendar"
 
 
 @pytest.mark.asyncio
@@ -117,6 +170,60 @@ async def test_read_stale_data_falls_through() -> None:
         store, phraser=FakePhraser(), now=lambda: 2500.0
     )  # 1500s old > 900s threshold
     assert await svc.read("what's on my calendar") is None  # stale -> live path
+
+
+@pytest.mark.asyncio
+async def test_dynamic_domain_readable_end_to_end() -> None:
+    store = DataStore()
+    _seed_curated(store, domain="workouts", text="Ran 5k on Tuesday")
+    svc = ReadService(store, phraser=FakePhraser(answer="You ran 5k."), now=lambda: 1e9)
+
+    result = await svc.read("what workouts have I logged")
+
+    assert result is not None
+    assert result.domain == "workouts"
+    assert result.answer == "You ran 5k."
+
+
+@pytest.mark.asyncio
+async def test_curated_domain_bypasses_freshness_gate() -> None:
+    store = DataStore()
+    _seed_curated(store, domain="notes", text="buy milk", fetched_at=1.0)
+    svc = ReadService(store, phraser=FakePhraser(answer="You have: buy milk."), now=lambda: 1e9)
+
+    result = await svc.read("show my notes")
+
+    assert result is not None
+    assert result.answer == "You have: buy milk."
+
+
+@pytest.mark.asyncio
+async def test_curated_empty_domain_falls_through() -> None:
+    svc = ReadService(DataStore(), phraser=FakePhraser())
+
+    assert await svc.read("show my notes") is None
+
+
+@pytest.mark.asyncio
+async def test_tracking_query_lists_domains() -> None:
+    store = DataStore()
+    _seed_curated(store, domain="notes", text="a")
+    _seed_curated(store, domain="workouts", text="b")
+    phraser = FakePhraser()
+    svc = ReadService(store, phraser=phraser)
+
+    result = await svc.read("what are you tracking for me?")
+
+    assert result is not None
+    assert "notes" in result.answer and "workouts" in result.answer
+    assert phraser.calls == []
+
+
+@pytest.mark.asyncio
+async def test_tracking_query_empty_store_falls_through() -> None:
+    svc = ReadService(DataStore(), phraser=FakePhraser())
+
+    assert await svc.read("what are you tracking for me") is None
 
 
 @pytest.mark.asyncio
