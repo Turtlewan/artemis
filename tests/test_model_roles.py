@@ -73,6 +73,13 @@ def test_defaults_no_file(tmp_path: Path) -> None:
     assert reg.get("forge_author").provider == "router"
 
 
+def test_escalation_driver_default_and_constraints(tmp_path: Path) -> None:
+    reg = _registry(tmp_path / "r.json")
+    assert reg.get("escalation_driver") == RoleBinding("codex", "gpt-5.5")
+    assert reg.constraints("escalation_driver") == RoleConstraints(no_tools=False, temperature=None)
+    assert "codex" in reg.eligible_providers("escalation_driver")
+
+
 @pytest.mark.asyncio
 async def test_for_role_drives_model(tmp_path: Path) -> None:
     fake = _FakeProvider()
@@ -126,11 +133,11 @@ def test_put_persists_and_resolves_without_restart(tmp_path: Path) -> None:
     path = tmp_path / "r.json"
     reg = _registry(path)
 
-    reg.put("loop_driver", RoleBinding("codex", "gpt-5.5"))
+    reg.put("loop_driver", RoleBinding("anthropic_api", "claude-sonnet"))
     restarted = _registry(path)
 
-    assert reg.get("loop_driver").provider == "codex"
-    assert restarted.get("loop_driver").provider == "codex"
+    assert reg.get("loop_driver").provider == "anthropic_api"
+    assert restarted.get("loop_driver").provider == "anthropic_api"
 
 
 def test_invariant_judge_differs_from_loop_driver(tmp_path: Path) -> None:
@@ -139,9 +146,21 @@ def test_invariant_judge_differs_from_loop_driver(tmp_path: Path) -> None:
     with pytest.raises(RoleRegistryError):
         reg.put("judge", RoleBinding("claude_code", "haiku"))
 
-    reg.put("loop_driver", RoleBinding("codex", "gpt-5.5"))
+    reg.put("loop_driver", RoleBinding("anthropic_api", "claude-sonnet"))
     with pytest.raises(RoleRegistryError):
-        reg.put("judge", RoleBinding("codex", "gpt-5.5"))
+        reg.put("judge", RoleBinding("anthropic_api", "claude-sonnet"))
+
+
+def test_invariant_escalation_driver_differs_from_loop_driver(tmp_path: Path) -> None:
+    reg = _registry(tmp_path / "r.json")
+    # Move loop_driver to a binding that does NOT equal escalation_driver's default
+    # ("codex","gpt-5.5") -- otherwise this first put itself trips the new invariant.
+    reg.put("loop_driver", RoleBinding("anthropic_api", "claude-sonnet"))
+    with pytest.raises(RoleRegistryError):
+        reg.put("escalation_driver", RoleBinding("anthropic_api", "claude-sonnet"))
+    # A different binding is accepted.
+    reg.put("escalation_driver", RoleBinding("claude_code", "opus"))
+    assert reg.get("escalation_driver") == RoleBinding("claude_code", "opus")
 
 
 def test_invariant_unknown_role_and_provider(tmp_path: Path) -> None:
@@ -197,6 +216,25 @@ def test_fail_closed_hand_edited_judge_equals_loop_driver(tmp_path: Path) -> Non
     reg = _registry(path)
 
     assert reg.bindings()["judge"] == _DEFAULTS["judge"]
+
+
+def test_fail_closed_hand_edited_escalation_equals_loop_driver(tmp_path: Path) -> None:
+    path = tmp_path / "r.json"
+    path.write_text(
+        json.dumps(
+            {
+                "loop_driver": {"provider": "codex", "model": "gpt-5.5"},
+                "escalation_driver": {"provider": "codex", "model": "gpt-5.5"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = _registry(path)
+    assert reg.bindings()["escalation_driver"] == _DEFAULTS["escalation_driver"]
+    assert any(
+        d.role == "escalation_driver" and d.reason == "escalation_conflict"
+        for d in reg.dropped_overrides()
+    )
 
 
 def test_fail_closed_invalid_reader_and_malformed_sibling(tmp_path: Path) -> None:

@@ -2,10 +2,10 @@
 
 ADR-049. Roles in code, models in config. Safety posture rides the role: reader is no-tools
 and bindable only to providers with a verified no-tools invocation path; extractor and judge force
-temperature 0; judge binding must differ from loop_driver. Resolution reads the current binding on
-every for_role() call, so an owner edit takes effect without a restart. The load path fails closed:
-malformed or invariant-violating persisted entries are dropped and the role falls back to its
-default, so for_role never raises because of persisted-file content.
+temperature 0; judge and escalation_driver bindings must differ from loop_driver. Resolution reads
+the current binding on every for_role() call, so an owner edit takes effect without a restart. The
+load path fails closed: malformed or invariant-violating persisted entries are dropped and the role
+falls back to its default, so for_role never raises because of persisted-file content.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from artemis.types import Message, ModelResponse
 
 ROLES: tuple[str, ...] = (
     "loop_driver",
+    "escalation_driver",
     "selector",
     "extractor",
     "phraser",
@@ -73,6 +74,7 @@ DropReason = Literal[
     "no_tools_ineligible",
     "router_restricted",
     "judge_conflict",
+    "escalation_conflict",
 ]
 
 
@@ -97,6 +99,7 @@ def constraints_for(role: str) -> RoleConstraints:
 
 _DEFAULTS: dict[str, RoleBinding] = {
     "loop_driver": RoleBinding("claude_code", "haiku"),
+    "escalation_driver": RoleBinding("codex", "gpt-5.5"),
     "selector": RoleBinding("claude_code", "haiku"),
     "extractor": RoleBinding("claude_code", "haiku"),
     "phraser": RoleBinding("claude_code", "haiku"),
@@ -169,6 +172,14 @@ class ModelRoleRegistry:
             if merged["judge"] == merged["loop_driver"]:
                 _log.warning("model_roles: dropping loop_driver override (judge collision)")
                 merged["loop_driver"] = _DEFAULTS["loop_driver"]
+        if merged["escalation_driver"] == merged["loop_driver"]:
+            _log.warning("model_roles: dropping escalation_driver override (equals loop_driver)")
+            merged["escalation_driver"] = _DEFAULTS["escalation_driver"]
+            if merged["escalation_driver"] == merged["loop_driver"]:
+                _log.warning(
+                    "model_roles: dropping loop_driver override (escalation_driver collision)"
+                )
+                merged["loop_driver"] = _DEFAULTS["loop_driver"]
         return merged
 
     def get(self, role: str) -> RoleBinding:
@@ -212,6 +223,10 @@ class ModelRoleRegistry:
         proposed[role] = binding
         if proposed["judge"] == proposed["loop_driver"]:
             raise RoleRegistryError("judge binding must differ from loop_driver binding")
+        if proposed["escalation_driver"] == proposed["loop_driver"]:
+            raise RoleRegistryError(
+                "escalation_driver binding must differ from loop_driver binding"
+            )
 
     def for_role(self, role: str) -> ModelPort:
         binding = self.get(role)
@@ -257,6 +272,11 @@ class ModelRoleRegistry:
         merged.update(sanitized)
         if "judge" in sanitized and merged["judge"] == merged["loop_driver"]:
             dropped.append(DroppedOverride(role="judge", reason="judge_conflict"))
+        if (
+            "escalation_driver" in sanitized
+            and merged["escalation_driver"] == merged["loop_driver"]
+        ):
+            dropped.append(DroppedOverride(role="escalation_driver", reason="escalation_conflict"))
         return dropped
 
     def _classify_drop(self, role: str, entry: object) -> DropReason | None:

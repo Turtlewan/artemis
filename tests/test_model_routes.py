@@ -33,7 +33,7 @@ def test_get_models_lists_roles_constraints_and_eligibility(tmp_path: Path) -> N
 
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["roles"]) == 9
+    assert len(body["roles"]) == 10
     assert body["providers"] == list(PROVIDERS)
     assert body["dropped_overrides"] == []
     for row in body["roles"]:
@@ -52,12 +52,14 @@ def test_get_models_lists_roles_constraints_and_eligibility(tmp_path: Path) -> N
 def test_put_edits_binding_without_restart(tmp_path: Path) -> None:
     client = _client(tmp_path)
 
-    put = client.put("/app/models/loop_driver", json={"provider": "codex", "model": "gpt-5.5"})
+    put = client.put(
+        "/app/models/loop_driver", json={"provider": "anthropic_api", "model": "claude-sonnet"}
+    )
 
     assert put.status_code == 200
-    assert put.json()["provider"] == "codex"
+    assert put.json()["provider"] == "anthropic_api"
     roles = _roles_by_name(client.get("/app/models").json())
-    assert roles["loop_driver"]["provider"] == "codex"
+    assert roles["loop_driver"]["provider"] == "anthropic_api"
 
 
 def test_put_rejects_invariant_and_dto_violations_without_persisting(tmp_path: Path) -> None:
