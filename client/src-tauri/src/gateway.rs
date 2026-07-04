@@ -162,6 +162,63 @@ pub(crate) struct OAuthDisconnectResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ModelConstraintsDto {
+    no_tools: bool,
+    // Brain sends `float | None` (extractor/judge = 0.0, others null); Option<f64> round-trips both.
+    temperature: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ModelRoleDto {
+    role: String,
+    provider: String,
+    model: String,
+    constraints: ModelConstraintsDto,
+    eligible_providers: Vec<String>,
+    editable_fields: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct DroppedOverrideDto {
+    role: String,
+    reason: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ModelsResponse {
+    roles: Vec<ModelRoleDto>,
+    providers: Vec<String>,
+    dropped_overrides: Vec<DroppedOverrideDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct RoleUpdateRequest {
+    provider: String,
+    model: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum RolePutResponse {
+    Updated(ModelRoleDto),
+    Invalid { detail: String },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ModelUsageDto {
+    role: String,
+    calls: u64,
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    avg_latency_ms: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ModelUsageResponse {
+    roles: Vec<ModelUsageDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct InstalledCard {
     name: String,
     version: i64,
@@ -740,6 +797,50 @@ async fn oauth_disconnect(
     .await
 }
 
+async fn models_get(state: &AppState) -> Result<ModelsResponse, GatewayError> {
+    request_json::<ModelsResponse, ()>(state, Method::GET, "/app/models", None, true).await
+}
+
+async fn models_usage(state: &AppState) -> Result<ModelUsageResponse, GatewayError> {
+    request_json::<ModelUsageResponse, ()>(state, Method::GET, "/app/models/usage", None, true)
+        .await
+}
+
+async fn models_put(
+    state: &AppState,
+    role: String,
+    provider: String,
+    model: String,
+) -> Result<RolePutResponse, GatewayError> {
+    let url = format!("{}/app/models/{}", base_url(state)?, path_segment(&role));
+    let response = client()
+        .put(url)
+        .bearer_auth(bearer(state)?)
+        .json(&RoleUpdateRequest { provider, model })
+        .send()
+        .await?;
+    let status = response.status();
+    if status.is_success() {
+        let binding = response.json::<ModelRoleDto>().await?;
+        return Ok(RolePutResponse::Updated(binding));
+    }
+    if status.as_u16() == 422 {
+        #[derive(Deserialize)]
+        struct Detail {
+            detail: String,
+        }
+        return match response.json::<Detail>().await {
+            Ok(body) => Ok(RolePutResponse::Invalid {
+                detail: body.detail,
+            }),
+            Err(_) => Ok(RolePutResponse::Invalid {
+                detail: "invalid model binding".to_string(),
+            }),
+        };
+    }
+    Err(GatewayError::from_status(status))
+}
+
 pub(crate) async fn lock(state: &AppState) -> Result<OkResponse, GatewayError> {
     let response =
         request_json::<LockResponse, ()>(state, Method::POST, "/app/lock", None, true).await;
@@ -1114,6 +1215,30 @@ pub(crate) async fn app_oauth_disconnect(
     account: Option<String>,
 ) -> Result<OAuthDisconnectResponse, GatewayError> {
     oauth_disconnect(&state, account).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_models_get(
+    state: State<'_, AppState>,
+) -> Result<ModelsResponse, GatewayError> {
+    models_get(&state).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_models_put(
+    state: State<'_, AppState>,
+    role: String,
+    provider: String,
+    model: String,
+) -> Result<RolePutResponse, GatewayError> {
+    models_put(&state, role, provider, model).await
+}
+
+#[tauri::command]
+pub(crate) async fn app_models_usage(
+    state: State<'_, AppState>,
+) -> Result<ModelUsageResponse, GatewayError> {
+    models_usage(&state).await
 }
 
 #[tauri::command]
@@ -1724,6 +1849,161 @@ mod tests {
             .await;
         let response = oauth_disconnect(&state, None).await.unwrap();
         assert!(response.disconnected);
+    }
+
+    #[tokio::test]
+    async fn models_get_lists_roles_providers_and_dropped() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        let body = json!({
+            "roles": [
+                {
+                    "role": "reader",
+                    "provider": "claude_code",
+                    "model": "sonnet",
+                    "constraints": {
+                        "no_tools": true,
+                        "temperature": null
+                    },
+                    "eligible_providers": ["claude_code", "ollama"],
+                    "editable_fields": ["provider", "model"]
+                },
+                {
+                    "role": "extractor",
+                    "provider": "codex",
+                    "model": "gpt-5",
+                    "constraints": {
+                        "no_tools": false,
+                        "temperature": 0.0
+                    },
+                    "eligible_providers": ["codex"],
+                    "editable_fields": ["model"]
+                }
+            ],
+            "providers": ["claude_code", "codex", "ollama", "router"],
+            "dropped_overrides": [
+                {
+                    "role": "reader",
+                    "reason": "no_tools_ineligible"
+                }
+            ]
+        });
+        Mock::given(method("GET"))
+            .and(path("/app/models"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = models_get(&state).await.unwrap();
+
+        assert_eq!(response.roles[0].constraints.temperature, None);
+        assert_eq!(response.roles[1].constraints.temperature, Some(0.0));
+        assert_eq!(
+            response.roles[0].eligible_providers,
+            vec!["claude_code".to_string(), "ollama".to_string()]
+        );
+        assert_eq!(
+            response.roles[0].editable_fields,
+            vec!["provider".to_string(), "model".to_string()]
+        );
+        assert_eq!(response.dropped_overrides[0].reason, "no_tools_ineligible");
+        assert_eq!(serde_json::to_value(&response).unwrap(), body);
+    }
+
+    #[tokio::test]
+    async fn models_put_updated_and_invalid_arms() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        let loop_driver_path = format!("/app/models/{}", path_segment("loop_driver"));
+        Mock::given(method("PUT"))
+            .and(path(loop_driver_path.as_str()))
+            .and(header("authorization", "Bearer secret-token"))
+            .and(body_json(json!({
+                "provider": "codex",
+                "model": "gpt-5.5"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "role": "loop_driver",
+                "provider": "codex",
+                "model": "gpt-5.5",
+                "constraints": {
+                    "no_tools": false,
+                    "temperature": null
+                },
+                "eligible_providers": ["codex", "claude_code"],
+                "editable_fields": ["provider", "model"]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let updated = models_put(
+            &state,
+            "loop_driver".to_string(),
+            "codex".to_string(),
+            "gpt-5.5".to_string(),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(updated, RolePutResponse::Updated(_)));
+
+        let reader_path = format!("/app/models/{}", path_segment("reader"));
+        Mock::given(method("PUT"))
+            .and(path(reader_path.as_str()))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+                "detail": "reader must resolve to a no-tools-capable provider"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let invalid = models_put(
+            &state,
+            "reader".to_string(),
+            "codex".to_string(),
+            "gpt-5.5".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let RolePutResponse::Invalid { detail } = invalid else {
+            panic!("expected invalid response");
+        };
+        assert_eq!(detail, "reader must resolve to a no-tools-capable provider");
+    }
+
+    #[tokio::test]
+    async fn models_usage_returns_per_role_aggregates() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("secret-token".to_string());
+        Mock::given(method("GET"))
+            .and(path("/app/models/usage"))
+            .and(header("authorization", "Bearer secret-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "roles": [
+                    {
+                        "role": "selector",
+                        "calls": 1,
+                        "prompt_tokens": 2,
+                        "completion_tokens": 4,
+                        "avg_latency_ms": 7.0
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = models_usage(&state).await.unwrap();
+
+        assert_eq!(response.roles[0].calls, 1);
+        assert_eq!(response.roles[0].avg_latency_ms, 7.0);
     }
 
     #[tokio::test]
