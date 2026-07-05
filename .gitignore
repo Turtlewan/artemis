@@ -62,6 +62,7 @@ Thumbs.db
 .cache/
 .pytest-tmp/
 .scratch/
+.sandbox/
 
 # --- Codex build run logs + local build-progress notes (transient apex-code dispatch streams; not project docs) ---
 docs/progress/
