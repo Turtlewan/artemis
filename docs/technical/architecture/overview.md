@@ -44,6 +44,15 @@ backfilled here — consult `docs/status.md` for that history until a fuller fol
   reader/synth model line-ups with a judge-collision guard and a comparison-table report; the substrate for
   choosing the actual R3 model line-up.
 
+**Agent loop behind `/app/ask` (AL-1…AL-4, all `docs/changes/done/`; flag `ARTEMIS_AGENT_LOOP` default OFF):**
+the ask path can run a real multi-step loop — a role-resolved driver chains free local-read tools under a step
+budget (AL-1 `932da44`), with tiered spin/thrash/stall stop-discipline + a no-tools verify-on-stop judge (AL-2
+`d44af9a`) and a cross-family Sonnet→Codex one-retry escalation on a semantic stall (AL-3 `e01842c`/`58e1c70`).
+AL-4 wired it behind the flag (`be2e449`), enforced the judge's registry-level no-tools eligibility (`b99bb69`),
+rendered the verdict/caveat signals in the Ask popup (`3058b34`), and built the pre-go-live eval cluster —
+frozen 62-case corpus + independent-Opus-scorer replay harness + fail-closed GO/NO-GO gate
+(`7c780fc`/`2f9ae12`/`add9077`). The flag stays OFF until the gate passes on real owner-labeled corpus data.
+
 **Fix affecting existing capabilities:** `8023bbd` strips a markdown code fence Claude CLI models wrap around
 structured JSON output — this was silently breaking schema-validated calls (web-tool reader/synth, spine
 planning, memory consolidation, capability forge, eval judge) whenever they routed through the `claude`
