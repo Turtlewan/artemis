@@ -166,6 +166,17 @@ const styles = `
   background: color-mix(in srgb, var(--bg) 70%, #12253a 30%);
   border-top-left-radius: 4px;
 }
+.ask-msg__caveat {
+  font-size: 12px;
+  color: var(--a);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ask-msg__note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 .ask-card {
   align-self: flex-start;
   max-width: 88%;
@@ -650,6 +661,30 @@ export function AskPopup({ isOpen, onClose, onVoiceTrigger }: AskPopupProps) {
                       <div className="ask-msg__body">
                         {message.failedLocked ? "Vault locked." : body}
                       </div>
+                      {!isUser && !message.failedLocked && message.verdict === "flagged" ? (
+                        <div className="ask-msg__caveat">
+                          {"unverified - couldn't be grounded in your data"}
+                          {message.verdictReason !== undefined && message.verdictReason !== ""
+                            ? ` - ${message.verdictReason}`
+                            : ""}
+                        </div>
+                      ) : null}
+                      {!isUser &&
+                      !message.failedLocked &&
+                      message.verdict === "unjudged" &&
+                      message.path === "loop" ? (
+                        <div className="ask-msg__note">unverified (checker unavailable)</div>
+                      ) : null}
+                      {!isUser &&
+                      !message.failedLocked &&
+                      message.answeredFrom === "general_knowledge" ? (
+                        <div className="ask-msg__note">
+                          answered from general knowledge - not from your data
+                        </div>
+                      ) : null}
+                      {!isUser && !message.failedLocked && message.escalated === true ? (
+                        <div className="ask-msg__note">retried under a stronger model</div>
+                      ) : null}
                     </div>
                   );
                   })}

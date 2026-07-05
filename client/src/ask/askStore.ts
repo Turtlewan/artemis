@@ -36,6 +36,10 @@ export interface AskMessage {
   engine?: AskEngine;
   path?: string;
   tool?: string;
+  verdict?: "passed" | "flagged" | "unjudged";
+  verdictReason?: string;
+  answeredFrom?: "local_data" | "general_knowledge";
+  escalated?: boolean;
   failedLocked?: boolean;
 }
 
@@ -43,6 +47,7 @@ export interface AskEngineStatus {
   local: boolean;
   codex: boolean;
   review: boolean;
+  loop: boolean;
 }
 
 export interface AskSnapshot {
@@ -65,7 +70,7 @@ const initialSnapshot = (): AskSnapshot => ({
   messages: [],
   streaming: "",
   modeHint: "TASK",
-  engineStatus: { local: true, codex: false, review: false },
+  engineStatus: { local: true, codex: false, review: false, loop: false },
   politeAnnouncement: "",
   assertiveAnnouncement: "",
   sending: false,
@@ -98,8 +103,38 @@ const id = (): string => {
 
 const deriveEngine = (path?: string, escalated?: boolean): AskEngine => {
   if (escalated === true) return "review";
+  if (path === "loop") return "loop";
   if (path !== undefined && path !== "" && path !== "local" && path !== "direct") return "codex";
   return "local";
+};
+
+const loopCaveats = (message: {
+  verdict?: "passed" | "flagged" | "unjudged";
+  verdictReason?: string;
+  answeredFrom?: "local_data" | "general_knowledge";
+  escalated?: boolean;
+  path?: string;
+}): string[] => {
+  const caveats: string[] = [];
+  if (message.verdict === "flagged") {
+    caveats.push(
+      `unverified - couldn't be grounded in your data${
+        message.verdictReason !== undefined && message.verdictReason !== ""
+          ? ` - ${message.verdictReason}`
+          : ""
+      }`,
+    );
+  }
+  if (message.verdict === "unjudged" && message.path === "loop") {
+    caveats.push("unverified (checker unavailable)");
+  }
+  if (message.answeredFrom === "general_knowledge") {
+    caveats.push("answered from general knowledge - not from your data");
+  }
+  if (message.escalated === true) {
+    caveats.push("retried under a stronger model");
+  }
+  return caveats;
 };
 
 const sentenceBoundary = /[.!?]\s*$/u;
@@ -227,16 +262,22 @@ export const askStore = {
 
       const engine = deriveEngine(response.path, response.escalated);
       markEngine(engine);
-      appendMessage({
+      const assistantMessage: AskMessage = {
         id: id(),
         role: "assistant",
         text: response.text,
         engine,
         path: response.path,
         tool: response.tool_used ?? undefined,
-      });
+        verdict: response.verdict ?? undefined,
+        verdictReason:
+          response.verdict_reason === "" ? undefined : (response.verdict_reason ?? undefined),
+        answeredFrom: response.answered_from ?? undefined,
+        escalated: response.escalated,
+      };
+      appendMessage(assistantMessage);
       update({ streaming: "" });
-      publishPolite(response.text, true);
+      publishPolite([response.text, ...loopCaveats(assistantMessage)].join(" "), true);
     } catch (error: unknown) {
       if (isVaultLockedError(error)) {
         unlockPrompt();

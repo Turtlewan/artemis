@@ -326,6 +326,124 @@ describe("AskPopup", () => {
     expect(gatewayMocks.invokeConfirm).not.toHaveBeenCalled();
   });
 
+  it("renders a flagged caveat, reason, and general-knowledge note in the live region", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "Lunch is at noon.",
+      path: "loop",
+      tool_used: null,
+      escalated: false,
+      verdict: "flagged",
+      verdict_reason: "no record matched",
+      answered_from: "general_knowledge",
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "when is lunch");
+
+    expect(container.textContent).toContain("unverified");
+    expect(container.textContent).toContain("no record matched");
+    expect(container.textContent).toContain("answered from general knowledge");
+    const liveRegion = container.querySelector<HTMLElement>('.ask-sr[aria-live="polite"]');
+    expect(liveRegion?.textContent).toContain("unverified");
+    expect(liveRegion?.textContent).toContain("answered from general knowledge");
+  });
+
+  it("renders verdict_reason as literal text without parsing HTML", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "Maybe.",
+      path: "loop",
+      tool_used: null,
+      escalated: false,
+      verdict: "flagged",
+      verdict_reason: "<img src=x onerror=alert(1)>",
+      answered_from: "local_data",
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "can this inject");
+
+    const caveat = container.querySelector<HTMLElement>(".ask-msg__caveat");
+    expect(caveat?.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders the checker-unavailable note for unjudged loop responses", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "I cannot verify that.",
+      path: "loop",
+      tool_used: null,
+      escalated: false,
+      verdict: "unjudged",
+      answered_from: "local_data",
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "verify this");
+
+    expect(container.textContent).toContain("unverified (checker unavailable)");
+  });
+
+  it("renders no loop caveats for passed local-data responses", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "Grounded answer.",
+      path: "loop",
+      tool_used: null,
+      escalated: false,
+      verdict: "passed",
+      answered_from: "local_data",
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "grounded?");
+
+    expect(container.textContent).not.toContain("unverified");
+    expect(container.textContent).not.toContain("general knowledge");
+    expect(container.textContent).not.toContain("stronger model");
+  });
+
+  it("renders the stronger-model note for escalated responses", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "Escalated answer.",
+      path: "loop",
+      tool_used: null,
+      escalated: true,
+      verdict: "passed",
+      answered_from: "local_data",
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "hard question");
+
+    expect(container.textContent).toContain("retried under a stronger model");
+  });
+
+  it("renders no caveat or note elements for non-loop responses with absent fields", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    gatewayMocks.ask.mockResolvedValueOnce({
+      text: "hi",
+      path: "direct",
+      tool_used: null,
+      escalated: false,
+    });
+    const { container } = render(<AskPopup isOpen={true} onClose={vi.fn()} />);
+
+    await submitAsk(container, "hello");
+
+    expect(container.querySelector(".ask-msg__caveat")).toBeNull();
+    expect(container.querySelector(".ask-msg__note")).toBeNull();
+  });
+
   it("clicking Run confirms the invoke id", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();

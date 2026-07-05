@@ -61,6 +61,10 @@ export interface AskResponse {
   secrets?: string[];
   args?: Record<string, unknown>;
   missing?: string[];
+  // AL-4c: agent-loop verdict/answered_from signals (AL-4a contract). Null/absent on non-loop paths.
+  verdict?: "passed" | "flagged" | "unjudged" | null;
+  verdict_reason?: string | null;
+  answered_from?: "local_data" | "general_knowledge" | null;
 }
 
 export interface ReviewItem {

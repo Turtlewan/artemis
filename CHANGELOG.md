@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Ask popup now renders agent-loop verdict/caveat signals (AL-4c): an unverified/flagged caveat,
+  an "answered from general knowledge" note, and a "retried under a stronger model" note;
+  verdict_reason rendered as plain text.
 - Add agent-loop escalation (AL-3b): semantic-stall detection + cross-family one-retry with a deterministic state-summary handoff (`escalated`/`escalation_of` ride LoopResult).
 - Add `escalation_driver` model-role (default codex/gpt-5.5) with a cross-family loop_driver invariant (AL-3a).
 - Add agent-loop core (AL-1): local-read tool chaining under a step budget.

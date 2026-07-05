@@ -245,6 +245,12 @@ pub(crate) struct AskResponse {
     secrets: Option<Vec<String>>,
     args: Option<serde_json::Value>,
     missing: Option<Vec<String>>,
+    // AL-4c: agent-loop verdict/answered_from signals (AL-4a contract). Option<String> so a
+    // non-loop response (fields absent) deserializes to None and serializes back as null.
+    // Without these fields serde SILENTLY DROPS them before the webview (tauri-gateway-serde-silent-drop).
+    verdict: Option<String>,
+    verdict_reason: Option<String>,
+    answered_from: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1531,8 +1537,54 @@ mod tests {
                 "egress_domains": null,
                 "secrets": null,
                 "args": null,
-                "missing": null
+                "missing": null,
+                "verdict": null,
+                "verdict_reason": null,
+                "answered_from": null
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_carries_loop_verdict_fields() {
+        let server = MockServer::start().await;
+        let state = state_with_server(&server);
+        state.set_token("session-token".to_string());
+        Mock::given(method("POST"))
+            .and(path("/app/ask"))
+            .and(header("authorization", "Bearer session-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "text": "you have lunch at noon",
+                "path": "loop",
+                "tool_used": null,
+                "escalated": true,
+                "verdict": "flagged",
+                "verdict_reason": "no calendar record matched",
+                "answered_from": "general_knowledge"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = ask(
+            &state,
+            AskRequest {
+                text: "when is lunch".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.path, "loop");
+        assert!(response.escalated);
+        assert_eq!(response.verdict.as_deref(), Some("flagged"));
+        assert_eq!(
+            response.verdict_reason.as_deref(),
+            Some("no calendar record matched")
+        );
+        assert_eq!(
+            response.answered_from.as_deref(),
+            Some("general_knowledge")
         );
     }
 

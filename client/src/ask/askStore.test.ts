@@ -77,6 +77,85 @@ describe("askStore", () => {
     expect(snapshot.politeAnnouncement).toBe("Hello there.");
   });
 
+  it("carries loop response fields and marks the loop engine", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "you have lunch",
+      path: "loop",
+      tool_used: null,
+      escalated: false,
+      verdict: "passed",
+      verdict_reason: "grounded in calendar",
+      answered_from: "local_data",
+    });
+
+    await askStore.send("when is lunch");
+
+    const assistants = askStore
+      .getSnapshot()
+      .messages.filter((message) => message.role === "assistant");
+    const assistant = assistants[assistants.length - 1];
+    expect(assistant).toMatchObject({
+      engine: "loop",
+      verdict: "passed",
+      verdictReason: "grounded in calendar",
+      answeredFrom: "local_data",
+      escalated: false,
+    });
+    expect(askStore.getSnapshot().engineStatus.loop).toBe(true);
+  });
+
+  it("keeps escalated loop responses on the review engine and drops empty verdict reasons", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "fallback answer",
+      path: "loop",
+      tool_used: null,
+      escalated: true,
+      verdict: "unjudged",
+      verdict_reason: "",
+      answered_from: "general_knowledge",
+    });
+
+    await askStore.send("try harder");
+
+    const assistants = askStore
+      .getSnapshot()
+      .messages.filter((message) => message.role === "assistant");
+    const assistant = assistants[assistants.length - 1];
+    expect(assistant).toMatchObject({
+      engine: "review",
+      verdict: "unjudged",
+      answeredFrom: "general_knowledge",
+      escalated: true,
+    });
+    expect(assistant?.verdictReason).toBeUndefined();
+    expect(askStore.getSnapshot().engineStatus.review).toBe(true);
+  });
+
+  it("leaves new loop fields undefined for plain non-loop responses", async () => {
+    connectionStore.onPaired();
+    connectionStore.onConnected();
+    mocks.ask.mockResolvedValueOnce({
+      text: "hi",
+      path: "direct",
+      tool_used: null,
+      escalated: false,
+    });
+
+    await askStore.send("hello");
+
+    const assistants = askStore
+      .getSnapshot()
+      .messages.filter((message) => message.role === "assistant");
+    const assistant = assistants[assistants.length - 1];
+    expect(assistant).toMatchObject({ engine: "local", escalated: false });
+    expect(assistant?.verdict).toBeUndefined();
+    expect(assistant?.answeredFrom).toBeUndefined();
+  });
+
   it("sends speak false after mute is toggled and remembers the toggle state", async () => {
     connectionStore.onPaired();
     connectionStore.onConnected();
