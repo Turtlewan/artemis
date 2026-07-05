@@ -262,3 +262,42 @@ def test_fail_closed_invalid_reader_and_malformed_sibling(tmp_path: Path) -> Non
     assert reg.get("phraser") == _DEFAULTS["phraser"]
     assert reg.get("selector") == RoleBinding("codex", "gpt-5.5")
     assert isinstance(reg.for_role("reader"), ModelPort)
+
+
+def test_judge_no_tools_constraint_and_eligibility(tmp_path: Path) -> None:
+    reg = _registry(tmp_path / "r.json")
+
+    # judge is no-tools AND temperature-0 (it is in both _NO_TOOLS and _FORCE_TEMP_ZERO).
+    assert reg.constraints("judge") == RoleConstraints(no_tools=True, temperature=0.0)
+
+    elig = reg.eligible_providers("judge")
+    assert "claude_code" in elig  # the shipped default + go-live override provider stays eligible
+    assert "codex" not in elig
+    assert "anthropic_api" not in elig
+    assert set(elig) <= {"claude_code", "ollama"}
+
+
+def test_invariant_judge_requires_no_tools_provider(tmp_path: Path) -> None:
+    reg = _registry(tmp_path / "r.json")
+
+    # A non-no-tools provider is rejected structurally (no verified tool-strip path).
+    with pytest.raises(RoleRegistryError):
+        reg.put("judge", RoleBinding("codex", "gpt-5.5"))
+
+    # A no-tools provider that also differs from loop_driver's default is accepted.
+    reg.put("judge", RoleBinding("ollama", "qwen3:4b"))
+    assert reg.get("judge") == RoleBinding("ollama", "qwen3:4b")
+
+
+def test_fail_closed_hand_edited_judge_non_no_tools_provider(tmp_path: Path) -> None:
+    path = tmp_path / "r.json"
+    path.write_text(
+        json.dumps({"judge": {"provider": "codex", "model": "gpt-5.5"}}),
+        encoding="utf-8",
+    )
+    reg = _registry(path)
+
+    assert reg.bindings()["judge"] == _DEFAULTS["judge"]
+    assert any(
+        d.role == "judge" and d.reason == "no_tools_ineligible" for d in reg.dropped_overrides()
+    )

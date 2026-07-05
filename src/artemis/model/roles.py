@@ -1,6 +1,6 @@
 """Model-role registry: runtime code requests a role; config maps role to provider/model.
 
-ADR-049. Roles in code, models in config. Safety posture rides the role: reader is no-tools
+ADR-049. Roles in code, models in config. Safety posture rides the role: reader and judge are no-tools
 and bindable only to providers with a verified no-tools invocation path; extractor and judge force
 temperature 0; judge and escalation_driver bindings must differ from loop_driver. Resolution reads
 the current binding on every for_role() call, so an owner edit takes effect without a restart. The
@@ -44,7 +44,7 @@ PROVIDERS: tuple[str, ...] = ("claude_code", "codex", "anthropic_api", "ollama",
 _ROUTER_ROLES: frozenset[str] = frozenset({"synth", "forge_author"})
 
 _FORCE_TEMP_ZERO: frozenset[str] = frozenset({"extractor", "judge"})
-_NO_TOOLS: frozenset[str] = frozenset({"reader"})
+_NO_TOOLS: frozenset[str] = frozenset({"reader", "judge"})
 _NO_TOOLS_PROVIDERS: frozenset[str] = frozenset({"claude_code", "ollama"})
 
 _log = logging.getLogger(__name__)
