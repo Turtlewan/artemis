@@ -367,6 +367,66 @@ async def test_mint_access_token_uses_cache_then_refreshes_after_skew() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mint_access_token_accepts_joined_scope_set_and_posts_joined_scope() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"access_token": "access-token", "expires_in": 120})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        store = _store()
+        store.set("google_refresh:default", "refresh-token")
+        store.set("google_scopes:default", json.dumps(["scope-a", "scope-b"]))
+        broker = OAuthBroker(
+            secrets_store=store,
+            http_client=client,
+            open_browser=lambda _url: True,
+        )
+
+        assert await broker.mint_access_token(DEFAULT_ACCOUNT, "scope-a scope-b") == "access-token"
+        assert await broker.mint_access_token(DEFAULT_ACCOUNT, "scope-a scope-b") == "access-token"
+
+    assert len(requests) == 1
+    assert _single(_form(requests[0]), "scope") == "scope-a scope-b"
+
+
+@pytest.mark.asyncio
+async def test_mint_access_token_joined_scope_set_rejects_any_ungranted_scope() -> None:
+    store = _store()
+    store.set("google_refresh:default", "refresh-token")
+    store.set("google_scopes:default", json.dumps(["scope-a"]))
+    broker = OAuthBroker(secrets_store=store, open_browser=lambda _url: True)
+
+    with pytest.raises(ScopeNotGranted):
+        await broker.mint_access_token(DEFAULT_ACCOUNT, "scope-a scope-b")
+
+
+@pytest.mark.asyncio
+async def test_mint_access_token_single_scope_posts_single_scope_string() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"access_token": "access-token", "expires_in": 120})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        store = _store()
+        store.set("google_refresh:default", "refresh-token")
+        store.set("google_scopes:default", json.dumps(["scope-a"]))
+        broker = OAuthBroker(
+            secrets_store=store,
+            http_client=client,
+            open_browser=lambda _url: True,
+        )
+
+        assert await broker.mint_access_token(DEFAULT_ACCOUNT, "scope-a") == "access-token"
+
+    assert len(requests) == 1
+    assert _single(_form(requests[0]), "scope") == "scope-a"
+
+
+@pytest.mark.asyncio
 async def test_refresh_token_rotation_overwrites_keychain_entry() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(

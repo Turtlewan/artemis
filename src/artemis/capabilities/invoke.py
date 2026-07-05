@@ -169,14 +169,12 @@ async def confirm_invoke(
         if oauth_broker is None:
             return InvokeConfirmResult(status="reconnect_google")
 
-        # MVP: capabilities declare a single OAuth scope. The loop validates every declared
-        # scope is granted (fail-closed on any un-granted/errored). The injected token is
-        # minted per scope, so a multi-scope capability currently gets only the LAST scope's
-        # token — see the multi-scope follow-up in status.md before shipping a >1-scope one.
+        # Mint one access token for the full declared scope set. The broker validates every
+        # requested scope is granted and fails closed on any un-granted/errored scope.
         try:
-            google_access_token = ""
-            for scope in skill.oauth_scopes:
-                google_access_token = await oauth_broker.mint_access_token("default", scope)
+            google_access_token = await oauth_broker.mint_access_token(
+                "default", " ".join(skill.oauth_scopes)
+            )
         except Exception as exc:
             _log.warning(
                 "invoke_oauth_mint_failed capability=%s exc_type=%s",
@@ -204,7 +202,7 @@ async def confirm_invoke(
         )
         return InvokeConfirmResult(status="error")
 
-    if result.exit_code == 0 and skill.secrets:
+    if result.exit_code == 0 and (skill.secrets or skill.oauth_scopes):
         _mark_auth_verified_best_effort(capability_store, skill.name)
 
     text = await _quarantine_output(

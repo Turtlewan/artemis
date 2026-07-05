@@ -359,6 +359,7 @@ async def test_confirm_invoke_injects_oauth_token_with_static_secrets(
     sandbox = RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False))
     reader = FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"}))
     synth = FakeModel(json.dumps({"answer": "final answer"}))
+    broker = FakeOAuthBroker(token=token)
 
     result = await confirm_invoke(
         InvokeState(capability="Echo", args={}, request_text="echo x"),
@@ -367,10 +368,11 @@ async def test_confirm_invoke_injects_oauth_token_with_static_secrets(
         sandbox=sandbox,
         reader=reader,
         synth=synth,
-        oauth_broker=FakeOAuthBroker(token=token),
+        oauth_broker=broker,
     )
 
     assert result.status == "ok"
+    assert broker.calls == [("default", "https://www.googleapis.com/auth/calendar.readonly")]
     assert len(sandbox.calls) == 1
     assert sandbox.calls[0].secrets == {
         "TOKEN": "resolved-value",
@@ -383,6 +385,32 @@ async def test_confirm_invoke_injects_oauth_token_with_static_secrets(
         message.content for call in [*reader.calls, *synth.calls] for message in call.messages
     )
     assert token not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_mints_one_oauth_token_for_joined_scope_set() -> None:
+    token = "ya29.dynamic-token-secret"
+    skill = _skill(
+        egress_domains=["api.example.com"],
+        oauth_scopes=["scope-a", "scope-b"],
+    )
+    sandbox = RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False))
+    broker = FakeOAuthBroker(token=token)
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="echo x"),
+        capability_store=FakeCapabilityStore(skill),
+        secrets_store=FakeSecretStore({}),
+        sandbox=sandbox,
+        reader=FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})),
+        synth=FakeModel(json.dumps({"answer": "final answer"})),
+        oauth_broker=broker,
+    )
+
+    assert result.status == "ok"
+    assert broker.calls == [("default", "scope-a scope-b")]
+    assert len(sandbox.calls) == 1
+    assert sandbox.calls[0].secrets == {"GOOGLE_ACCESS_TOKEN": token}
 
 
 @pytest.mark.asyncio
@@ -432,7 +460,7 @@ async def test_confirm_invoke_oauth_partial_scope_failure_reconnects_without_par
     caplog.set_level(logging.WARNING, logger="artemis.capabilities.invoke")
     token = "ya29.partial-token-secret"
     sandbox = RecordingSandbox()
-    broker = FakeOAuthBroker(token=token, raises_for={"scope-b"})
+    broker = FakeOAuthBroker(token=token, raises_for={"scope-a scope-b"})
 
     result = await confirm_invoke(
         InvokeState(capability="Echo", args={}, request_text="run"),
@@ -445,7 +473,7 @@ async def test_confirm_invoke_oauth_partial_scope_failure_reconnects_without_par
     )
 
     assert result == InvokeConfirmResult(status="reconnect_google")
-    assert broker.calls == [("default", "scope-a"), ("default", "scope-b")]
+    assert broker.calls == [("default", "scope-a scope-b")]
     assert sandbox.calls == []
     assert token not in result.model_dump_json()
     assert all(token not in record.getMessage() for record in caplog.records)
@@ -485,6 +513,25 @@ async def test_confirm_invoke_no_secret_capability_does_not_mark_verified() -> N
 
     assert result.status == "ok"
     assert capability_store.mark_auth_verified_calls == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_invoke_oauth_only_capability_marks_verified_on_success() -> None:
+    skill = _skill(secrets=[], oauth_scopes=["scope-a"])
+    capability_store = FakeCapabilityStore(skill)
+
+    result = await confirm_invoke(
+        InvokeState(capability="Echo", args={}, request_text="run"),
+        capability_store=capability_store,
+        secrets_store=FakeSecretStore({}),
+        sandbox=RecordingSandbox(FetchResult(output="raw output", exit_code=0, truncated=False)),
+        reader=FakeModel(json.dumps({"relevant": True, "extract": "validated", "confidence": "high"})),
+        synth=FakeModel(json.dumps({"answer": "final answer"})),
+        oauth_broker=FakeOAuthBroker(),
+    )
+
+    assert result.status == "ok"
+    assert capability_store.mark_auth_verified_calls == ["Echo"]
 
 
 @pytest.mark.asyncio

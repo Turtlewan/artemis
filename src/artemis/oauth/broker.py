@@ -298,11 +298,14 @@ class OAuthBroker:
         return ConnectResult(account=pending.account, granted_scopes=granted_scopes)
 
     async def mint_access_token(self, account: str, scope: str) -> str:
-        """Mint or return a cached access token for an already granted scope."""
+        """Mint or return a cached access token for an already granted scope set."""
 
         account = _validate_account(account)
         granted_scopes = self._granted_scopes(account)
-        if scope not in granted_scopes:
+        requested_scopes = scope.split()
+        if not requested_scopes or any(
+            requested_scope not in granted_scopes for requested_scope in requested_scopes
+        ):
             raise ScopeNotGranted("Google OAuth scope was not granted")
 
         cache_key = (account, scope)
