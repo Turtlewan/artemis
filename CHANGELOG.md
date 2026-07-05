@@ -7,9 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Wire the agent loop behind `/app/ask` (AL-4a) — feature-flagged via `ARTEMIS_AGENT_LOOP`
+  (default OFF, gated on the eval cluster); the plain_ask one-shot is replaced by the committed
+  AL-1/2/3 loop, constructed per-request from the ADR-049 role registry. `AskResponse` gains
+  `verdict` / `verdict_reason` / `answered_from` and now sets `escalated`. Fail-safe is total:
+  any role-resolution failure falls back to the legacy one-shot (never a judge-less loop).
+- Enforce `judge` model-role no-tools eligibility at the registry (AL-4b): judge is bindable only
+  to providers with a verified no-tools invocation path, closing AL-2's call-site-only gap.
 - Ask popup now renders agent-loop verdict/caveat signals (AL-4c): an unverified/flagged caveat,
   an "answered from general knowledge" note, and a "retried under a stronger model" note;
   verdict_reason rendered as plain text.
+- Agent-loop pre-go-live eval cluster (AL-4d/e/f, `evals/agentloop/`): a frozen 62-case corpus
+  (typed schema + SHA-256-integrity loader + payload-redacting capture tool), an owner-initiated
+  replay harness that scores each case through the real loop with an independent Opus no-tools
+  grader (self-preference collision guard, two-pass injection/canary scan, false-accept as a
+  safety metric), and a fail-closed GO/NO-GO gate with data-driven thresholds + a findings
+  artifact — the evidence the `ARTEMIS_AGENT_LOOP` flip cites. Default test suite stays hermetic.
 - Add agent-loop escalation (AL-3b): semantic-stall detection + cross-family one-retry with a deterministic state-summary handoff (`escalated`/`escalation_of` ride LoopResult).
 - Add `escalation_driver` model-role (default codex/gpt-5.5) with a cross-family loop_driver invariant (AL-3a).
 - Add agent-loop core (AL-1): local-read tool chaining under a step budget.

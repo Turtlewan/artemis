@@ -21,14 +21,19 @@ max_parallel_codex: 3
 
 _Last updated by planning mode:_ 2026-07-05
 
-## ▶▶ SWITCH POINT (2026-07-05, end of session 12 — fable) — NEXT SESSION = OPUS BUILD RUN
-**Owner: `/clear` then `/model opus`, then say "start build" (or "build specs").** The FULL AL-4 set
-(6 specs) is ✅ready in docs/changes/ — build order: judge-role-no-tools (tiny) → agent-loop-wiring →
-agent-loop-client-caveat (client stack) → eval-corpus → eval-harness (cross_model_review) → eval-gate.
-Prereq chain is declared per spec; harness/gate chain on corpus. AL-1/2/3 SHIPPED this session
-(`932da44`, `d44af9a`, `e01842c`, `58e1c70`) — tree green at 683 tests · mypy 183 · ruff clean, all
-committed. After the build run: owner applies roster via /app/models + runs the eval gate live →
-flag flip decision. Then AL-5/AL-6 drafting (opus or back here). Handoff: `docs/handoff/2026-07-05.md`.
+## ▶▶ RESUME HERE (2026-07-05, end of session 13 — OPUS build run) — AL-4 ARC SHIPPED, flag-flip is OWNER-GATED
+**All 6 AL-4 specs BUILT + host-verified + committed on `v2-rebuild`; `docs/changes/` is EMPTY (all in `done/`).**
+Tree green at **747 tests · mypy 195 files · ruff clean**. Commits: AL-4b `b99bb69` → AL-4a `be2e449` →
+AL-4c `3058b34` (client) → AL-4d `7c780fc` → AL-4e `2f9ae12` (Opus cross-model review CLEAN) → AL-4f
+`add9077`. Codex-primary build, per-spec host re-verify. Handoff: `docs/handoff/2026-07-05-session13-al4-build.md`.
+**The agent loop is wired behind `/app/ask` but `ARTEMIS_AGENT_LOOP` stays OFF — the flip needs NO more code.**
+Owner-gated go-live (order = the AL-4f gate's go-live checklist): (1) apply roster via `/app/models`
+(loop_driver→claude_code/sonnet, judge→claude_code/haiku); (2) **real-capture + judge-label session** to
+promote the SYNTHETIC AL-4d corpus to real (built synthetic — owner not present; see handoff decision +
+memory `eval-corpus-real-data-preference`); (3) run the harness live (`python -m evals.agentloop.runner`,
+spends quota) → gate (`python -m evals.agentloop.gate`) → findings artifact; (4) NVDA manual pass on the
+AL-4c caveats + request-timeout decision; (5) only then set `ARTEMIS_AGENT_LOOP=1`. Next drafting: AL-5
+(RAG selection) · AL-6 (SSE step-trace) · small non-UI fixes bundle · open decisions — then UI overhaul (LAST).
 
 ## ▶ RESUME HERE (2026-07-04, end of session 11) — nothing mid-build, tree clean
 HEAD after session 11: data spine (ADR-046) live-proven + curated machinery (ADR-048) live-proven +
@@ -106,6 +111,8 @@ All green on `v2-rebuild` (ahead of main since session 7 merge) — brain (mypy 
 |------|------|-------|------|------------|-------------|
 | _(empty — nothing mid-build)_ | | | | | |
 
+_(**✅ AL-4 ARC COMPLETE (2026-07-05, session 13 — OPUS build run) — clean stop, nothing mid-build.** All 6 AL-4 specs Codex-built + host-verified (full mypy + pytest) + committed on `v2-rebuild`, all archived to `done/`: AL-4b judge-no-tools (`b99bb69`) → AL-4a agent-loop-wiring (`be2e449`) → AL-4c client-caveat (`3058b34`, client stack: npm+cargo host-verified) → AL-4d eval-corpus (`7c780fc`, 62 SYNTHETIC cases) → AL-4e eval-harness (`2f9ae12`, Opus cross-model review CLEAN — 2 LOW advisory FLAGs logged in handoff) → AL-4f eval-gate (`add9077`). Tree green: 747 tests · mypy 195 · ruff clean. The `ARTEMIS_AGENT_LOOP` flag remains OFF — go-live is owner-gated (see resume pointer at top). Build hygiene: `.scratch/`/`.sandbox/` added to `.gitignore`.)_
+
 _(**✅ MODEL-ROSTER CLUSTER COMPLETE (2026-07-04, AFK session 11 cont.) — clean stop.** ADR-049 built end-to-end + 2 hardening specs, all Codex-built + host-verified + committed on `v2-rebuild`: caps-bound (`73435a5`) → argv-base64 (`71559dc`, dual-pass security) → AGENTS.md v2 (`1c4f8b7`) → registry part 1 (`cc2cbb6`) → metering part 2 (`a310fba`) → panel-A part 3 (`9452054`, client) → usage-parse (`6ec673d`, live-smoke-confirmed). All specs archived to `done/`. Every spec security/ai-systems-reviewed pre-build (4 BLOCKs + 7 FLAGs folded, 0 shipped open). **Runtime models are now role-bound + owner-toggleable via `/app/models`; the client Models PANEL UI (part 3B) is NOT built — deferred, brain+data-layer ready.** Brain restarted from HEAD.)_
 
 _(**✅ CURATED-MACHINERY CLUSTER COMPLETE (2026-07-04, AFK session 11) — clean stop.** All three ADR-048 specs drafted (Opus) → domain-reviewed → built (Codex) → host-verified → committed on `v2-rebuild`: `curate-extract` (`3ca8a58`) → `curate-write-referent` (`e2af8da`) → `dynamic-domain-routing` (`0f61074`); all archived to `done/`. Live haiku calibration 22/24 gate passed (`docs/findings/curate-extract-calibration-2026-07-04.md`). Brain restarted from HEAD `0f61074` with the machinery live. **✅ LIVE-PROVEN same day (owner dogfood): the passport-task loop ran in the real app — add → read → forget worked.** ADR-048 is fully closed: decided, spec'd, built, verified, and live in one session.)_
@@ -120,6 +127,8 @@ _(**✅ OAuth cluster COMPLETE (session 8, 2026-07-03) — clean stop, nothing m
 <!-- PLANNING:START -->
 ## Pending Specs
 _Ready build queue. Dependency order matters — the metadata/invoke cluster shares files. State: ✅ready (docs/changes/) · 📝draft (docs/drafts/, needs the flagged security review before build). **OAuth cluster oauth-1..4 reviewed + promoted to ready 2026-07-03 (session 8 planning).** Build order: oauth-1 → {oauth-2, oauth-3 parallel — disjoint files} → oauth-4._
+
+> **▶ AL-4 rows #18/19/20/22/23/24 (agent-loop-wiring / judge-role-no-tools / client-caveat / eval-corpus / eval-harness / eval-gate) ALL SHIPPED session 13** (2026-07-05, OPUS build run) — archived to `done/`. See the resume pointer at the top. **`docs/changes/` is now EMPTY** — the cb5b map specs (#7/8/9) are still 📝draft in `docs/drafts/` (need the ADR-047 #10 domain-primary revision) and models-panel (#13) is not drafted. The AL-4 rows below are stale-pending until the next planning pass regenerates this table.
 
 | # | Spec | State | Summary / deps |
 |---|------|-------|----------------|
