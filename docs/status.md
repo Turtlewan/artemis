@@ -58,11 +58,17 @@ Brain running from HEAD; **client needs Ctrl+R**. Latest handoffs: `docs/handoff
    streaming = accepted blocking-verify latency (revisit at UI overhaul); evals = full 4-gate scope
    (driver golden-set, adversarial injection, judge calibration, escalation efficacy); zero-step
    answers labeled "from general knowledge" (Finding-D fix).**
-2. **Small non-UI fixes bundle** (slot between arc builds): OAuth multi-scope mint-once +
-   OAuth-only mark_auth_verified (fold as one), `dropped_overrides()` cross-role reporting asymmetry
-   (judge+escalation together — AL-3a review note), `synth` no-tools admission if its call sites
-   multiply (AL-4b review note), Telegram token → keychain, error-taxonomy
-   relocation, README v2 rewrite, v1 dirs prune, HTTP_422 one-liner.
+2. **Small non-UI fixes bundle — MOSTLY DONE (session 13, 2026-07-05).** ✅ SHIPPED: OAuth multi-scope
+   mint-once + OAuth-only mark_auth_verified (`78f5d83`), error-taxonomy relocation to `artemis.errors`
+   (`bfbe511`), README v2 rewrite (`59a084e`), HTTP_422→UNPROCESSABLE_CONTENT (`3cf86af`). Verified
+   already-done (no-ops): Telegram token → keychain (done `05a3625`, `resolve_secret` keychain-first),
+   v1 dirs prune (no stale v1 dirs remain under `src/artemis/`). Deferred: `synth` no-tools admission
+   (conditional on call sites multiplying — still ONE call site, condition not met). **▶ STILL OPEN —
+   needs a PLANNING mini-spec:** `dropped_overrides()` cross-role reporting asymmetry (AL-3a note). The
+   fix is not edit-mode-safe: `bindings()` cascade can drop `loop_driver` as a *second-order* effect of a
+   judge/escalation collision, and reporting that faithfully means attributing a **new `DropReason`** —
+   but `DropReason` is a **frozen enum the client Models panel renders**, so what to report + which enum
+   member is a client-facing API design call. Route to planning (safety-critical registry + frozen DTO).
 3. **Open decisions (planning gaps):** daily-briefing ADR promotion; aggregation-pipeline
    (ADR-035 #4) vs agent-loop subsumption; workflow-recipes discussion; codex-as-reader admission.
 4. **UI = LAST (owner directive 2026-07-04):** design-overhaul session + Models 3B + domain-first
