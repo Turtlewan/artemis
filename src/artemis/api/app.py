@@ -42,6 +42,10 @@ from artemis.types import ScheduledJob
 _CALENDAR_SYNC_CRON = "*/15 * * * *"
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true"}
+
+
 class HealthResponse(BaseModel):
     status: str
 
@@ -98,6 +102,7 @@ def create_app(
     sandbox: SandboxRunner | None = None,
     secrets: SecretStorePort | None = None,
     enable_sync: bool = False,
+    enable_agent_loop: bool | None = None,
 ) -> FastAPI:
     resolved_data_dir = (
         Path(data_dir) if data_dir is not None else Path(os.environ.get("ARTEMIS_DATA_DIR", "."))
@@ -143,6 +148,9 @@ def create_app(
     app.state.invokes = {}  # invoke_id -> invoke.InvokeState (in-memory, interim)
     app.state.last_results = {}  # session_key -> curate.ReadResults (last read's rows; referent)
     app.state.data_store = DataStore(str(resolved_data_dir / "spine.db"))
+    app.state.agent_loop_enabled = (
+        enable_agent_loop if enable_agent_loop is not None else _env_flag("ARTEMIS_AGENT_LOOP")
+    )
     if enable_sync:
         _build_sync(app, resolved_data_dir)
 

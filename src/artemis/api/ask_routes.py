@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -11,6 +12,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from artemis.api.auth import Principal, require_session
+from artemis.agent import (
+    AgentLoop,
+    EscalatingLoop,
+    LoopResult,
+    ToolRegistry,
+    build_local_read_tool,
+)
 from artemis.capabilities.fetch_sandbox import FetchSandbox
 from artemis.capabilities.invoke import InvokeState, build_invoke_proposal, confirm_invoke
 from artemis.capabilities.select import CapabilitySelector
@@ -38,6 +46,7 @@ _BUILD_SIGNAL = "Opening build mode for that capability request."
 _AGGREGATE_SIGNAL = (
     "Deep research is not available yet. Ask a direct question meanwhile and I can answer it."
 )
+_log = logging.getLogger(__name__)
 
 
 class AskRequest(BaseModel):
@@ -56,6 +65,9 @@ class AskResponse(BaseModel):
     secrets: list[str] | None = None
     args: dict[str, object] | None = None
     missing: list[str] | None = None
+    verdict: str | None = None  # AL-2 verify-on-stop: "passed"/"flagged"/"unjudged"; None off-loop
+    verdict_reason: str | None = None  # judge's reason on passed/flagged; None when absent/off-loop
+    answered_from: str | None = None  # "local_data" (>=1 ok tool step) | "general_knowledge" | None
 
 
 class InvokeConfirmResponse(BaseModel):
@@ -141,6 +153,39 @@ def _read_service(request: Request) -> ReadService:
     return ReadService(store, phraser=roles.for_role("phraser"), phraser_model_override=None)
 
 
+def _agent_loop(request: Request) -> EscalatingLoop | None:
+    """Build the per-request agent loop, or None to fall back to the legacy one-shot _answer.
+
+    None when the ARTEMIS_AGENT_LOOP flag is off OR the ADR-049 role registry is absent (same
+    getattr guard the other seams use). Loop machinery (AL-1/2/3) is consumed unmodified.
+    """
+    if not getattr(request.app.state, "agent_loop_enabled", False):
+        return None
+    roles = getattr(request.app.state, "model_roles", None)
+    if roles is None:
+        return None
+    store: DataStore = request.app.state.data_store
+    tools = ToolRegistry([build_local_read_tool(store)])
+    # SEAM: no MemoryPort on app.state today (create_app builds none). When one lands, append
+    # build_memory_tool(memory) to the tools list here -- no other change needed.
+    # FAIL-SAFE DIRECTION (security review): ANY role-resolution failure -- raise OR None -- falls
+    # back to the legacy one-shot. Never construct a judge-less or partially-resolved loop.
+    try:
+        judge_port = roles.for_role("judge")
+        driver_port = roles.for_role("loop_driver")
+        escalation_port = roles.for_role("escalation_driver")
+    except Exception:  # noqa: BLE001 -- resolution failure = legacy answer, never a degraded loop.
+        _log.warning("agent_loop: role resolution failed -- legacy fallback", exc_info=True)
+        return None
+    if judge_port is None or driver_port is None or escalation_port is None:
+        _log.warning("agent_loop: a role resolved to None -- legacy fallback")
+        return None
+    return EscalatingLoop(
+        primary=AgentLoop(driver=driver_port, tools=tools, judge=judge_port),
+        escalation=AgentLoop(driver=escalation_port, tools=tools, judge=judge_port),
+    )
+
+
 def _data_store(request: Request) -> DataStore:
     store: DataStore = request.app.state.data_store
     return store
@@ -170,14 +215,31 @@ async def _answer(model: ModelPort, text: str) -> tuple[str, str]:
     return resp.text, _engine_tag(resp.model_id)
 
 
+async def _loop_answer(loop: EscalatingLoop, text: str) -> AskResponse:
+    result: LoopResult = await loop.run(text)
+    answered_from = "local_data" if any(step.ok for step in result.steps) else "general_knowledge"
+    return AskResponse(
+        text=result.answer,
+        path="loop",
+        tool_used=None,
+        escalated=result.escalated,
+        verdict=result.verdict,
+        verdict_reason=result.verdict_reason or None,
+        answered_from=answered_from,
+    )
+
+
 async def _routed_answer(
     model: ModelPort,
     intent_router: IntentRouter,
     text: str,
     secrets: SecretStorePort,
+    loop: EscalatingLoop | None = None,
 ) -> AskResponse:
     intent = await intent_router.classify(text)
     if intent.route == "plain_ask":
+        if loop is not None:
+            return await _loop_answer(loop, text)
         answer, path = await _answer(model, text)
         return AskResponse(text=answer, path=path, tool_used=None, escalated=False)
 
@@ -221,6 +283,7 @@ async def _invoke_or_routed_answer(
     curate: CurateExtractor,
     last_results: dict[str, ReadResults],
     session_key: str,
+    loop: EscalatingLoop | None = None,
 ) -> AskResponse:
     # Curated-write check first: op=none falls through to the read path unchanged.
     decision = await curate.extract(text, existing_domains=data_store.domains())
@@ -242,7 +305,7 @@ async def _invoke_or_routed_answer(
     if selection.matched and selection.capability and not selection.missing_required:
         skill = capability_store.get(selection.capability)
         if skill is None:
-            return await _routed_answer(model, intent_router, text, secrets)
+            return await _routed_answer(model, intent_router, text, secrets, loop)
 
         proposal = build_invoke_proposal(selection, skill, invokes, text)
         return AskResponse(
@@ -264,7 +327,7 @@ async def _invoke_or_routed_answer(
             missing=selection.missing_required,
         )
 
-    return await _routed_answer(model, intent_router, text, secrets)
+    return await _routed_answer(model, intent_router, text, secrets, loop)
 
 
 router = APIRouter(prefix="/app")
@@ -284,6 +347,7 @@ async def ask(
     data_store: DataStore = Depends(_data_store),
     curate: CurateExtractor = Depends(_curate_extractor),
     last_results: dict[str, ReadResults] = Depends(_last_results),
+    agent_loop: EscalatingLoop | None = Depends(_agent_loop),
 ) -> AskResponse:
     return await _invoke_or_routed_answer(
         read_service=read_service,
@@ -298,6 +362,7 @@ async def ask(
         curate=curate,
         last_results=last_results,
         session_key=principal.device_id,
+        loop=agent_loop,
     )
 
 
@@ -315,6 +380,7 @@ async def ask_stream(
     data_store: DataStore = Depends(_data_store),
     curate: CurateExtractor = Depends(_curate_extractor),
     last_results: dict[str, ReadResults] = Depends(_last_results),
+    agent_loop: EscalatingLoop | None = Depends(_agent_loop),
 ) -> StreamingResponse:
     async def event_stream() -> AsyncIterator[str]:
         response = await _invoke_or_routed_answer(
@@ -330,6 +396,7 @@ async def ask_stream(
             curate=curate,
             last_results=last_results,
             session_key=principal.device_id,
+            loop=agent_loop,
         )
         yield _sse_event(response.text)
         yield "data: [DONE]\n\n"

@@ -288,6 +288,9 @@ def test_plain_ask_keeps_completion_path() -> None:
         "secrets": None,
         "args": None,
         "missing": None,
+        "verdict": None,
+        "verdict_reason": None,
+        "answered_from": None,
     }
 
 
