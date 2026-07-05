@@ -121,7 +121,7 @@ async def put_model(
         reg.put(role, RoleBinding(provider=body.provider, model=body.model))
     except RoleRegistryError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return _binding_dto(reg, role)
 
