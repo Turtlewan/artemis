@@ -36,6 +36,19 @@ fetches). Separately: builds are strictly sequential and hold the owner hostage 
 | 9 | **Builds go fleet + decomposed (owner: parallelism 1+3)** | Builds become background scheduler-hosted jobs — many at once, owner never held in the popup; results re-enter as a NEW self-contained turn (HERMES pattern). Big requests decompose into parts built concurrently and composed via `uses`. Racing candidates (best-of-N) NOT chosen. An interactive quiet gate defers background work while the owner is actively chatting (Odysseus). |
 | 10 | **Map = domain nodes with capability satellites (revises ADR-045 #1)** | Primary nodes are DOMAINS (Calendar, Recipes, Spending — the data the owner owns, per ADR-046), carrying freshness + pending badges. Capabilities render as smaller satellite nodes around their domain (zoom-LOD reveals them). A domain node is born when a new domain first gets data; a build-in-progress shows a construction-site node. |
 
+## Amendment — 2026-07-04 (owner): loop model roles resolved
+
+Decision #3/#4 model tiers were left open at acceptance; owner resolved them 2026-07-04
+(all are ADR-049 registry roles — starting defaults, owner-toggleable):
+
+- **Driver = Sonnet** (not haiku-class as #3 sketched); grunt-work calls
+  (classify/extract/phrase) = **Haiku**.
+- **Escalation = cross-family, Sonnet → Codex (`gpt-5.5`)** on stall — taps the second
+  subscription's quota + a genuinely different model; the handoff crosses the provider
+  boundary (state summary + schema down-conversion in the RawProvider, per architecture §2).
+- **Verify-on-stop judge = independent no-tools Haiku** (evaluator-independence; quarantine
+  seat — judge reads untrusted content, so tool-stripped).
+
 ## Consequences
 
 - The intent router shrinks to a thin front-door (or dissolves into the loop's first step);

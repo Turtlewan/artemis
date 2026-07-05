@@ -12,9 +12,23 @@ specialists_default: [apex-security, apex-ai-systems]
 stack_skills: [apex-python, apex-tauri]   # v2 Python harness + kept Tauri client; apex-swift dropped (v1 Swift app + audio sidecar scrapped)
 coder_models: [codex]     # codex = gpt-5.5 (primary, per task via `codex exec`); opus = manual fallback. Host re-verifies full mypy + pytest.
 apex_model_roles: reason=fable (session host; opus acceptable) · orchestrate=sonnet (AFK build hosts) · draft=opus · code=codex gpt-5.5   # owner-assigned 2026-07-04, re-confirmed same day (ADR-049 #6); revisit as models improve. /model per session for the host role.
+session_host_routing: # owner-approved 2026-07-04 — host announces the switch at each boundary, saves state here, owner runs /clear + /model
+#   FABLE sessions: AL-4 planning · AL-7 planning · the 4 open decisions · UI map-visual-language day
+#   OPUS/SONNET sessions: AL-3/AL-4/AL-5/AL-6/AL-7 builds · AL-5/AL-6 planning (routine) · small-fix bundle · UI restyle passes
+#   Current fable session plan: AL-2 build+commit → AL-3 gate+build+commit → AL-4 planning here → THEN switch to opus for the build run
+#   Caveat: resolve the Opus org-access flag (Open Questions) before the first opus-hosted session
 max_parallel_codex: 3
 
-_Last updated by planning mode:_ 2026-07-04
+_Last updated by planning mode:_ 2026-07-05
+
+## ▶▶ SWITCH POINT (2026-07-05, end of session 12 — fable) — NEXT SESSION = OPUS BUILD RUN
+**Owner: `/clear` then `/model opus`, then say "start build" (or "build specs").** The FULL AL-4 set
+(6 specs) is ✅ready in docs/changes/ — build order: judge-role-no-tools (tiny) → agent-loop-wiring →
+agent-loop-client-caveat (client stack) → eval-corpus → eval-harness (cross_model_review) → eval-gate.
+Prereq chain is declared per spec; harness/gate chain on corpus. AL-1/2/3 SHIPPED this session
+(`932da44`, `d44af9a`, `e01842c`, `58e1c70`) — tree green at 683 tests · mypy 183 · ruff clean, all
+committed. After the build run: owner applies roster via /app/models + runs the eval gate live →
+flag flip decision. Then AL-5/AL-6 drafting (opus or back here). Handoff: `docs/handoff/2026-07-05.md`.
 
 ## ▶ RESUME HERE (2026-07-04, end of session 11) — nothing mid-build, tree clean
 HEAD after session 11: data spine (ADR-046) live-proven + curated machinery (ADR-048) live-proven +
@@ -24,9 +38,30 @@ Brain running from HEAD; **client needs Ctrl+R**. Latest handoffs: `docs/handoff
 (agent loop — accepted, NOT built), 048 (curated domains), 049 (model roster).
 
 **Next actions, in priority order:**
-1. **Two owner decisions unblock the agent-loop arc (ADR-047)** — see Open Questions "MODEL-ROLE REGISTRY ARC":
-   (a) loop driver tier, (b) escalation ladder + judge. Recommended: sonnet drives / haiku grunt-work;
-   in-family Sonnet→Opus escalation; independent no-tools haiku judge. **These block agent-loop spec drafting.**
+1. **Agent-loop arc (ADR-047) — IN FLIGHT (decisions resolved + AL-1 ready, 2026-07-04):** sonnet
+   drives / haiku grunt-work; cross-family Sonnet→Codex escalation; no-tools haiku judge (ADR-047
+   amendment). Arc plan AL-1…AL-7 (core → stop-discipline → escalation → ask-wiring → RAG-selection
+   → step-trace → unify-entrances). **AL-1 SHIPPED (`932da44`); AL-2 drafted, in review.** Hard
+   edge: AL-2 before AL-4 (security review). **Two AL-4 wiring notes (from AL-2 drafting):**
+   (a) admit `judge` to the registry's no-tools invocation path when wiring `for_role("judge")`
+   (today only `reader` is in `_NO_TOOLS`; AL-2's judge is structurally tool-less, but the
+   provider-level strip should follow at live wiring); (b) owner's roster (driver=sonnet,
+   judge=haiku) is applied as CONFIG overrides at AL-4 go-live via /app/models — code defaults
+   (driver=haiku/judge=sonnet) stay as-is deliberately (non-colliding fallbacks, ADR-049 doctrine).
+   **AL-4 planning decisions (2026-07-04, this session): delivery posture = DELIVER + VISIBLE CAVEAT
+   for flagged/unjudged (owner fork, resolved); router = thin front-door, plain_ask→loop only;
+   streaming = accepted blocking-verify latency (revisit at UI overhaul); evals = full 4-gate scope
+   (driver golden-set, adversarial injection, judge calibration, escalation efficacy); zero-step
+   answers labeled "from general knowledge" (Finding-D fix).**
+2. **Small non-UI fixes bundle** (slot between arc builds): OAuth multi-scope mint-once +
+   OAuth-only mark_auth_verified (fold as one), `dropped_overrides()` cross-role reporting asymmetry
+   (judge+escalation together — AL-3a review note), `synth` no-tools admission if its call sites
+   multiply (AL-4b review note), Telegram token → keychain, error-taxonomy
+   relocation, README v2 rewrite, v1 dirs prune, HTTP_422 one-liner.
+3. **Open decisions (planning gaps):** daily-briefing ADR promotion; aggregation-pipeline
+   (ADR-035 #4) vs agent-loop subsumption; workflow-recipes discussion; codex-as-reader admission.
+4. **UI = LAST (owner directive 2026-07-04):** design-overhaul session + Models 3B + domain-first
+   map + cb5b revisions + restyle. Checklist ready at `docs/v2/ui-design-inventory.md`.
 2. **Models panel UI (part 3B)** — Pending Specs #13. Brain + client data layer shipped; only the visible
    panel remains (owner visual eye needed).
 3. **cb5b map specs (#7/8/9) need ADR-047 #10 revision** (domain-primary nodes) before build.
@@ -98,6 +133,16 @@ _Ready build queue. Dependency order matters — the metadata/invoke cluster sha
 | 8 | cb5b-3-refresh-backend | 📝 | Scheduler-driven consent-gated pending-count refresh (JSON `{count,items}` stdout, fail-soft). `cross_model_review`, security-review-before-build. Phase-2. **Same ADR-047 #10 revision needed.** |
 | 9 | cb5b-4-refresh-ui | 📝 | Overlay refresh toggle + live badge (dep: #8). Phase-2. |
 | 13 | models-panel (part 3B) | 📝 | **NOT DRAFTED.** The Models settings UI (per-role dropdowns over `eligible_providers`, constraint badges, PUT-422 inline, dropped_overrides notice, usage columns). Brain endpoints + client data layer (part 3A) SHIPPED — this is the visible panel. Baseline CSS; owner refines. Commission when ready. |
+| 18 | agent-loop-wiring (AL-4a) | ✅ready | **Gated 2026-07-04.** Loop behind /app/ask plain_ask pipe, ARTEMIS_AGENT_LOOP flag default OFF (**hard gate: no flip until the eval cluster passes**). DTO fields verdict/verdict_reason/answered_from + escalated. Dual-reviewed: 8 FLAGs + 1 note folded (TOTAL fail-safe → legacy on any role-resolution failure; HTTP-level fail-safe test). |
+| 19 | judge-role-no-tools (AL-4b) | ✅ready | **Gated 2026-07-04.** `judge` → `_NO_TOOLS` (structural provider-level strip). 1 FLAG + 1 note folded. Build FIRST (tiny). |
+| 20 | agent-loop-client-caveat (AL-4c) | ✅ready | **Gated 2026-07-05.** gateway.rs + dto.ts + EngineTag + askStore + AskPopup: caveat/note lines (plain-TEXT-only verdict_reason), "loop" engine label. A11y 2 BLOCKs folded (live-region announce test; NVDA owner-step → go-live checklist) + contrast floor + variant analysis. 5 non-test files accepted as one vertical slice (logged deviation). |
+| 22 | agent-loop-eval-corpus (AL-4d) | ✅ready | **Gated 2026-07-05.** Frozen 4-set corpus (driver 20-24 real-captured / injection 12-16 hand-authored / judge-cal owner-labeled / escalation 10-14) + capture.py with PII payload REDACTION (`[redacted:sha8]`) + consent line. Tests-first restructure. |
+| 23 | agent-loop-eval-harness (AL-4e) | ✅ready (dep: #22) | **Gated 2026-07-05.** Replay runner + independent Opus scorer (collision guard) + report. false_accept SAFETY metric added (ai-systems BLOCK); all-channel/both-pass canary scan; zero-denominator → insufficient_data; --primary-budget forced-stall knob; resolved_bindings recorded. `cross_model_review: true`. |
+| 24 | agent-loop-eval-gate (AL-4f) | ✅ready (dep: #23) | **Gated 2026-07-05.** Frozen HarnessReport strict-parse + TOTAL fail-closed evaluate_gate + at-threshold discrimination tests (testing BLOCK) + judge_false_accept_max 0.10 HARD (ai BLOCK) + roster-match hard-fail + go-live checklist artifact (incl. NVDA owner step + timeout decision). |
+| 16 | ~~agent-loop-escalation-role (AL-3a)~~ | ✅ SHIPPED | **Committed `e01842c` 2026-07-04, archived to done/.** `escalation_driver` role (default codex/gpt-5.5) + cross-family ≠loop_driver invariant. 1 BLOCK folded; historical registry rulings verified non-regressed. Build fork resolved via spec amendment (routes-test role-count + colliding binding). |
+| 17 | ~~agent-loop-escalation (AL-3b)~~ | ✅ SHIPPED | **Committed `58e1c70` 2026-07-04, archived to done/ (683 pass · mypy 183).** Semantic-stall check + `EscalatingLoop` cross-family one-retry, delimited state-summary handoff, primary-pass telemetry carried. **AL-3 COMPLETE — arc 3/7. Next = AL-4 planning (fable session).** |
+| 15 | ~~agent-loop-stop-discipline (AL-2)~~ | ✅ SHIPPED | **Codex-built + host-verified 2026-07-04 (665 pass · mypy 181), committed `d44af9a`, archived to done/.** Tiered spin/thrash detection + verify-on-stop judge (verdict + judge telemetry ride LoopResult). 1 BLOCK (judge-reason re-injection → delimited+capped) + 6 FLAGs folded pre-build. AL-3a/3b (escalation role + layer) drafted, in review. |
+| 14 | ~~agent-loop-core (AL-1)~~ | ✅ SHIPPED | **Codex-built + host-verified 2026-07-04 (651 pass · mypy 179), committed `932da44`, archived to done/.** New `src/artemis/agent/` package: role-resolved driver chains free local-read tools under a step budget; frozen `StepRecord` contract. Dual-reviewed pre-build (8 FLAGs folded, 0 BLOCKs). Arc order: AL-2 (judge) is a HARD prerequisite of AL-4; golden-set + injection evals gate AL-4 go-live. AL-2 drafting in progress. |
 | 10 | ~~curate-extract~~ | ✅ SHIPPED | **Session 11** (`3ca8a58`, done/). Verb-gated haiku extractor + `store.domains()`. Reviewed (security+ai-systems) + live-calibrated 22/24. |
 | 11 | ~~curate-write-referent~~ | ✅ SHIPPED | **Session 11** (`e2af8da`, done/). Trusted curated CRUD (quarantine bypass) + referent + ask wiring; synced-domain guard, ambiguous-forget refusal, upsert normalization chokepoint. Dual-reviewed, 2 BLOCKs folded pre-build. |
 | 12 | ~~dynamic-domain-routing~~ | ✅ SHIPPED | **Session 11** (`0f61074`, done/). Live-label routing + curated-always-fresh + tracking meta-query + reserved synced names. **ADR-048 machinery COMPLETE — domains now emerge from conversation.** |
@@ -119,7 +164,8 @@ _Ready build queue. Dependency order matters — the metadata/invoke cluster sha
 > The stale v1 `M*` / `CLIENT-*` / `BUILD-ORDER.md` specs were archived to `archive/v1/` (2026-07-01) — `docs/changes/` now holds only live v2 work. Completed v2 specs live in `docs/changes/done/` (`v2-00`…`v2-12`).
 
 ## Open Questions
-- **▶ MODEL-ROLE REGISTRY ARC — ADR-049 (Accepted, 2026-07-04): roles in code, models in config, owner-toggleable from the client.** 3 specs (registry → metering+endpoint → client panel) + `provider-usage-parse` micro-spec (token counts are fabricated zeros today — providers must parse real usage for the cost columns). All security-reviewed pre-build (registry: 2 BLOCKs folded — structural no-tools eligibility, fail-closed self-healing load; metering: 2 FLAGs folded — boundary-pinned inputs, enum-only drop reasons). **Codex-as-reader follow-up:** research verdict QUALIFIED-YES (`docs/findings/codex-no-tools-research-2026-07-04.md`) — a config set strips shell+web tools verifiably (version-pinned 0.141.0); admit codex to `_NO_TOOLS_PROVIDERS` only via a future spec carrying the two-layer smoke (structural payload assert + behavioral injection). **Scoped-out composition roots** (CLI ingress `src/artemis/app.py`, `reachout/web_tool.py` reader/synth) migrate to `for_role` in the agent-loop arc — web_tool synth rebinding is a behavior change, deliberately deferred. **OPEN (owner): loop driver tier + escalation ladder** (recommended: sonnet drives / haiku grunt-work; in-family Sonnet→Opus escalation; independent no-tools haiku judge) — undecided, blocks agent-loop spec drafting.
+- **▶ MODEL-ROLE REGISTRY ARC — ADR-049 (Accepted, 2026-07-04): roles in code, models in config, owner-toggleable from the client.** 3 specs (registry → metering+endpoint → client panel) + `provider-usage-parse` micro-spec (token counts are fabricated zeros today — providers must parse real usage for the cost columns). All security-reviewed pre-build (registry: 2 BLOCKs folded — structural no-tools eligibility, fail-closed self-healing load; metering: 2 FLAGs folded — boundary-pinned inputs, enum-only drop reasons). **Codex-as-reader follow-up:** research verdict QUALIFIED-YES (`docs/findings/codex-no-tools-research-2026-07-04.md`) — a config set strips shell+web tools verifiably (version-pinned 0.141.0); admit codex to `_NO_TOOLS_PROVIDERS` only via a future spec carrying the two-layer smoke (structural payload assert + behavioral injection). **Scoped-out composition roots** (CLI ingress `src/artemis/app.py`, `reachout/web_tool.py` reader/synth) migrate to `for_role` in the agent-loop arc — web_tool synth rebinding is a behavior change, deliberately deferred. **✅ RESOLVED (owner, 2026-07-04): loop driver tier + escalation ladder** — sonnet drives / haiku grunt-work; **cross-family Sonnet→Codex (gpt-5.5) escalation** (owner picked cross-family over the in-family recommendation — second sub's quota + model diversity); independent no-tools haiku judge. Recorded as ADR-047 amendment. **Agent-loop spec drafting is UNBLOCKED.**
+- **WATCH: one `fetch_oauth_mint_failed capability=calendar-sync` at brain boot (2026-07-05, monitor event).** Single occurrence, immediately after startup — the scheduler catch-up tick fired before keyring/network was ready is the leading theory. Fail-soft held (no crash; client reconnected clean; next tick retries). Escalate to a real investigation ONLY if it recurs on a scheduled (non-boot) tick — that would implicate the refresh token or keychain instead.
 - **Brain "crash" — RESOLVED as a non-issue (re-diagnosed 2026-07-04).** No application crash ever occurred: `brain-serve.log` has ZERO tracebacks — clean 200s to the last line before each restart. The scary exit codes (127/1/-1) were background-JOB-wrapper level, correlating with the host deliberately `taskkill`-ing the serve to restart it from freshly-built code (6×, once per brain-touching spec). Not a bug. **Only real (minor) follow-up:** the brain runs as a bare backgrounded job with no supervisor — if the owner wants auto-restart-on-exit, add a `while` supervisor loop to `scripts/launch-artemis.ps1`. Nice-to-have, not a fix.
 - **✅ DATA-SPINE LIVE SMOKE PASSED (2026-07-04).** Calendar API enabled (project 696685502560) → the full ADR-046 pipeline ran live end-to-end: broker OAuth mint → WSL2 sandbox `calendar-sync` (manual wide-window run, `days_ahead:55`) → quarantine ingest → `spine.db` row → app ask "what's on my calendar on 22 aug" answered with the REAL event via the local read (`/app/ask` 200, no invoke path). The session-9 Finding-D scenario (22-aug query → hallucinated ASCII grid) now returns real data. Also verified: the scheduled tick's silent-success path on an empty window (no warning, correct reschedule — by design, success is quiet) and fail-soft posture. Manual sync-now = a ~20-line script over `FetcherRunner.run_fetch` (pattern proven; a real `artemis sync-now` CLI subcommand remains an optional nicety, unspecced). Note: the scheduled job's 7-day window won't refresh rows beyond 7 days out (the 22-aug row stays but goes unrefreshed until it enters the window — per-domain merge/expiry rules remain a deferred ADR-046 knob).
 - **✅ FORK 1 RESOLVED — ADR-048 (Accepted, 2026-07-04): curated domains emerge from conversation (A→C).** Pure generic machinery + dynamic domain routing, nothing pre-seeded; curated writes are TRUSTED and bypass the ingest quarantine (`store.upsert` verbatim — `save_row` is the wrong primitive); extractor receives the live domain list (anti-fragmentation). Decomposition: `curate-extract` → `curate-write+referent` → `dynamic-domain-routing`. Design note: `docs/v2/curated-domains-machinery.md`. **Fork 2 RESOLVED (2026-07-04): briefing DEFERRED — dogfood first** (build machinery → save real curated data a few days → design the briefing from observed use; decision then returns to the queue). Also recorded: ADR-046 gained its Security section accepting the quarantine-once residual (session-10 review follow-up).
