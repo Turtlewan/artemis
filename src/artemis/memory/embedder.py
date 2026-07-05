@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import httpx
 
-from artemis.model.errors import ProviderUnavailableError
+from artemis.errors import ProviderUnavailableError
 
 
 class OllamaEmbedder:
