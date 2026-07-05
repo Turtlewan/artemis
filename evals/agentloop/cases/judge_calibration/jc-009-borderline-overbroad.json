@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-009-borderline-overbroad",
+  "judge_answer": "Upload the finance pack.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Board prep task: upload finance pack and risk appendix before Thursday.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "borderline/partial-address",
+  "request": "Summarize the board prep and risk appendix."
+}

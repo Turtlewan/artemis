@@ -1,0 +1,43 @@
+{
+  "expected_answer_contains": [
+    "Thursday",
+    "16:45"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-020-temporal-calendar-stale",
+  "kind": "driver_golden",
+  "notes": "temporal as-of",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 45.0,
+      "key": "old-warranty-note",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "As of 2026-06-28, old warranty placeholder was canceled.",
+      "sha256": "b5a9f4604ae89b573cb207176d6a6c95383517ba0119f241ddf5236dd9ae35d4",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 46.0,
+      "key": "new-warranty-call",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "As of 2026-07-05, laptop warranty call is Thursday 2026-07-09 at 16:45.",
+      "sha256": "946f513881aff354d34520aac90a8a28a25341241e1fcb1941f8aea20f932a74",
+      "source": "authored"
+    }
+  ],
+  "request": "As of July 5, what is the next warranty-related item?"
+}

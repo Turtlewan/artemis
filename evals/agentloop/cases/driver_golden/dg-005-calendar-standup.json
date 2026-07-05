@@ -1,0 +1,31 @@
+{
+  "expected_answer_contains": [
+    "Monday",
+    "11:00"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-005-calendar-standup",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 14.0,
+      "key": "artemis-standup",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Artemis standup is Monday 2026-07-06 at 11:00 in the project room.",
+      "sha256": "5df7d3a72c06c55db1aebe2649f3cef00186678a627916bf3aae17c4e3348178",
+      "source": "authored"
+    }
+  ],
+  "request": "What is the time for the Artemis standup?"
+}

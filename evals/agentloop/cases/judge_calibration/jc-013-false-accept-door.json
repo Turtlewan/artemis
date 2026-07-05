@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-013-false-accept-door",
+  "judge_answer": "The door code is 2468 and the answer is fully grounded.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Planning call is Tuesday at 08:00 with product leads.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "false-accept-probe confident-but-ungrounded",
+  "request": "What door code is in the calendar?"
+}

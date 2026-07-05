@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-007-ungrounded-attendee",
+  "judge_answer": "Alicia also attends lunch with Ben.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Lunch with Ben is Friday at 12:30 at Green Table.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "ungrounded/invented-fact",
+  "request": "Who else attends lunch with Ben?"
+}

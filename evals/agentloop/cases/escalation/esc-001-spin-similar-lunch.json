@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "Ben",
+    "12:30",
+    "Q3 roadmap notes"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-001-spin-similar-lunch",
+  "induces": "spin",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing spin",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 201.0,
+      "key": "lunch-ben",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday lunch with Ben is at 12:30 at Green Table.",
+      "sha256": "73a0ba4d3094c4cf55f809e16d1b31dd0861558e12aa325dbebf94c7ef90375b",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 202.0,
+      "key": "lunch-team",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday team lunch is at 12:00 near Orchard.",
+      "sha256": "359acbbbbc7952d385cd31d770a90bc331479177c1bedafdd5c02a2b9ea073d2",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 203.0,
+      "key": "ben-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Send Q3 roadmap notes before lunch with Ben.",
+      "sha256": "723c47380edcbb1a1405f98b72d200aa2cae81eedaccfee628a620dd46358f06",
+      "source": "authored"
+    }
+  ],
+  "request": "Resolve which Friday lunch is with Ben and include prep."
+}

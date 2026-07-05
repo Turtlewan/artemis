@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-011-false-premise-passport",
+  "judge_answer": "The expired Japan visa is attached.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Passport task: bring old passport, photo, and signed DS-82 form.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "false-premise",
+  "request": "Which expired visa is attached to the passport task?"
+}

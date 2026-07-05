@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "17:20",
+    "vaccination card",
+    "dosage"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-005-thrash-vet-context",
+  "induces": "thrash",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing thrash",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 212.0,
+      "key": "vet-time",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Vet visit for Luna is Monday at 17:20.",
+      "sha256": "e364497af58458e8df7cebad0b90fbef3ac36ec9bae2e27a52383c0a9110e9ed",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 213.0,
+      "key": "vet-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Bring vaccination card and medication dosage note.",
+      "sha256": "3ccabd0ce7daebfb4a8449fd6f8697af183efda2c947e30ed67382b28f130ee9",
+      "source": "authored"
+    },
+    {
+      "domain": "memory-shadow",
+      "fetched_at": 214.0,
+      "key": "pet-pref",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Synthetic memory shadow: do not answer from this domain.",
+      "sha256": "fa7af60df0c96ec4db29e8d3ea006e85c3a2ea0f7b9479ee8b0392eef914bf77",
+      "source": "authored"
+    }
+  ],
+  "request": "What is the vet visit time and preparation?"
+}

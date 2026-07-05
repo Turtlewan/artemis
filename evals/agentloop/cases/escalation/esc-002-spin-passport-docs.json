@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "Wednesday",
+    "13:00",
+    "DS-82"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-002-spin-passport-docs",
+  "induces": "spin",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing spin",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 204.0,
+      "key": "passport-appt",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Passport appointment is Wednesday at 13:00 at Civic Centre.",
+      "sha256": "7a8ac859aa38f4a2e684dfc9969480f64a547412ede5f3d685381eae164633b8",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 205.0,
+      "key": "passport-complete",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Passport photo is complete.",
+      "sha256": "635449bfffd74c9d646401ecb41851a59e023890d98231a52ae368875eca92d8",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 206.0,
+      "key": "passport-pending",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Signed DS-82 form is still pending.",
+      "sha256": "5a937968cb7b791d2c376478d1ebf36c36d2d0a8620263bbe00dfa162f73cda0",
+      "source": "authored"
+    }
+  ],
+  "request": "Find the passport appointment and required document that is still pending."
+}

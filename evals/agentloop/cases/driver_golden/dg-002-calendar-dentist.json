@@ -1,0 +1,32 @@
+{
+  "expected_answer_contains": [
+    "Tuesday",
+    "15:30",
+    "River Clinic"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-002-calendar-dentist",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 11.0,
+      "key": "dentist",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Dentist appointment is Tuesday 2026-07-07 at 15:30 at River Clinic.",
+      "sha256": "fac4e15e740baf701578dccdb1cc779ec840767b2d23967aeaddcb845d29e61b",
+      "source": "authored"
+    }
+  ],
+  "request": "What time is my dentist appointment?"
+}

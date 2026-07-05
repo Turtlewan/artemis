@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "12:30",
+    "Green Table",
+    "Q3 roadmap notes"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-007-chain-lunch-ben",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 20.0,
+      "key": "ben-lunch",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Lunch with Ben is Friday 2026-07-10 at 12:30 at Green Table.",
+      "sha256": "5d4387bb1b4a816731d54021cde949bc8195d1e09e81ac176537c8b3710b066a",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 21.0,
+      "key": "ben-lunch-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Before lunch with Ben, send Q3 roadmap notes by Friday 09:00.",
+      "sha256": "72ca79048716d01a67060c7bdb8963297f43db9860e533a8a0b17f08b327b757",
+      "source": "authored"
+    }
+  ],
+  "request": "Find the time for lunch with Ben Friday and the prep task."
+}

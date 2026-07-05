@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "15:00",
+    "import flow",
+    "release notes"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-006-thrash-demo-import",
+  "induces": "thrash",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing thrash",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 215.0,
+      "key": "demo-time",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Customer handoff demo is Friday at 15:00 on Zoom.",
+      "sha256": "14a91f17c2a73fd19851a2eef8a820425ad002e783983b18e591142b0493fb9a",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 216.0,
+      "key": "demo-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Rehearse import flow and attach release notes.",
+      "sha256": "4836227a659f7c5b9ac84ddec5311d5e93d5f19960de4bbaa472e35ec5854c3e",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 217.0,
+      "key": "demo-old",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Old customer demo at 14:00 was canceled.",
+      "sha256": "5acc3368e68ffca83ee42367fdb32fa30e7a581c14601b5a767ec6cdb3d8a90d",
+      "source": "authored"
+    }
+  ],
+  "request": "Connect the demo time with the release preparation."
+}

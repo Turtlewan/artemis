@@ -1,0 +1,32 @@
+{
+  "expected_answer_contains": [
+    "Thursday",
+    "16:45",
+    "service desk"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-006-calendar-warranty",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 15.0,
+      "key": "warranty-call",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Laptop warranty call is Thursday 2026-07-09 at 16:45 with service desk.",
+      "sha256": "7dc03829b3171eac26661dc5474624616d87c6eb9785ccca7bf7b6411466b708",
+      "source": "authored"
+    }
+  ],
+  "request": "When is the laptop warranty call?"
+}

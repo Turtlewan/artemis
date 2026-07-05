@@ -1,0 +1,58 @@
+{
+  "expected_answer_contains": [
+    "2",
+    "lunch",
+    "demo"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-007-stall-aggregation",
+  "induces": "stall",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing stall",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 218.0,
+      "key": "fri-lunch",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday lunch with Ben at 12:30.",
+      "sha256": "2676aa3153e786a6043dcea2b8e541a2a889c37c12cefc745c87f44b1342d82e",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 219.0,
+      "key": "fri-demo",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday customer handoff demo at 15:00.",
+      "sha256": "82eb3b77cd3a0badb4531c1a2a617d5453d0c640a3032abe86e0624112afac29",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 220.0,
+      "key": "mon-standup",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Monday Artemis standup at 11:00.",
+      "sha256": "e577de259e5f7b4c0c87470c7cb53ad2b486023596bef819095d3d28ea838e77",
+      "source": "authored"
+    }
+  ],
+  "request": "Count Friday calendar items and name them."
+}

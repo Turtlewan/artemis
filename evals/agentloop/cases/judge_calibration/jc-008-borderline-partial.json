@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-008-borderline-partial",
+  "judge_answer": "The board meeting is Thursday.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Board meeting is Thursday at 08:30 in Room 4.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "borderline/partial-address",
+  "request": "When and where is the board meeting?"
+}

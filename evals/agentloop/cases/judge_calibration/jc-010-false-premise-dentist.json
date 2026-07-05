@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-010-false-premise-dentist",
+  "judge_answer": "It was canceled because the clinic moved it.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Dentist appointment is Tuesday at 15:30 at River Clinic.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "false-premise",
+  "request": "Why was the dentist appointment canceled?"
+}

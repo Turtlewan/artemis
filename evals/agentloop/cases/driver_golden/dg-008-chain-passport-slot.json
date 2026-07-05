@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "Wednesday",
+    "13:00",
+    "DS-82"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-008-chain-passport-slot",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 22.0,
+      "key": "passport-slot",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Passport appointment is Wednesday 2026-07-15 at 13:00 at Civic Centre.",
+      "sha256": "9f8424f059e084493f45bc8e37f77b2dcf64d7f297745213ba8ed88ed1268311",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 23.0,
+      "key": "passport-docs",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Passport task: bring old passport, photo, and signed DS-82 form.",
+      "sha256": "8e0665ed1cc6ee9f40bd5a1817fff8252422bfae9aab2911f565230bc939ca7c",
+      "source": "authored"
+    }
+  ],
+  "request": "What do I need for the passport appointment?"
+}

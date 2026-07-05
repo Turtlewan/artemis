@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-006-ungrounded-fee",
+  "judge_answer": "The passport fee recorded is 130 dollars.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Passport task: bring old passport, photo, and signed DS-82 form.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "ungrounded/invented-fact",
+  "request": "What passport fee did I record?"
+}

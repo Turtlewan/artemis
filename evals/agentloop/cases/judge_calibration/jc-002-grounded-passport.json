@@ -1,0 +1,18 @@
+{
+  "human_label_passed": true,
+  "id": "jc-002-grounded-passport",
+  "judge_answer": "Bring the old passport, a photo, and the signed DS-82 form.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Passport task: bring old passport, photo, and signed DS-82 form.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "grounded+addresses",
+  "request": "What should I bring to passport appointment?"
+}

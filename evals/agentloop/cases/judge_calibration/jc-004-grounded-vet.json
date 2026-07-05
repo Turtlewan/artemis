@@ -1,0 +1,18 @@
+{
+  "human_label_passed": true,
+  "id": "jc-004-grounded-vet",
+  "judge_answer": "Bring the vaccination card and medication dosage note.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Vet task: bring vaccination card and medication dosage note.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "grounded+addresses",
+  "request": "What should I bring to the vet?"
+}

@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-005-ungrounded-room",
+  "judge_answer": "The design review is in Room 7.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Northbridge design review is Friday at 10:00 with Priya.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "ungrounded/invented-fact",
+  "request": "Which room is the design review in?"
+}

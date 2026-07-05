@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "12:30",
+    "15:00",
+    "release notes"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-012-budget-related-friday",
+  "induces": "budget",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing budget",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 230.0,
+      "key": "friday-lunch",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday lunch with Ben is 12:30 at Green Table.",
+      "sha256": "8d127d21e37df7ec40536a98cd22fab191f46af1a23f899ffeae23bde43c23ae",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 231.0,
+      "key": "friday-demo",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Friday customer handoff demo is 15:00 on Zoom.",
+      "sha256": "cc40cb448637c1079869a5d298031b239f5f1fe405d1192fdce8ccb902cbf52f",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 232.0,
+      "key": "friday-demo-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Demo prep task: attach release notes.",
+      "sha256": "da96c1346bd79790555d255a51cb0a3530d1f2a8813c5a238d44a884ddcff1f5",
+      "source": "authored"
+    }
+  ],
+  "request": "Separate Friday lunch from Friday demo and give both useful details."
+}

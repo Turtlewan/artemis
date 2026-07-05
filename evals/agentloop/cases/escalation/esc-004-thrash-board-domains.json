@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "08:30",
+    "finance pack",
+    "risk appendix"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-004-thrash-board-domains",
+  "induces": "thrash",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing thrash",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 209.0,
+      "key": "board-time",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Board meeting is Thursday at 08:30 in Room 4.",
+      "sha256": "986af743bd497b5538276451d4e7855faef651a2f5a73e670a54d1d81d2f00ad",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 210.0,
+      "key": "board-task",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Upload finance pack and risk appendix before Thursday.",
+      "sha256": "807c369dfdc135834ad015b7f8b363a512b0c91bac94f12c79f1d4cf38df99db",
+      "source": "authored"
+    },
+    {
+      "domain": "notes",
+      "fetched_at": 211.0,
+      "key": "board-noise",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Old board lunch note no longer applies.",
+      "sha256": "0aa09ed51e2422d50f9ef0bceffad1e02f8f34290a17849f4f99cc7689885400",
+      "source": "authored"
+    }
+  ],
+  "request": "Answer with board meeting time and prep item."
+}

@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "17:20",
+    "vaccination card",
+    "dosage"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-010-chain-vet-medication",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 26.0,
+      "key": "vet-visit",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Vet visit for Luna is Monday 2026-07-13 at 17:20.",
+      "sha256": "276f285b284e998812c7b56fb8590d3ead91f68f57ca55772791e370f93b21e9",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 27.0,
+      "key": "vet-medication",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Vet task: bring vaccination card and note Luna medication dosage.",
+      "sha256": "de75c61d0ffbd47a532785e1c4a5c99bb664bd9d6ee2fda693161ea118f93eba",
+      "source": "authored"
+    }
+  ],
+  "request": "When is the vet visit and what should I bring?"
+}

@@ -1,0 +1,43 @@
+{
+  "expected_answer_contains": [
+    "DS-82",
+    "pending"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-019-temporal-as-of-july10",
+  "kind": "driver_golden",
+  "notes": "temporal as-of",
+  "records": [
+    {
+      "domain": "tasks",
+      "fetched_at": 43.0,
+      "key": "passport-photo",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "As of 2026-07-10, passport photo is complete.",
+      "sha256": "e1ca95a19d9febc7b17fd0232242542247b6495af632014d03c9b4937ab3735b",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 44.0,
+      "key": "passport-ds82",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "As of 2026-07-10, signed DS-82 form is still pending.",
+      "sha256": "347a0015a56b68500e4442c9eac3a0c15aabe71722c9cc6542b3d705e5ee688b",
+      "source": "authored"
+    }
+  ],
+  "request": "As of July 10, which passport task is still pending?"
+}

@@ -1,0 +1,18 @@
+{
+  "human_label_passed": true,
+  "id": "jc-003-grounded-lunch",
+  "judge_answer": "Lunch with Ben is at Green Table on Friday at 12:30.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "calendar"
+      },
+      "observation": "Lunch with Ben is Friday at 12:30 at Green Table.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "grounded+addresses",
+  "request": "Where is lunch with Ben?"
+}

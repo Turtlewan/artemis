@@ -1,0 +1,41 @@
+{
+  "expected_answer_contains": [
+    "08:00",
+    "before 09:30"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "tool": "memory_retrieve"
+    },
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-009-stall-memory-calendar",
+  "induces": "stall",
+  "kind": "escalation",
+  "memory": [
+    {
+      "content": "Owner prefers to avoid meetings before 09:30 when possible.",
+      "layer": "semantic"
+    }
+  ],
+  "notes": "synthetic escalation case inducing stall",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 222.0,
+      "key": "early-call",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Planning call is Tuesday at 08:00 with product leads.",
+      "sha256": "ba8b78eb8b985f6ebb3bfb2607a41264682f424c488ace55296b212d07ee1efb",
+      "source": "authored"
+    }
+  ],
+  "request": "Use preference memory and calendar to flag any early call."
+}

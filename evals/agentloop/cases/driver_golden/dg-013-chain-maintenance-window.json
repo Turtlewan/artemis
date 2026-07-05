@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "09:00",
+    "11:00",
+    "utility closet"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-013-chain-maintenance-window",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 32.0,
+      "key": "maintenance-window",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Home maintenance window is Saturday 2026-07-18 from 09:00 to 11:00.",
+      "sha256": "e6c92e41b42e9a844c7373dd94691408259f5420822be9ee9ea625741eff240e",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 33.0,
+      "key": "maintenance-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Maintenance prep task: clear utility closet before Saturday 08:30.",
+      "sha256": "414dd43e4452df4604c09df27755ca746cab5f92e34f1c977f32e3be8bb335b8",
+      "source": "authored"
+    }
+  ],
+  "request": "When is the maintenance window and what task precedes it?"
+}

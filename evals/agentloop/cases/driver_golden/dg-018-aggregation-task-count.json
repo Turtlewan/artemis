@@ -1,0 +1,55 @@
+{
+  "expected_answer_contains": [
+    "2",
+    "before Thursday"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-018-aggregation-task-count",
+  "kind": "driver_golden",
+  "notes": "aggregation/count",
+  "records": [
+    {
+      "domain": "tasks",
+      "fetched_at": 40.0,
+      "key": "pack-before-thu",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Upload board finance pack before Thursday.",
+      "sha256": "f864b7699a0d0490653577855784072e4c9fbc024e6495bf4e89ae55c926f65e",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 41.0,
+      "key": "call-before-thu",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Confirm school call notes before Wednesday.",
+      "sha256": "991c92f5dce3364ba9b150b9971f98cac0a118b9c591abcf6915d664ef828285",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 42.0,
+      "key": "demo-before-fri",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Attach demo release notes before Friday.",
+      "sha256": "0e9eb5088483ad0353a70297c650deb9c6bf192940a27729642434ff915ded17",
+      "source": "authored"
+    }
+  ],
+  "request": "How many task rows are due before Thursday?"
+}

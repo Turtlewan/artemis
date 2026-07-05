@@ -1,0 +1,32 @@
+{
+  "expected_answer_contains": [
+    "Ms. Ortega",
+    "Wednesday",
+    "09:15"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-003-calendar-school-call",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 12.0,
+      "key": "school-call",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "School call Wednesday 2026-07-08 at 09:15 with Ms. Ortega about term forms.",
+      "sha256": "cf0fd5cf41386848e7daa771b9d8285e736565e0dcc5a98500415b451b2d2d0a",
+      "source": "authored"
+    }
+  ],
+  "request": "Who is the Wednesday school call with?"
+}

@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "08:30",
+    "finance pack",
+    "risk appendix"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-009-chain-board-pack",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 24.0,
+      "key": "board-meeting",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Board meeting is Thursday 2026-07-16 at 08:30 in Room 4.",
+      "sha256": "4f4167604be35d04218355f32e4e37839067657d92f420fa96d5b493f5910bd8",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 25.0,
+      "key": "board-pack",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Board prep task: upload finance pack and risk appendix before Thursday.",
+      "sha256": "c8b2d4045b7617f5f1bf5125f68af01b624491073ab007e358d9c89a06d216b0",
+      "source": "authored"
+    }
+  ],
+  "request": "Summarize the board meeting and prep item."
+}

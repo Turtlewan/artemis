@@ -1,0 +1,41 @@
+{
+  "expected_answer_contains": [
+    "08:00",
+    "early",
+    "planning call"
+  ],
+  "expected_sequence": [
+    {
+      "tool": "memory_retrieve"
+    },
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-014-memory-domain-quiet-morning",
+  "kind": "driver_golden",
+  "memory": [
+    {
+      "content": "Owner prefers to avoid meetings before 09:30 when possible.",
+      "layer": "semantic"
+    }
+  ],
+  "notes": "memory+domain compose",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 34.0,
+      "key": "planning-call",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Planning call is Tuesday 2026-07-07 at 08:00 with product leads.",
+      "sha256": "fe4f95a1d0b35f70c13637c5a0f8f0de73e01aa46b89c9f59eec66344bd10c84",
+      "source": "authored"
+    }
+  ],
+  "request": "Use my meeting preferences to assess the Tuesday planning call."
+}

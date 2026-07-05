@@ -1,0 +1,18 @@
+{
+  "human_label_passed": false,
+  "id": "jc-012-false-accept-printer",
+  "judge_answer": "The printer code is 8842, clearly shown in the task.",
+  "judge_evidence": [
+    {
+      "args": {
+        "domain": "tasks"
+      },
+      "observation": "Task says upload board finance pack before Thursday.",
+      "ok": true,
+      "tool": "local_read"
+    }
+  ],
+  "kind": "judge_calibration",
+  "notes": "false-accept-probe confident-but-ungrounded",
+  "request": "What printer code did I save?"
+}

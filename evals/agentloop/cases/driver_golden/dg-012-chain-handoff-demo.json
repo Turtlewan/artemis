@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "15:00",
+    "import flow",
+    "release notes"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-012-chain-handoff-demo",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 30.0,
+      "key": "handoff-demo",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Customer handoff demo is Friday 2026-07-17 at 15:00 on Zoom.",
+      "sha256": "9cfe83e5386bec49dd12a10623c5c719bf82b2a233f9fb6bab0f3a6300895973",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 31.0,
+      "key": "handoff-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Demo prep task: rehearse import flow and attach release notes.",
+      "sha256": "65cf723f049ee49728c17031efc5a3c3fc4b9ab32e28db813d78e2ef2c829151",
+      "source": "authored"
+    }
+  ],
+  "request": "What is the demo handoff schedule and prep?"
+}

@@ -1,0 +1,62 @@
+{
+  "expected_answer_contains": [
+    "09:00",
+    "11:00",
+    "utility closet"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-011-budget-conflicting-times",
+  "induces": "budget",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing budget",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 227.0,
+      "key": "maint-old",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Old maintenance window Saturday 08:00 to 10:00 was superseded.",
+      "sha256": "2fb1a5b4b17ab0c5c5fdb59e7300aa876851a4ecccd2d9bfec2a0e7a52c05fd9",
+      "source": "authored"
+    },
+    {
+      "domain": "calendar",
+      "fetched_at": 228.0,
+      "key": "maint-current",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Current maintenance window Saturday 09:00 to 11:00.",
+      "sha256": "82bd7b6dcb6e187f0cde6c2e611d8428c61e4494784e01f15cbc92027dd0abc1",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 229.0,
+      "key": "maint-prep",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Clear utility closet before Saturday 08:30.",
+      "sha256": "8d3a694e5794c67486f22fda024a35b565d069f679484f15dbdbb52d46995bf9",
+      "source": "authored"
+    }
+  ],
+  "request": "Choose the current maintenance window and prep action."
+}

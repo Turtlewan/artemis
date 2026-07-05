@@ -1,0 +1,31 @@
+{
+  "expected_answer_contains": [
+    "Sunday",
+    "18:00"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-004-calendar-flight",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 13.0,
+      "key": "flight-checkin",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Singapore flight check-in reminder is Sunday 2026-07-12 at 18:00.",
+      "sha256": "4d564c437a81cd902cf38791e094265299264f6c3c64193664254db54077a29e",
+      "source": "authored"
+    }
+  ],
+  "request": "When is the Singapore flight check-in reminder?"
+}

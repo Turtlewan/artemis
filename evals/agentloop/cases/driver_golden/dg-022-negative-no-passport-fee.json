@@ -1,0 +1,31 @@
+{
+  "expected_answer_contains": [
+    "don't have",
+    "passport fee"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": true,
+  "id": "dg-022-negative-no-passport-fee",
+  "kind": "driver_golden",
+  "notes": "negative/abstain",
+  "records": [
+    {
+      "domain": "tasks",
+      "fetched_at": 48.0,
+      "key": "passport-docs-no-fee",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Passport task: bring old passport, photo, and signed DS-82 form.",
+      "sha256": "8e0665ed1cc6ee9f40bd5a1817fff8252422bfae9aab2911f565230bc939ca7c",
+      "source": "authored"
+    }
+  ],
+  "request": "What exact passport fee did I record?"
+}

@@ -1,0 +1,32 @@
+{
+  "expected_answer_contains": [
+    "Friday",
+    "10:00",
+    "Priya"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-001-calendar-design-review",
+  "kind": "driver_golden",
+  "notes": "single-domain read",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 10.0,
+      "key": "design-review",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Northbridge design review is Friday 2026-07-10 at 10:00 with Priya.",
+      "sha256": "73d80bd56358733411a383ea0979c650400397b6859d60d44766cd43d525eab6",
+      "source": "authored"
+    }
+  ],
+  "request": "When is the Northbridge design review?"
+}

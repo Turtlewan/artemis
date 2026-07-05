@@ -1,0 +1,82 @@
+{
+  "expected_answer_contains": [
+    "14:00",
+    "release checklist",
+    "Morgan"
+  ],
+  "expected_grounded": true,
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    },
+    {
+      "domain": "notes",
+      "tool": "local_read"
+    },
+    {
+      "domain": "contacts",
+      "tool": "local_read"
+    }
+  ],
+  "id": "esc-010-budget-four-domain",
+  "induces": "budget",
+  "kind": "escalation",
+  "memory": [],
+  "notes": "synthetic escalation case inducing budget",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 223.0,
+      "key": "launch-review",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Launch review is Thursday at 14:00.",
+      "sha256": "fcda9dd434c5642d64258a87374f1fb4a21595a08c1f69cd6072166c617b7ce5",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 224.0,
+      "key": "launch-task",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Launch task: finalize release checklist.",
+      "sha256": "58ccd210e9bb3c9809023bd9440129abbec8e9fdb28bdf6887d5e487109bc926",
+      "source": "authored"
+    },
+    {
+      "domain": "notes",
+      "fetched_at": 225.0,
+      "key": "launch-note",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Launch note: support rota starts Friday.",
+      "sha256": "a493a4721828e75d7ba0b6821b6217905d2f1ba04a89714e4a9cfd4264ea89f7",
+      "source": "authored"
+    },
+    {
+      "domain": "contacts",
+      "fetched_at": 226.0,
+      "key": "launch-contact",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Launch contact is Morgan for support rota.",
+      "sha256": "35f5bc24010329124b334713b9c101da09d646dbf11401ade67100468ebb1b3b",
+      "source": "authored"
+    }
+  ],
+  "request": "Summarize launch readiness across calendar, tasks, notes, and contacts."
+}

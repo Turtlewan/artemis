@@ -1,0 +1,41 @@
+{
+  "expected_answer_contains": [
+    "Friday",
+    "Orchard",
+    "vegetarian"
+  ],
+  "expected_sequence": [
+    {
+      "tool": "memory_retrieve"
+    },
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-015-memory-domain-venue",
+  "kind": "driver_golden",
+  "memory": [
+    {
+      "content": "For team meals, prefer places with vegetarian options.",
+      "layer": "semantic"
+    }
+  ],
+  "notes": "memory+domain compose",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 35.0,
+      "key": "team-lunch",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Team lunch is Friday 2026-07-10 at 12:00 near Orchard.",
+      "sha256": "70dc4c26f31213a96eccc2ce974bfa95f8235c34d2215ea56bc8ad0fb28b6b3d",
+      "source": "authored"
+    }
+  ],
+  "request": "Where should I suggest for the Friday team lunch?"
+}

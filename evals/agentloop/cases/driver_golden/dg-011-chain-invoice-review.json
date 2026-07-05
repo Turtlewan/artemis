@@ -1,0 +1,48 @@
+{
+  "expected_answer_contains": [
+    "10:45",
+    "Morgan",
+    "June vendor CSV"
+  ],
+  "expected_sequence": [
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    },
+    {
+      "domain": "tasks",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-011-chain-invoice-review",
+  "kind": "driver_golden",
+  "notes": "multi-domain chain",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 28.0,
+      "key": "invoice-review",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Invoice review is Tuesday 2026-07-14 at 10:45 with Morgan.",
+      "sha256": "1b5a1d84160d2d7189ac608ac460b26e8a9b30ddef1a1ecf878f052291409887",
+      "source": "authored"
+    },
+    {
+      "domain": "tasks",
+      "fetched_at": 29.0,
+      "key": "invoice-export",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Before invoice review, export June vendor CSV by Tuesday morning.",
+      "sha256": "10e84dd60f3883a43a71f12d8794184defbd0a85e6b5267648fea114d6f8d465",
+      "source": "authored"
+    }
+  ],
+  "request": "What is scheduled for invoice review and what is due before it?"
+}

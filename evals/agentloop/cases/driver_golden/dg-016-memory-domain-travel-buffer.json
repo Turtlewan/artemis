@@ -1,0 +1,41 @@
+{
+  "expected_answer_contains": [
+    "19:10",
+    "90 minutes",
+    "airport"
+  ],
+  "expected_sequence": [
+    {
+      "tool": "memory_retrieve"
+    },
+    {
+      "domain": "calendar",
+      "tool": "local_read"
+    }
+  ],
+  "expects_abstain": false,
+  "id": "dg-016-memory-domain-travel-buffer",
+  "kind": "driver_golden",
+  "memory": [
+    {
+      "content": "Owner wants at least 90 minutes of buffer before airport pickup.",
+      "layer": "semantic"
+    }
+  ],
+  "notes": "memory+domain compose",
+  "records": [
+    {
+      "domain": "calendar",
+      "fetched_at": 36.0,
+      "key": "airport-transfer",
+      "kind": "item",
+      "payload": {
+        "fixture": "synthetic"
+      },
+      "sanitized_text": "Airport transfer pickup is Sunday 2026-07-12 at 19:10.",
+      "sha256": "08c5ae8197a0b49e6b736266c876149273d9223f848e0e47bc12cfa823e06a96",
+      "source": "authored"
+    }
+  ],
+  "request": "Do I have enough buffer before the airport transfer?"
+}
